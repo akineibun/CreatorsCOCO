@@ -312,6 +312,31 @@ button {
   cursor: nwse-resize;
 }
 
+.manual-segment-point {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  margin-top: -12px;
+  border-radius: 999px;
+  border: 2px solid rgba(36, 27, 21, 0.88);
+  background: #f3efe6;
+  color: #241b15;
+  font-size: 0.78rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  z-index: 2;
+}
+
+.manual-segment-point.selected {
+  background: #bf8f52;
+  color: #f9f5ec;
+  box-shadow: 0 0 0 4px rgba(191, 143, 82, 0.18);
+}
+
 .canvas-empty-state {
   width: min(76%, 760px);
   min-height: 320px;
@@ -437,6 +462,42 @@ button {
 }
 
 .overlay-layer-chip.selected {
+  border-color: rgba(191, 143, 82, 0.9);
+  box-shadow: 0 0 0 3px rgba(191, 143, 82, 0.16);
+}
+
+.message-window-chip {
+  align-items: start;
+  justify-items: start;
+  gap: 6px;
+  padding: 12px 14px;
+  border-style: solid;
+  border-radius: 18px;
+  background: rgba(31, 24, 20, 0.86);
+  color: #f3efe6;
+  text-align: left;
+}
+
+.message-window-chip span {
+  font-size: 0.82rem;
+  color: rgba(243, 239, 230, 0.82);
+}
+
+.watermark-layer-chip {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  padding: 12px 18px;
+  border: 2px dashed rgba(255, 244, 214, 0.28);
+  background: rgba(36, 27, 21, 0.08);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.watermark-layer-chip.selected {
   border-color: rgba(191, 143, 82, 0.9);
   box-shadow: 0 0 0 3px rgba(191, 143, 82, 0.16);
 }

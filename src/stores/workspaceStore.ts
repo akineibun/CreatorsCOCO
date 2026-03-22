@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type Tool = 'select' | 'text' | 'bubble' | 'mosaic' | 'overlay'
+export type Tool = 'select' | 'text' | 'message-window' | 'bubble' | 'mosaic' | 'overlay'
 
 export type CanvasImage = {
   id: string
@@ -8,9 +8,11 @@ export type CanvasImage = {
   width: number
   height: number
   textLayers: CanvasTextLayer[]
+  messageWindowLayers: CanvasMessageWindowLayer[]
   bubbleLayers: CanvasBubbleLayer[]
   mosaicLayers: CanvasMosaicLayer[]
   overlayLayers: CanvasOverlayLayer[]
+  watermarkLayers: CanvasWatermarkLayer[]
 }
 
 export type CanvasTextLayer = {
@@ -43,6 +45,34 @@ export type CanvasBubbleLayer = {
   borderColor: string
   visible: boolean
   locked: boolean
+}
+
+export type CanvasMessageWindowLayer = {
+  id: string
+  speaker: string
+  body: string
+  x: number
+  y: number
+  width: number
+  height: number
+  opacity: number
+}
+
+export type CanvasWatermarkLayer = {
+  id: string
+  text: string
+  opacity: number
+  color: string
+  repeated: boolean
+  angle: number
+  density: number
+  preset: 'custom' | 'patreon' | 'discord'
+  mode: 'text' | 'image'
+  assetName: string | null
+  x: number
+  y: number
+  scale: number
+  tiled: boolean
 }
 
 export type CanvasMosaicLayer = {
@@ -90,6 +120,27 @@ export type OutputSettings = {
   numberPadding: number
 }
 
+export type MessageWindowPreset = {
+  id: string
+  label: string
+  speaker: string
+  body: string
+  width: number
+  height: number
+  opacity: number
+}
+
+export type PageTemplate = {
+  id: string
+  label: string
+  textLayers: CanvasTextLayer[]
+  messageWindowLayers: CanvasMessageWindowLayer[]
+  bubbleLayers: CanvasBubbleLayer[]
+  mosaicLayers: CanvasMosaicLayer[]
+  overlayLayers: CanvasOverlayLayer[]
+  watermarkLayers: CanvasWatermarkLayer[]
+}
+
 type LayerType = 'text' | 'bubble' | 'mosaic' | 'overlay'
 export type ResizeHandle =
   | 'top-left'
@@ -110,6 +161,8 @@ type PersistedProject = {
   imageTransform: CanvasTransform | null
   outputSettings: OutputSettings
   lastSavedAt: string | null
+  messageWindowPresets: MessageWindowPreset[]
+  templates: PageTemplate[]
 }
 
 export type RecentProjectEntry = {
@@ -141,6 +194,8 @@ type WorkspaceState = {
   projectId: string
   projectName: string
   recentProjects: RecentProjectEntry[]
+  messageWindowPresets: MessageWindowPreset[]
+  templates: PageTemplate[]
   undoStack: HistoryEntry[]
   redoStack: HistoryEntry[]
   zoomIn: () => void
@@ -168,6 +223,14 @@ type WorkspaceState = {
   loadImageFile: (file: File) => void
   loadImageFiles: (files: File[]) => void
   selectPage: (pageId: string) => void
+  duplicateActivePage: () => void
+  duplicateActivePageWithTextSwap: (text: string) => void
+  saveCurrentPageAsTemplate: () => void
+  renameTemplate: (templateId: string, name: string) => void
+  duplicateTemplate: (templateId: string) => void
+  deleteTemplate: (templateId: string) => void
+  applyTemplateToActivePage: (templateId: string) => void
+  applyTemplateToAllPages: (templateId: string) => void
   addTextLayer: () => void
   selectTextLayer: (layerId: string, additive?: boolean) => void
   updateSelectedTextLayerText: (text: string) => void
@@ -180,6 +243,26 @@ type WorkspaceState = {
   toggleSelectedTextLayerVertical: () => void
   changeSelectedTextLayerOutlineWidth: (delta: number) => void
   toggleSelectedTextLayerShadow: () => void
+  addMessageWindowLayer: () => void
+  selectMessageWindowLayer: (layerId: string) => void
+  updateSelectedMessageWindowSpeaker: (speaker: string) => void
+  updateSelectedMessageWindowBody: (body: string) => void
+  moveSelectedMessageWindowLayer: (dx: number, dy: number) => void
+  resizeSelectedMessageWindowLayer: (widthDelta: number, heightDelta: number) => void
+  saveSelectedMessageWindowPreset: () => void
+  applyMessageWindowPreset: (presetId: string) => void
+  addWatermarkLayer: () => void
+  loadWatermarkImageFile: (file: File) => void
+  selectWatermarkLayer: (layerId: string) => void
+  updateSelectedWatermarkText: (text: string) => void
+  changeSelectedWatermarkOpacity: (delta: number) => void
+  toggleSelectedWatermarkPattern: () => void
+  setSelectedWatermarkPreset: (preset: 'patreon' | 'discord') => void
+  changeSelectedWatermarkAngle: (delta: number) => void
+  changeSelectedWatermarkDensity: (delta: number) => void
+  moveSelectedWatermarkLayer: (dx: number, dy: number) => void
+  changeSelectedWatermarkScale: (delta: number) => void
+  toggleSelectedWatermarkTileLayout: () => void
   addBubbleLayer: () => void
   selectBubbleLayer: (layerId: string, additive?: boolean) => void
   updateSelectedBubbleLayerText: (text: string) => void
@@ -246,9 +329,11 @@ const SAMPLE_IMAGE: CanvasImage = {
   width: 3840,
   height: 2160,
   textLayers: [],
+  messageWindowLayers: [],
   bubbleLayers: [],
   mosaicLayers: [],
   overlayLayers: [],
+  watermarkLayers: [],
 }
 
 const INITIAL_IMAGE_TRANSFORM: CanvasTransform = {
@@ -367,9 +452,11 @@ const createImageFromFile = (file: File): CanvasImage => ({
   name: file.name,
   ...inferImageSize(file.name),
   textLayers: [],
+  messageWindowLayers: [],
   bubbleLayers: [],
   mosaicLayers: [],
   overlayLayers: [],
+  watermarkLayers: [],
 })
 
 const createTextLayerId = () =>
@@ -378,11 +465,22 @@ const createTextLayerId = () =>
 const createBubbleLayerId = () =>
   `bubble-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
 
+const createMessageWindowLayerId = () =>
+  `message-window-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+
 const createMosaicLayerId = () =>
   `mosaic-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
 
 const createOverlayLayerId = () =>
   `overlay-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+const createWatermarkLayerId = () =>
+  `watermark-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+
+const createMessagePresetId = () =>
+  `message-preset-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+
+const createTemplateId = () =>
+  `template-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
 
 const createGroupId = () =>
   `group-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
@@ -417,6 +515,34 @@ const createBubbleLayer = (): CanvasBubbleLayer => ({
   borderColor: '#241b15',
   visible: true,
   locked: false,
+})
+
+const createMessageWindowLayer = (): CanvasMessageWindowLayer => ({
+  id: createMessageWindowLayerId(),
+  speaker: 'Speaker',
+  body: 'New line',
+  x: 688,
+  y: 760,
+  width: 608,
+  height: 220,
+  opacity: 0.9,
+})
+
+const createWatermarkLayer = (): CanvasWatermarkLayer => ({
+  id: createWatermarkLayerId(),
+  text: 'Sample watermark',
+  opacity: 0.3,
+  color: '#fff4d6',
+  repeated: false,
+  angle: -16,
+  density: 1,
+  preset: 'custom',
+  mode: 'text',
+  assetName: null,
+  x: 960,
+  y: 540,
+  scale: 1,
+  tiled: false,
 })
 
 const createMosaicLayer = (): CanvasMosaicLayer => ({
@@ -469,8 +595,50 @@ const createInitialState = () => ({
   projectId: 'project-default',
   projectName: 'Untitled project',
   recentProjects: [] as RecentProjectEntry[],
+  messageWindowPresets: [] as MessageWindowPreset[],
+  templates: [] as PageTemplate[],
   undoStack: [] as HistoryEntry[],
   redoStack: [] as HistoryEntry[],
+})
+
+const cloneTextLayer = (layer: CanvasTextLayer): CanvasTextLayer => ({
+  ...layer,
+  id: createTextLayerId(),
+})
+
+const cloneMessageWindowLayer = (layer: CanvasMessageWindowLayer): CanvasMessageWindowLayer => ({
+  ...layer,
+  id: createMessageWindowLayerId(),
+})
+
+const cloneBubbleLayer = (layer: CanvasBubbleLayer): CanvasBubbleLayer => ({
+  ...layer,
+  id: createBubbleLayerId(),
+})
+
+const cloneMosaicLayer = (layer: CanvasMosaicLayer): CanvasMosaicLayer => ({
+  ...layer,
+  id: createMosaicLayerId(),
+})
+
+const cloneOverlayLayer = (layer: CanvasOverlayLayer): CanvasOverlayLayer => ({
+  ...layer,
+  id: createOverlayLayerId(),
+})
+
+const cloneWatermarkLayer = (layer: CanvasWatermarkLayer): CanvasWatermarkLayer => ({
+  ...layer,
+  id: createWatermarkLayerId(),
+})
+
+const cloneTemplate = (template: PageTemplate): PageTemplate => ({
+  ...template,
+  textLayers: template.textLayers.map((layer) => ({ ...layer })),
+  messageWindowLayers: template.messageWindowLayers.map((layer) => ({ ...layer })),
+  bubbleLayers: template.bubbleLayers.map((layer) => ({ ...layer })),
+  mosaicLayers: template.mosaicLayers.map((layer) => ({ ...layer })),
+  overlayLayers: template.overlayLayers.map((layer) => ({ ...layer })),
+  watermarkLayers: template.watermarkLayers.map((layer) => ({ ...layer })),
 })
 
 const snapshotHistory = (state: Pick<
@@ -480,9 +648,11 @@ const snapshotHistory = (state: Pick<
   pages: state.pages.map((page) => ({
     ...page,
     textLayers: page.textLayers.map((layer) => ({ ...layer })),
+    messageWindowLayers: page.messageWindowLayers.map((layer) => ({ ...layer })),
     bubbleLayers: page.bubbleLayers.map((layer) => ({ ...layer })),
     mosaicLayers: page.mosaicLayers.map((layer) => ({ ...layer })),
     overlayLayers: page.overlayLayers.map((layer) => ({ ...layer })),
+    watermarkLayers: page.watermarkLayers.map((layer) => ({ ...layer })),
   })),
   activePageId: state.activePageId,
   imageTransform: state.imageTransform ? { ...state.imageTransform } : null,
@@ -510,6 +680,8 @@ const serializeProject = (
     | 'lastSavedAt'
     | 'projectId'
     | 'projectName'
+    | 'messageWindowPresets'
+    | 'templates'
   >,
 ): PersistedProject => ({
   id: state.projectId !== 'project-default' ? state.projectId : state.pages[0]?.id ? `project-${state.pages[0].id}` : 'project-default',
@@ -522,15 +694,19 @@ const serializeProject = (
   pages: state.pages.map((page) => ({
     ...page,
     textLayers: page.textLayers.map((layer) => ({ ...layer })),
+    messageWindowLayers: page.messageWindowLayers.map((layer) => ({ ...layer })),
     bubbleLayers: page.bubbleLayers.map((layer) => ({ ...layer })),
     mosaicLayers: page.mosaicLayers.map((layer) => ({ ...layer })),
     overlayLayers: page.overlayLayers.map((layer) => ({ ...layer })),
+    watermarkLayers: page.watermarkLayers.map((layer) => ({ ...layer })),
   })),
   activePageId: state.activePageId,
   selectedLayerId: state.selectedLayerId,
   imageTransform: state.imageTransform ? { ...state.imageTransform } : null,
   outputSettings: state.outputSettings,
   lastSavedAt: state.lastSavedAt,
+  messageWindowPresets: state.messageWindowPresets.map((preset) => ({ ...preset })),
+  templates: state.templates.map(cloneTemplate),
 })
 
 const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
@@ -639,6 +815,12 @@ const readProjectFromStorage = (): PersistedProject | null => {
                   locked: layer.locked ?? false,
                 }))
               : [],
+            messageWindowLayers: Array.isArray(page.messageWindowLayers)
+              ? page.messageWindowLayers.map((layer) => ({
+                  ...layer,
+                  opacity: layer.opacity ?? 0.9,
+                }))
+              : [],
             bubbleLayers: Array.isArray(page.bubbleLayers)
               ? page.bubbleLayers.map((layer) => ({
                   ...layer,
@@ -667,6 +849,23 @@ const readProjectFromStorage = (): PersistedProject | null => {
                   locked: layer.locked ?? false,
                 }))
               : [],
+            watermarkLayers: Array.isArray(page.watermarkLayers)
+              ? page.watermarkLayers.map((layer) => ({
+                  ...layer,
+                  opacity: layer.opacity ?? 0.3,
+                  color: layer.color ?? '#fff4d6',
+                  repeated: layer.repeated ?? false,
+                  angle: layer.angle ?? -16,
+                  density: layer.density ?? 1,
+                  preset: layer.preset ?? 'custom',
+                  mode: layer.mode ?? 'text',
+                  assetName: layer.assetName ?? null,
+                  x: layer.x ?? 960,
+                  y: layer.y ?? 540,
+                  scale: layer.scale ?? 1,
+                  tiled: layer.tiled ?? false,
+                }))
+              : [],
           }))
         : [],
       activePageId: parsedProject.activePageId ?? null,
@@ -674,6 +873,24 @@ const readProjectFromStorage = (): PersistedProject | null => {
       imageTransform: parsedProject.imageTransform ?? null,
       outputSettings,
       lastSavedAt: parsedProject.lastSavedAt ?? null,
+      messageWindowPresets: Array.isArray(parsedProject.messageWindowPresets)
+        ? parsedProject.messageWindowPresets.map((preset) => ({ ...preset }))
+        : [],
+      templates: Array.isArray(parsedProject.templates)
+        ? parsedProject.templates.map((template) => ({
+            ...template,
+            textLayers: Array.isArray(template.textLayers) ? template.textLayers.map((layer) => ({ ...layer })) : [],
+            messageWindowLayers: Array.isArray(template.messageWindowLayers)
+              ? template.messageWindowLayers.map((layer) => ({ ...layer }))
+              : [],
+            bubbleLayers: Array.isArray(template.bubbleLayers) ? template.bubbleLayers.map((layer) => ({ ...layer })) : [],
+            mosaicLayers: Array.isArray(template.mosaicLayers) ? template.mosaicLayers.map((layer) => ({ ...layer })) : [],
+            overlayLayers: Array.isArray(template.overlayLayers) ? template.overlayLayers.map((layer) => ({ ...layer })) : [],
+            watermarkLayers: Array.isArray(template.watermarkLayers)
+              ? template.watermarkLayers.map((layer) => ({ ...layer }))
+              : [],
+          }))
+        : [],
     }
   } catch {
     window.localStorage.removeItem(PROJECT_STORAGE_KEY)
@@ -710,6 +927,17 @@ const selectActiveBubbleLayer = (
   return page.bubbleLayers.find((layer) => layer.id === state.selectedLayerId) ?? null
 }
 
+const selectActiveMessageWindowLayer = (
+  state: Pick<WorkspaceState, 'pages' | 'activePageId' | 'selectedLayerId'>,
+) => {
+  const page = selectActiveImage(state)
+  if (!page || !state.selectedLayerId || state.selectedLayerId === 'base-image') {
+    return null
+  }
+
+  return page.messageWindowLayers.find((layer) => layer.id === state.selectedLayerId) ?? null
+}
+
 const selectActiveMosaicLayer = (
   state: Pick<WorkspaceState, 'pages' | 'activePageId' | 'selectedLayerId'>,
 ) => {
@@ -730,6 +958,17 @@ const selectActiveOverlayLayer = (
   }
 
   return page.overlayLayers.find((layer) => layer.id === state.selectedLayerId) ?? null
+}
+
+const selectActiveWatermarkLayer = (
+  state: Pick<WorkspaceState, 'pages' | 'activePageId' | 'selectedLayerId'>,
+) => {
+  const page = selectActiveImage(state)
+  if (!page || !state.selectedLayerId || state.selectedLayerId === 'base-image') {
+    return null
+  }
+
+  return page.watermarkLayers.find((layer) => layer.id === state.selectedLayerId) ?? null
 }
 
 const getVisibleLayerIdsByType = (page: CanvasImage, type: LayerType) => {
@@ -1185,6 +1424,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           lastSavedAt,
           projectId: state.projectId,
           projectName: state.projectName,
+          messageWindowPresets: state.messageWindowPresets,
+          templates: state.templates,
         })
       const recentProjects = upsertRecentProject(persistedProject)
       writeProjectToStorage(persistedProject)
@@ -1219,6 +1460,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         lastSavedAt: savedProject.lastSavedAt,
         projectId: savedProject.id,
         projectName: savedProject.name,
+        messageWindowPresets: savedProject.messageWindowPresets,
+        templates: savedProject.templates,
         recentProjects,
         loadError: null,
         isDirty: false,
@@ -1349,6 +1592,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         lastSavedAt: savedProject.lastSavedAt,
         projectId: savedProject.id,
         projectName: savedProject.name,
+        messageWindowPresets: savedProject.messageWindowPresets,
+        templates: savedProject.templates,
         recentProjects,
         loadError: null,
         isDirty: false,
@@ -1514,6 +1759,412 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         loadError: lastError,
         selectedLayerId: null,
         imageTransform: { ...INITIAL_IMAGE_TRANSFORM },
+      })
+    }),
+  duplicateActivePage: () =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      if (!page) {
+        return state
+      }
+
+      const duplicatedPage: CanvasImage = {
+        ...page,
+        id: createPageId(),
+        name: page.name.replace(/(\.[^.]+)$/, '-copy$1'),
+        textLayers: page.textLayers.map(cloneTextLayer),
+        messageWindowLayers: page.messageWindowLayers.map(cloneMessageWindowLayer),
+        bubbleLayers: page.bubbleLayers.map(cloneBubbleLayer),
+        mosaicLayers: page.mosaicLayers.map(cloneMosaicLayer),
+        overlayLayers: page.overlayLayers.map(cloneOverlayLayer),
+        watermarkLayers: page.watermarkLayers.map(cloneWatermarkLayer),
+      }
+
+      return withHistory(state, {
+        pages: [...state.pages, duplicatedPage],
+        activePageId: duplicatedPage.id,
+        selectedLayerId: null,
+        selectedLayerIds: [],
+        imageTransform: state.imageTransform ? { ...state.imageTransform } : { ...INITIAL_IMAGE_TRANSFORM },
+        loadError: null,
+      })
+    }),
+  duplicateActivePageWithTextSwap: (text) =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      if (!page) {
+        return state
+      }
+
+      const duplicatedPage: CanvasImage = {
+        ...page,
+        id: createPageId(),
+        name: page.name.replace(/(\.[^.]+)$/, '-copy$1'),
+        textLayers: page.textLayers.map((layer, index) => ({
+          ...cloneTextLayer(layer),
+          text: index === 0 ? text : layer.text,
+        })),
+        messageWindowLayers: page.messageWindowLayers.map(cloneMessageWindowLayer),
+        bubbleLayers: page.bubbleLayers.map(cloneBubbleLayer),
+        mosaicLayers: page.mosaicLayers.map(cloneMosaicLayer),
+        overlayLayers: page.overlayLayers.map(cloneOverlayLayer),
+        watermarkLayers: page.watermarkLayers.map(cloneWatermarkLayer),
+      }
+
+      return withHistory(state, {
+        pages: [...state.pages, duplicatedPage],
+        activePageId: duplicatedPage.id,
+        selectedLayerId: duplicatedPage.textLayers[0]?.id ?? null,
+        selectedLayerIds: duplicatedPage.textLayers[0]?.id ? [duplicatedPage.textLayers[0].id] : [],
+        imageTransform: state.imageTransform ? { ...state.imageTransform } : { ...INITIAL_IMAGE_TRANSFORM },
+        loadError: null,
+      })
+    }),
+  saveCurrentPageAsTemplate: () =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      if (!page) {
+        return state
+      }
+
+      const template: PageTemplate = {
+        id: createTemplateId(),
+        label: `${page.name} layout`,
+        textLayers: page.textLayers.map((layer) => ({ ...layer })),
+        messageWindowLayers: page.messageWindowLayers.map((layer) => ({ ...layer })),
+        bubbleLayers: page.bubbleLayers.map((layer) => ({ ...layer })),
+        mosaicLayers: page.mosaicLayers.map((layer) => ({ ...layer })),
+        overlayLayers: page.overlayLayers.map((layer) => ({ ...layer })),
+        watermarkLayers: page.watermarkLayers.map((layer) => ({ ...layer })),
+      }
+
+      return {
+        templates: [template, ...state.templates.filter((entry) => entry.label !== template.label)].slice(0, 12),
+      }
+    }),
+  renameTemplate: (templateId, name) =>
+    set((state) => ({
+      templates: state.templates.map((template) =>
+        template.id === templateId ? { ...template, label: name } : template,
+      ),
+    })),
+  duplicateTemplate: (templateId) =>
+    set((state) => {
+      const template = state.templates.find((entry) => entry.id === templateId)
+      if (!template) {
+        return state
+      }
+
+      const duplicatedTemplate: PageTemplate = {
+        ...cloneTemplate(template),
+        id: createTemplateId(),
+        label: `${template.label} copy`,
+      }
+
+      return {
+        templates: [duplicatedTemplate, ...state.templates].slice(0, 12),
+      }
+    }),
+  deleteTemplate: (templateId) =>
+    set((state) => ({
+      templates: state.templates.filter((template) => template.id !== templateId),
+    })),
+  applyTemplateToActivePage: (templateId) =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      const template = state.templates.find((entry) => entry.id === templateId)
+      if (!page || !template || !state.activePageId) {
+        return state
+      }
+
+      const textLayers = template.textLayers.map(cloneTextLayer)
+      const messageWindowLayers = template.messageWindowLayers.map(cloneMessageWindowLayer)
+      const bubbleLayers = template.bubbleLayers.map(cloneBubbleLayer)
+      const mosaicLayers = template.mosaicLayers.map(cloneMosaicLayer)
+      const overlayLayers = template.overlayLayers.map(cloneOverlayLayer)
+      const watermarkLayers = template.watermarkLayers.map(cloneWatermarkLayer)
+      const nextSelectedLayerId =
+        messageWindowLayers[0]?.id ??
+        textLayers[0]?.id ??
+        bubbleLayers[0]?.id ??
+        mosaicLayers[0]?.id ??
+        overlayLayers[0]?.id ??
+        watermarkLayers[0]?.id ??
+        null
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+          ...entry,
+          textLayers,
+          messageWindowLayers,
+          bubbleLayers,
+          mosaicLayers,
+          overlayLayers,
+          watermarkLayers,
+        })),
+        selectedLayerId: nextSelectedLayerId,
+        selectedLayerIds: nextSelectedLayerId ? [nextSelectedLayerId] : [],
+        loadError: null,
+      })
+    }),
+  applyTemplateToAllPages: (templateId) =>
+    set((state) => {
+      const template = state.templates.find((entry) => entry.id === templateId)
+      if (!template || state.pages.length === 0) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: state.pages.map((page) => ({
+          ...page,
+          textLayers: template.textLayers.map(cloneTextLayer),
+          messageWindowLayers: template.messageWindowLayers.map(cloneMessageWindowLayer),
+          bubbleLayers: template.bubbleLayers.map(cloneBubbleLayer),
+          mosaicLayers: template.mosaicLayers.map(cloneMosaicLayer),
+          overlayLayers: template.overlayLayers.map(cloneOverlayLayer),
+          watermarkLayers: template.watermarkLayers.map(cloneWatermarkLayer),
+        })),
+        selectedLayerId: null,
+        selectedLayerIds: [],
+        loadError: null,
+      })
+    }),
+  addWatermarkLayer: () =>
+    set((state) => {
+      if (!state.activePageId) {
+        return state
+      }
+
+      const watermarkLayer = createWatermarkLayer()
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: [...page.watermarkLayers, watermarkLayer],
+        })),
+        selectedLayerId: watermarkLayer.id,
+        selectedLayerIds: [watermarkLayer.id],
+        loadError: null,
+      })
+    }),
+  loadWatermarkImageFile: (file) =>
+    set((state) => {
+      if (!state.activePageId) {
+        return state
+      }
+
+      const extension = file.name.split('.').pop()?.toLowerCase()
+      if (extension !== 'png') {
+        return {
+          loadError: `Unsupported watermark asset: ${file.name}`,
+        }
+      }
+
+      const watermarkLayer: CanvasWatermarkLayer = {
+        ...createWatermarkLayer(),
+        text: file.name,
+        mode: 'image',
+        assetName: file.name,
+        repeated: false,
+        opacity: 0.7,
+        angle: 0,
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: [...page.watermarkLayers, watermarkLayer],
+        })),
+        selectedLayerId: watermarkLayer.id,
+        selectedLayerIds: [watermarkLayer.id],
+        loadError: null,
+      })
+    }),
+  selectWatermarkLayer: (layerId) =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      if (!page || !page.watermarkLayers.some((layer) => layer.id === layerId)) {
+        return state
+      }
+
+      return {
+        selectedLayerId: layerId,
+        selectedLayerIds: [layerId],
+        loadError: null,
+      }
+    }),
+  updateSelectedWatermarkText: (text) =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      if (!activeWatermarkLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === activeWatermarkLayer.id ? { ...layer, text } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  changeSelectedWatermarkOpacity: (delta) =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      if (!activeWatermarkLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === activeWatermarkLayer.id
+              ? { ...layer, opacity: Math.max(0.1, Math.min(0.9, Number((layer.opacity + delta).toFixed(1)))) }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  toggleSelectedWatermarkPattern: () =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      if (!activeWatermarkLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === activeWatermarkLayer.id ? { ...layer, repeated: !layer.repeated } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedWatermarkPreset: (preset) =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      if (!activeWatermarkLayer || !state.activePageId) {
+        return state
+      }
+
+      const presetConfig =
+        preset === 'patreon'
+          ? { text: 'Continue on Patreon', repeated: true, color: '#ffe1a8' }
+          : { text: 'Join the Discord bonus', repeated: true, color: '#d8e4ff' }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === activeWatermarkLayer.id
+              ? {
+                  ...layer,
+                  ...presetConfig,
+                  preset,
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  changeSelectedWatermarkAngle: (delta) =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      if (!activeWatermarkLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === activeWatermarkLayer.id
+              ? { ...layer, angle: Math.max(-45, Math.min(45, layer.angle + delta)) }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  changeSelectedWatermarkDensity: (delta) =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      if (!activeWatermarkLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === activeWatermarkLayer.id
+              ? { ...layer, density: Math.max(1, Math.min(4, layer.density + delta)) }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  moveSelectedWatermarkLayer: (dx, dy) =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      if (!activeWatermarkLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === activeWatermarkLayer.id
+              ? { ...layer, x: layer.x + dx, y: layer.y + dy }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  changeSelectedWatermarkScale: (delta) =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      if (!activeWatermarkLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === activeWatermarkLayer.id
+              ? { ...layer, scale: Math.max(0.4, Math.min(3, Number((layer.scale + delta).toFixed(1)))) }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  toggleSelectedWatermarkTileLayout: () =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      if (!activeWatermarkLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === activeWatermarkLayer.id ? { ...layer, tiled: !layer.tiled } : layer,
+          ),
+        })),
+        loadError: null,
       })
     }),
   addTextLayer: () =>
@@ -1741,6 +2392,161 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           textLayers: page.textLayers.map((layer) =>
             layer.id === activeTextLayer.id
               ? { ...layer, shadowEnabled: !layer.shadowEnabled }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  addMessageWindowLayer: () =>
+    set((state) => {
+      if (!state.activePageId) {
+        return state
+      }
+
+      const messageWindowLayer = createMessageWindowLayer()
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          messageWindowLayers: [...page.messageWindowLayers, messageWindowLayer],
+        })),
+        selectedLayerId: messageWindowLayer.id,
+        selectedLayerIds: [messageWindowLayer.id],
+        loadError: null,
+      })
+    }),
+  selectMessageWindowLayer: (layerId) =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      if (!page || !page.messageWindowLayers.some((layer) => layer.id === layerId)) {
+        return state
+      }
+
+      return {
+        selectedLayerId: layerId,
+        selectedLayerIds: [layerId],
+        loadError: null,
+      }
+    }),
+  updateSelectedMessageWindowSpeaker: (speaker) =>
+    set((state) => {
+      const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (!activeMessageWindowLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          messageWindowLayers: page.messageWindowLayers.map((layer) =>
+            layer.id === activeMessageWindowLayer.id ? { ...layer, speaker } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  updateSelectedMessageWindowBody: (body) =>
+    set((state) => {
+      const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (!activeMessageWindowLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          messageWindowLayers: page.messageWindowLayers.map((layer) =>
+            layer.id === activeMessageWindowLayer.id ? { ...layer, body } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  moveSelectedMessageWindowLayer: (dx, dy) =>
+    set((state) => {
+      const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (!activeMessageWindowLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          messageWindowLayers: page.messageWindowLayers.map((layer) =>
+            layer.id === activeMessageWindowLayer.id
+              ? { ...layer, x: layer.x + dx, y: layer.y + dy }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  resizeSelectedMessageWindowLayer: (widthDelta, heightDelta) =>
+    set((state) => {
+      const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (!activeMessageWindowLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          messageWindowLayers: page.messageWindowLayers.map((layer) =>
+            layer.id === activeMessageWindowLayer.id
+              ? {
+                  ...layer,
+                  width: Math.max(360, layer.width + widthDelta),
+                  height: Math.max(160, layer.height + heightDelta),
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  saveSelectedMessageWindowPreset: () =>
+    set((state) => {
+      const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (!activeMessageWindowLayer) {
+        return state
+      }
+
+      const preset: MessageWindowPreset = {
+        id: createMessagePresetId(),
+        label: activeMessageWindowLayer.speaker || 'Message preset',
+        speaker: activeMessageWindowLayer.speaker,
+        body: activeMessageWindowLayer.body,
+        width: activeMessageWindowLayer.width,
+        height: activeMessageWindowLayer.height,
+        opacity: activeMessageWindowLayer.opacity,
+      }
+
+      return {
+        messageWindowPresets: [preset, ...state.messageWindowPresets.filter((entry) => entry.label !== preset.label)].slice(0, 8),
+      }
+    }),
+  applyMessageWindowPreset: (presetId) =>
+    set((state) => {
+      const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
+      const preset = state.messageWindowPresets.find((entry) => entry.id === presetId)
+      if (!activeMessageWindowLayer || !preset || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          messageWindowLayers: page.messageWindowLayers.map((layer) =>
+            layer.id === activeMessageWindowLayer.id
+              ? {
+                  ...layer,
+                  speaker: preset.speaker,
+                  body: preset.body,
+                  width: preset.width,
+                  height: preset.height,
+                  opacity: preset.opacity,
+                }
               : layer,
           ),
         })),
@@ -3487,6 +4293,7 @@ export const selectActiveImage = (state: Pick<WorkspaceState, 'pages' | 'activeP
 export const toolLabels: Array<{ id: Tool; label: string }> = [
   { id: 'select', label: 'Select' },
   { id: 'text', label: 'Text' },
+  { id: 'message-window', label: 'Message window' },
   { id: 'bubble', label: 'Bubble' },
   { id: 'mosaic', label: 'Mosaic' },
   { id: 'overlay', label: 'Overlay' },

@@ -66,6 +66,24 @@ export const exportPageAsPng = async (
     }
   })
 
+  image.messageWindowLayers.forEach((layer) => {
+    context.save()
+    context.globalAlpha = layer.opacity
+    context.fillStyle = 'rgba(28, 22, 18, 0.88)'
+    context.fillRect(layer.x - layer.width / 2, layer.y - layer.height / 2, layer.width, layer.height)
+    context.globalAlpha = 1
+    context.strokeStyle = '#f3efe6'
+    context.lineWidth = 2
+    context.strokeRect(layer.x - layer.width / 2, layer.y - layer.height / 2, layer.width, layer.height)
+    context.fillStyle = '#f3efe6'
+    context.textAlign = 'center'
+    context.font = '28px Segoe UI'
+    context.fillText(layer.speaker, layer.x, layer.y - 8)
+    context.font = '24px Segoe UI'
+    context.fillText(layer.body, layer.x, layer.y + 28)
+    context.restore()
+  })
+
   image.bubbleLayers.filter((layer) => layer.visible).forEach((layer) => {
     context.shadowColor = 'transparent'
     context.shadowBlur = 0
@@ -159,6 +177,24 @@ export const exportPageAsPng = async (
     context.font = '24px Segoe UI'
     context.textAlign = 'center'
     context.fillText(`Overlay ${layer.opacity.toFixed(1)}`, layer.x, layer.y + 6)
+  })
+
+  image.watermarkLayers.forEach((layer) => {
+    context.save()
+    context.globalAlpha = layer.opacity
+    context.translate(layer.x, layer.y)
+    context.rotate((layer.angle * Math.PI) / 180)
+    context.textAlign = 'center'
+    context.fillStyle = layer.color
+    context.font = layer.mode === 'image' ? '32px Segoe UI' : '40px Segoe UI'
+    const watermarkLabel =
+      layer.mode === 'image'
+        ? `[${layer.assetName ?? 'watermark.png'}]`
+        : layer.repeated
+          ? Array.from({ length: Math.max(3, layer.density + 2) }, () => layer.text).join(' • ')
+          : layer.text
+    context.fillText(watermarkLabel, 0, 0)
+    context.restore()
   })
 
   const blob = await new Promise<Blob>((resolve, reject) => {

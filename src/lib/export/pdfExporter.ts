@@ -36,6 +36,13 @@ export const exportPageAsPdf = async (
     )
   })
 
+  image.messageWindowLayers.forEach((layer) => {
+    lines.push('0 -28 Td')
+    lines.push(
+      `(${escapePdfText(`Message window ${layer.speaker} / ${layer.body} @ ${layer.x}, ${layer.y} / ${layer.width}x${layer.height} / opacity ${layer.opacity.toFixed(1)}`)}) Tj`,
+    )
+  })
+
   image.bubbleLayers.filter((layer) => layer.visible).forEach((layer) => {
     lines.push('0 -28 Td')
     lines.push(
@@ -54,6 +61,13 @@ export const exportPageAsPdf = async (
     lines.push('0 -28 Td')
     lines.push(
       `(${escapePdfText(`Overlay @ ${layer.x}, ${layer.y} / ${layer.width}x${layer.height} / opacity ${layer.opacity.toFixed(1)} / tint ${layer.color}`)}) Tj`,
+    )
+  })
+
+  image.watermarkLayers.forEach((layer) => {
+    lines.push('0 -28 Td')
+    lines.push(
+      `(${escapePdfText(`Watermark ${layer.mode === 'image' ? `[${layer.assetName ?? 'watermark.png'}]` : layer.text} / opacity ${layer.opacity.toFixed(1)} / angle ${layer.angle} / density ${layer.density} / mode ${layer.mode} / scale ${layer.scale.toFixed(1)} / tiled ${layer.tiled ? 'on' : 'off'}`)}) Tj`,
     )
   })
 

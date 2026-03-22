@@ -1,5 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent } from 'react'
+import {
+  downloadBackendModel,
+  getBackendModelProgress,
+  getBackendStatus,
+  runNsfwDetection,
+  runSam3AutoMosaic,
+  runSam3ManualSegment,
+  type Sam3SegmentPoint,
+  subscribeToBackendModelProgress,
+} from './lib/api/pythonClient'
 import {
   createPdfExportName,
   createPngExportName,
@@ -13,9 +23,36 @@ import type { ResizeHandle } from './stores/workspaceStore'
 import { outputPresets, selectActiveImage, toolLabels, useWorkspaceStore } from './stores/workspaceStore'
 
 const EXPORT_HISTORY_STORAGE_KEY = 'creators-coco.export-history'
+const BACKEND_SETTINGS_STORAGE_KEY = 'creators-coco.backend-settings'
+const BACKEND_ACTION_HISTORY_STORAGE_KEY = 'creators-coco.backend-action-history'
 
 type ExportHistoryEntry = {
   format: 'PNG' | 'PDF' | 'ZIP'
+  label: string
+}
+
+type BackendStatusState = {
+  sam3_loaded: boolean
+  nudenet_loaded: boolean
+  gpu_available: boolean
+}
+
+type BackendDownloadState = {
+  sam3: string | null
+  nudenet: string | null
+}
+
+type BackendModelName = 'sam3' | 'nudenet'
+
+type BackendActionState = {
+  sam3AutoMosaic: string | null
+  nsfwDetection: string | null
+  sam3ManualSegment: string | null
+}
+
+type BackendActionHistoryEntry = {
+  id: string
+  type: 'sam3-auto-mosaic' | 'nsfw-detection' | 'sam3-manual-segment'
   label: string
 }
 
@@ -43,15 +80,65 @@ type LayerResizeState = {
   preserveAspectRatio: boolean
 }
 
+type BackendManualPointPickingMode = 'off' | 'positive' | 'negative'
+
+type BackendManualPointDragState = {
+  index: number
+  startX: number
+  startY: number
+  currentX: number
+  currentY: number
+}
+
+const DEFAULT_SAM3_MANUAL_SEGMENT_POINTS: Sam3SegmentPoint[] = [
+  { x: 640, y: 360, label: 1 },
+  { x: 1280, y: 720, label: 1 },
+]
+
 function App() {
   const [exportMessage, setExportMessage] = useState('Export idle')
   const [recentExports, setRecentExports] = useState<ExportHistoryEntry[]>([])
+  const [backendStatus, setBackendStatus] = useState<BackendStatusState | null>(null)
+  const [backendStatusError, setBackendStatusError] = useState<string | null>(null)
+  const [backendSam3ModelSize, setBackendSam3ModelSize] = useState<'base' | 'large'>('base')
+  const [backendAutoMosaicStrength, setBackendAutoMosaicStrength] = useState<'light' | 'medium' | 'strong'>('medium')
+  const [backendNsfwThreshold, setBackendNsfwThreshold] = useState('0.70')
+  const [backendDownloads, setBackendDownloads] = useState<BackendDownloadState>({
+    sam3: null,
+    nudenet: null,
+  })
+  const [backendActions, setBackendActions] = useState<BackendActionState>({
+    sam3AutoMosaic: null,
+    nsfwDetection: null,
+    sam3ManualSegment: null,
+  })
+  const [backendManualPointPickingMode, setBackendManualPointPickingMode] =
+    useState<BackendManualPointPickingMode>('off')
+  const [backendManualSegmentPoints, setBackendManualSegmentPoints] = useState<Sam3SegmentPoint[]>(
+    DEFAULT_SAM3_MANUAL_SEGMENT_POINTS,
+  )
+  const [selectedBackendManualSegmentPointIndex, setSelectedBackendManualSegmentPointIndex] = useState(
+    DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length - 1,
+  )
+  const [backendManualPointDragState, setBackendManualPointDragState] = useState<BackendManualPointDragState | null>(
+    null,
+  )
+  const [backendActionHistory, setBackendActionHistory] = useState<BackendActionHistoryEntry[]>([])
+  const backendPollTimeouts = useRef<Record<'sam3' | 'nudenet', ReturnType<typeof setTimeout> | null>>({
+    sam3: null,
+    nudenet: null,
+  })
+  const backendProgressSubscriptions = useRef<Record<'sam3' | 'nudenet', (() => void) | null>>({
+    sam3: null,
+    nudenet: null,
+  })
   const [projectNameDraft, setProjectNameDraft] = useState('Untitled project')
   const [widthDraft, setWidthDraft] = useState('1920')
   const [heightDraft, setHeightDraft] = useState('1080')
   const [prefixDraft, setPrefixDraft] = useState('creators-coco')
   const [startNumberDraft, setStartNumberDraft] = useState('1')
   const [numberPaddingDraft, setNumberPaddingDraft] = useState('2')
+  const [duplicatePageTextDraft, setDuplicatePageTextDraft] = useState('Variant line')
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null)
   const [layerDragState, setLayerDragState] = useState<LayerDragState | null>(null)
   const [layerResizeState, setLayerResizeState] = useState<LayerResizeState | null>(null)
@@ -69,6 +156,7 @@ function App() {
     lastSavedAt,
     projectName,
     recentProjects,
+    templates,
     undoStack,
     redoStack,
     saveNow,
@@ -92,7 +180,14 @@ function App() {
     loadImageFile,
     loadImageFiles,
     selectPage,
+    duplicateActivePage,
+    duplicateActivePageWithTextSwap,
+    saveCurrentPageAsTemplate,
+    applyTemplateToActivePage,
+    applyTemplateToAllPages,
     addTextLayer,
+    addWatermarkLayer,
+    loadWatermarkImageFile,
     addBubbleLayer,
     selectTextLayer,
     selectBubbleLayer,
@@ -106,6 +201,25 @@ function App() {
     toggleSelectedTextLayerVertical,
     changeSelectedTextLayerOutlineWidth,
     toggleSelectedTextLayerShadow,
+    messageWindowPresets,
+    addMessageWindowLayer,
+    selectMessageWindowLayer,
+    updateSelectedMessageWindowSpeaker,
+    updateSelectedMessageWindowBody,
+    moveSelectedMessageWindowLayer,
+    resizeSelectedMessageWindowLayer,
+    saveSelectedMessageWindowPreset,
+    applyMessageWindowPreset,
+    selectWatermarkLayer,
+    updateSelectedWatermarkText,
+    changeSelectedWatermarkOpacity,
+    toggleSelectedWatermarkPattern,
+    setSelectedWatermarkPreset,
+    changeSelectedWatermarkAngle,
+    changeSelectedWatermarkDensity,
+    moveSelectedWatermarkLayer,
+    changeSelectedWatermarkScale,
+    toggleSelectedWatermarkTileLayout,
     updateSelectedBubbleLayerText,
     moveSelectedBubbleLayer,
     deleteSelectedBubbleLayer,
@@ -154,6 +268,9 @@ function App() {
     deleteActivePage,
     moveActivePageUp,
     moveActivePageDown,
+    renameTemplate,
+    duplicateTemplate,
+    deleteTemplate,
     undo,
     redo,
     selectBaseImageLayer,
@@ -171,6 +288,10 @@ function App() {
     image && selectedLayerId && selectedLayerId !== 'base-image'
       ? image.bubbleLayers.find((layer) => layer.id === selectedLayerId) ?? null
       : null
+  const activeMessageWindowLayer =
+    image && selectedLayerId && selectedLayerId !== 'base-image'
+      ? image.messageWindowLayers.find((layer) => layer.id === selectedLayerId) ?? null
+      : null
   const activeMosaicLayer =
     image && selectedLayerId && selectedLayerId !== 'base-image'
       ? image.mosaicLayers.find((layer) => layer.id === selectedLayerId) ?? null
@@ -179,6 +300,23 @@ function App() {
     image && selectedLayerId && selectedLayerId !== 'base-image'
       ? image.overlayLayers.find((layer) => layer.id === selectedLayerId) ?? null
       : null
+  const activeWatermarkLayer =
+    image && selectedLayerId && selectedLayerId !== 'base-image'
+      ? image.watermarkLayers.find((layer) => layer.id === selectedLayerId) ?? null
+      : null
+  const selectedBackendManualSegmentPoint =
+    backendManualSegmentPoints[selectedBackendManualSegmentPointIndex] ??
+    backendManualSegmentPoints[backendManualSegmentPoints.length - 1] ??
+    null
+  const previewBackendManualSegmentPoints = backendManualSegmentPoints.map((point, index) =>
+    backendManualPointDragState && backendManualPointDragState.index === index
+      ? {
+          ...point,
+          x: backendManualPointDragState.currentX,
+          y: backendManualPointDragState.currentY,
+        }
+      : point,
+  )
   const activeLayerGroupId =
     activeTextLayer?.groupId ??
     activeBubbleLayer?.groupId ??
@@ -231,36 +369,48 @@ function App() {
       ? 'Base image'
       : activeTextLayer
         ? 'Text layer'
+        : activeMessageWindowLayer
+          ? 'Message window layer'
         : activeBubbleLayer
           ? 'Bubble layer'
-          : activeMosaicLayer
-            ? 'Mosaic layer'
-            : activeOverlayLayer
-              ? 'Overlay layer'
+        : activeMosaicLayer
+          ? 'Mosaic layer'
+        : activeOverlayLayer
+          ? 'Overlay layer'
+        : activeWatermarkLayer
+          ? 'Watermark layer'
           : 'None'
   const positionLabel =
     selectedLayerId === 'base-image' && imageTransform
       ? `Position ${imageTransform.x}, ${imageTransform.y}`
       : activeTextLayer
         ? `Position ${activeTextLayer.x}, ${activeTextLayer.y}`
+        : activeMessageWindowLayer
+          ? `Position ${activeMessageWindowLayer.x}, ${activeMessageWindowLayer.y}`
         : activeBubbleLayer
           ? `Position ${activeBubbleLayer.x}, ${activeBubbleLayer.y}`
-          : activeMosaicLayer
-            ? `Position ${activeMosaicLayer.x}, ${activeMosaicLayer.y}`
-            : activeOverlayLayer
-              ? `Position ${activeOverlayLayer.x}, ${activeOverlayLayer.y}`
+        : activeMosaicLayer
+          ? `Position ${activeMosaicLayer.x}, ${activeMosaicLayer.y}`
+        : activeOverlayLayer
+          ? `Position ${activeOverlayLayer.x}, ${activeOverlayLayer.y}`
+        : activeWatermarkLayer
+          ? `Position ${activeWatermarkLayer.x}, ${activeWatermarkLayer.y}`
         : 'Position -'
   const sizeLabel =
     selectedLayerId === 'base-image' && imageTransform
       ? `Size ${imageTransform.width} x ${imageTransform.height}`
       : activeTextLayer
         ? `Font ${activeTextLayer.fontSize} px`
+        : activeMessageWindowLayer
+          ? `Size ${activeMessageWindowLayer.width} x ${activeMessageWindowLayer.height}`
         : activeBubbleLayer
           ? `Size ${activeBubbleLayer.width} x ${activeBubbleLayer.height}`
-          : activeMosaicLayer
-            ? `Size ${activeMosaicLayer.width} x ${activeMosaicLayer.height}`
-            : activeOverlayLayer
-              ? `Size ${activeOverlayLayer.width} x ${activeOverlayLayer.height}`
+        : activeMosaicLayer
+          ? `Size ${activeMosaicLayer.width} x ${activeMosaicLayer.height}`
+        : activeOverlayLayer
+          ? `Size ${activeOverlayLayer.width} x ${activeOverlayLayer.height}`
+        : activeWatermarkLayer
+          ? `Scale ${activeWatermarkLayer.scale.toFixed(1)}x`
         : 'Size -'
   const saveStatusLabel = isDirty
     ? 'Autosave pending'
@@ -271,9 +421,406 @@ function App() {
           second: '2-digit',
         })}`
       : 'Not saved yet'
+  const getBackendModelLabel = (modelName: BackendModelName) => (modelName === 'sam3' ? 'SAM3' : 'NudeNet')
+  const isBackendModelReady = (modelName: BackendModelName) =>
+    modelName === 'sam3' ? Boolean(backendStatus?.sam3_loaded) : Boolean(backendStatus?.nudenet_loaded)
+  const isBackendModelDownloading = (modelName: BackendModelName) => {
+    const currentLabel = backendDownloads[modelName]
+    return currentLabel?.startsWith('Queued') || currentLabel?.startsWith('Downloading')
+  }
+  const getBackendModelStatusDetail = (modelName: BackendModelName) => {
+    const label = getBackendModelLabel(modelName)
+    const status =
+      modelName === 'sam3'
+        ? backendStatus?.sam3_status ?? (backendStatus?.sam3_loaded ? 'completed' : 'idle')
+        : backendStatus?.nudenet_status ?? (backendStatus?.nudenet_loaded ? 'completed' : 'idle')
+    const progress =
+      modelName === 'sam3'
+        ? backendStatus?.sam3_progress ?? (backendStatus?.sam3_loaded ? 100 : 0)
+        : backendStatus?.nudenet_progress ?? (backendStatus?.nudenet_loaded ? 100 : 0)
+
+    return `${label} status: ${status} ${progress}%`
+  }
+  const getBackendModelButtonLabel = (modelName: BackendModelName) => {
+    const label = getBackendModelLabel(modelName)
+    if (isBackendModelReady(modelName)) {
+      return `${label} model ready`
+    }
+
+    if (isBackendModelDownloading(modelName)) {
+      return `Downloading ${label} model...`
+    }
+
+    return `Download ${label} model`
+  }
+  const hasActiveImage = Boolean(image)
+  const pushBackendActionHistory = (
+    type: BackendActionHistoryEntry['type'],
+    label: string,
+  ) => {
+    setBackendActionHistory((current) => [{ id: crypto.randomUUID(), type, label }, ...current].slice(0, 5))
+  }
 
   const pushExportHistory = (entry: ExportHistoryEntry) => {
     setRecentExports((current) => [entry, ...current].slice(0, 5))
+  }
+
+  const clearBackendModelProgressWatch = (modelName: BackendModelName) => {
+    if (backendPollTimeouts.current[modelName]) {
+      clearTimeout(backendPollTimeouts.current[modelName] as ReturnType<typeof setTimeout>)
+      backendPollTimeouts.current[modelName] = null
+    }
+
+    if (backendProgressSubscriptions.current[modelName]) {
+      backendProgressSubscriptions.current[modelName]?.()
+      backendProgressSubscriptions.current[modelName] = null
+    }
+  }
+
+  const applyBackendModelProgressUpdate = (
+    modelName: BackendModelName,
+    progress: {
+      status: string
+      progress: number
+    },
+  ) => {
+    const modelLabel = getBackendModelLabel(modelName)
+    const progressLabel =
+      progress.status === 'completed'
+        ? `Completed ${modelLabel} ${progress.progress}%`
+        : `Downloading ${modelLabel} ${progress.progress}%`
+
+    setBackendDownloads((current) => ({
+      ...current,
+      [modelName]: progressLabel,
+    }))
+    setBackendStatus((current) =>
+      current
+        ? {
+            ...current,
+            sam3_loaded: modelName === 'sam3' ? progress.status === 'completed' : current.sam3_loaded,
+            sam3_status: modelName === 'sam3' ? progress.status : current.sam3_status,
+            sam3_progress: modelName === 'sam3' ? progress.progress : current.sam3_progress,
+            nudenet_loaded: modelName === 'nudenet' ? progress.status === 'completed' : current.nudenet_loaded,
+            nudenet_status: modelName === 'nudenet' ? progress.status : current.nudenet_status,
+            nudenet_progress: modelName === 'nudenet' ? progress.progress : current.nudenet_progress,
+          }
+        : current,
+    )
+
+    if (progress.status === 'completed') {
+      clearBackendModelProgressWatch(modelName)
+    }
+  }
+
+  const scheduleBackendModelProgressPoll = (modelName: BackendModelName) => {
+    const modelLabel = getBackendModelLabel(modelName)
+
+    const pollProgress = async () => {
+      const progress = await getBackendModelProgress(modelName)
+      applyBackendModelProgressUpdate(modelName, progress)
+
+      if (progress.status === 'completed') {
+        return
+      }
+
+      backendPollTimeouts.current[modelName] = setTimeout(() => {
+        void pollProgress()
+      }, 1000)
+    }
+
+    backendPollTimeouts.current[modelName] = setTimeout(() => {
+      void pollProgress()
+    }, 1000)
+
+    setBackendDownloads((current) => ({
+      ...current,
+      [modelName]: current[modelName] ?? `Queued ${modelLabel} 0%`,
+    }))
+  }
+
+  const loadBackendStatus = async () => {
+    try {
+      const status = await getBackendStatus()
+      setBackendStatus(status)
+      setBackendStatusError(null)
+    } catch {
+      setBackendStatusError('Backend status unavailable')
+    }
+  }
+
+  const startBackendModelDownload = async (modelName: BackendModelName) => {
+    try {
+      clearBackendModelProgressWatch(modelName)
+
+      const result = await downloadBackendModel(modelName)
+      const modelLabel = modelName === 'sam3' ? 'SAM3' : 'NudeNet'
+      const statusLabel = result.status === 'queued' ? 'Queued' : 'Downloading'
+
+      setBackendDownloads((current) => ({
+        ...current,
+        [modelName]: `${statusLabel} ${modelLabel} ${result.progress}%`,
+      }))
+      setBackendStatus((current) =>
+        current
+          ? {
+              ...current,
+              sam3_status: modelName === 'sam3' ? result.status : current.sam3_status,
+              sam3_progress: modelName === 'sam3' ? result.progress : current.sam3_progress,
+              nudenet_status: modelName === 'nudenet' ? result.status : current.nudenet_status,
+              nudenet_progress: modelName === 'nudenet' ? result.progress : current.nudenet_progress,
+            }
+            : current,
+        )
+      const unsubscribe = subscribeToBackendModelProgress(modelName, {
+        onProgress: (progress) => {
+          applyBackendModelProgressUpdate(modelName, progress)
+        },
+        onError: () => {
+          if (backendProgressSubscriptions.current[modelName]) {
+            backendProgressSubscriptions.current[modelName] = null
+            scheduleBackendModelProgressPoll(modelName)
+          }
+        },
+      })
+
+      if (unsubscribe) {
+        backendProgressSubscriptions.current[modelName] = unsubscribe
+        return
+      }
+
+      scheduleBackendModelProgressPoll(modelName)
+    } catch {
+      setBackendDownloads((current) => ({
+        ...current,
+        [modelName]: `Failed ${modelName === 'sam3' ? 'SAM3' : 'NudeNet'} download`,
+      }))
+    }
+  }
+
+  const runBackendSam3AutoMosaic = async () => {
+    if (!image) {
+      return
+    }
+
+    setBackendActions((current) => ({
+      ...current,
+      sam3AutoMosaic: 'Running SAM3 auto mosaic...',
+    }))
+
+    try {
+      const response = await runSam3AutoMosaic(image.src, backendSam3ModelSize, backendAutoMosaicStrength)
+      const resultLabel = `SAM3 auto mosaic ready with ${response.masks.length} mask${response.masks.length === 1 ? '' : 's'}`
+      setBackendActions((current) => ({
+        ...current,
+        sam3AutoMosaic: resultLabel,
+      }))
+      pushBackendActionHistory('sam3-auto-mosaic', resultLabel)
+    } catch {
+      setBackendActions((current) => ({
+        ...current,
+        sam3AutoMosaic: 'SAM3 auto mosaic failed',
+      }))
+    }
+  }
+
+  const runBackendNsfwDetection = async () => {
+    if (!image) {
+      return
+    }
+
+    setBackendActions((current) => ({
+      ...current,
+      nsfwDetection: 'Running NSFW detection...',
+    }))
+
+    try {
+      const response = await runNsfwDetection(image.src, Number.parseFloat(backendNsfwThreshold) || 0.7)
+      const resultLabel = `NSFW detection found ${response.detections.length} region${response.detections.length === 1 ? '' : 's'}`
+      setBackendActions((current) => ({
+        ...current,
+        nsfwDetection: resultLabel,
+      }))
+      pushBackendActionHistory('nsfw-detection', resultLabel)
+    } catch {
+      setBackendActions((current) => ({
+        ...current,
+        nsfwDetection: 'NSFW detection failed',
+      }))
+    }
+  }
+
+  const runBackendSam3ManualSegment = async () => {
+    if (!image) {
+      return
+    }
+
+    setBackendActions((current) => ({
+      ...current,
+      sam3ManualSegment: 'Running SAM3 manual segment...',
+    }))
+
+    try {
+      await runSam3ManualSegment(image.src, backendSam3ModelSize, backendManualSegmentPoints)
+      const resultLabel = `SAM3 manual segment ready with ${backendManualSegmentPoints.length} point${
+        backendManualSegmentPoints.length === 1 ? '' : 's'
+      }`
+      setBackendActions((current) => ({
+        ...current,
+        sam3ManualSegment: resultLabel,
+      }))
+      pushBackendActionHistory('sam3-manual-segment', resultLabel)
+    } catch {
+      setBackendActions((current) => ({
+        ...current,
+        sam3ManualSegment: 'SAM3 manual segment failed',
+      }))
+    }
+  }
+
+  const addBackendManualSegmentPoint = () => {
+    setBackendManualSegmentPoints((current) => [...current, { x: 960, y: 540, label: 1 }])
+    setSelectedBackendManualSegmentPointIndex(backendManualSegmentPoints.length)
+  }
+
+  const addNegativeBackendManualSegmentPoint = () => {
+    setBackendManualSegmentPoints((current) => [...current, { x: 960, y: 540, label: 0 }])
+    setSelectedBackendManualSegmentPointIndex(backendManualSegmentPoints.length)
+  }
+
+  const addBackendManualSegmentPointAtCoordinates = (x: number, y: number, label: 1 | 0) => {
+    setBackendManualSegmentPoints((current) => [...current, { x, y, label }])
+    setSelectedBackendManualSegmentPointIndex(backendManualSegmentPoints.length)
+  }
+
+  const resetBackendManualSegmentPoints = () => {
+    setBackendManualSegmentPoints(DEFAULT_SAM3_MANUAL_SEGMENT_POINTS)
+    setSelectedBackendManualSegmentPointIndex(DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length - 1)
+  }
+
+  const toggleLastBackendManualSegmentPointLabel = () => {
+    setBackendManualSegmentPoints((current) => {
+      if (current.length === 0) {
+        return current
+      }
+
+      const nextPoints = [...current]
+      const lastPoint = nextPoints[nextPoints.length - 1]
+
+      if (!lastPoint) {
+        return current
+      }
+
+      nextPoints[nextPoints.length - 1] = {
+        ...lastPoint,
+        label: lastPoint.label === 1 ? 0 : 1,
+      }
+
+      return nextPoints
+    })
+  }
+
+  const moveLastBackendManualSegmentPoint = () => {
+    setBackendManualSegmentPoints((current) => {
+      if (current.length === 0) {
+        return current
+      }
+
+      const nextPoints = [...current]
+      const lastPoint = nextPoints[nextPoints.length - 1]
+
+      if (!lastPoint) {
+        return current
+      }
+
+      nextPoints[nextPoints.length - 1] = {
+        ...lastPoint,
+        x: Math.min(1920, lastPoint.x + 64),
+        y: Math.min(1080, lastPoint.y + 32),
+      }
+
+      return nextPoints
+    })
+  }
+
+  const removeLastBackendManualSegmentPoint = () => {
+    setBackendManualSegmentPoints((current) => {
+      if (current.length <= DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length) {
+        return current
+      }
+
+      return current.slice(0, -1)
+    })
+  }
+
+  const toggleSelectedBackendManualSegmentPointLabel = () => {
+    setBackendManualSegmentPoints((current) =>
+      current.map((point, index) =>
+        index === selectedBackendManualSegmentPointIndex
+          ? {
+              ...point,
+              label: point.label === 1 ? 0 : 1,
+            }
+          : point,
+      ),
+    )
+  }
+
+  const moveSelectedBackendManualSegmentPoint = () => {
+    setBackendManualSegmentPoints((current) =>
+      current.map((point, index) =>
+        index === selectedBackendManualSegmentPointIndex
+          ? {
+              ...point,
+              x: Math.min(1920, point.x + 64),
+              y: Math.min(1080, point.y + 32),
+            }
+          : point,
+      ),
+    )
+  }
+
+  const removeSelectedBackendManualSegmentPoint = () => {
+    if (backendManualSegmentPoints.length <= DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length) {
+      return
+    }
+
+    setBackendManualSegmentPoints((current) =>
+      current.filter((_, index) => index !== selectedBackendManualSegmentPointIndex),
+    )
+    setSelectedBackendManualSegmentPointIndex((current) =>
+      Math.max(0, Math.min(current - 1, backendManualSegmentPoints.length - 2)),
+    )
+  }
+
+  const rerunLastBackendAction = async () => {
+    const lastAction = backendActionHistory[0]
+    if (!lastAction || !image) {
+      return
+    }
+    await rerunBackendAction(lastAction)
+  }
+
+  const clearBackendActionHistory = () => {
+    setBackendActionHistory([])
+  }
+
+  const rerunBackendAction = async (entry: BackendActionHistoryEntry) => {
+    if (!image) {
+      return
+    }
+
+    if (entry.type === 'sam3-auto-mosaic') {
+      await runBackendSam3AutoMosaic()
+      return
+    }
+
+    if (entry.type === 'nsfw-detection') {
+      await runBackendNsfwDetection()
+      return
+    }
+
+    await runBackendSam3ManualSegment()
   }
 
   const isAdditiveSelection = (event: Pick<MouseEvent, 'ctrlKey' | 'metaKey'>) => event.ctrlKey || event.metaKey
@@ -419,6 +966,16 @@ function App() {
   ])
 
   useEffect(() => {
+    if (backendManualSegmentPoints.length === 0) {
+      return
+    }
+
+    setSelectedBackendManualSegmentPointIndex((current) =>
+      Math.max(0, Math.min(current, backendManualSegmentPoints.length - 1)),
+    )
+  }, [backendManualSegmentPoints])
+
+  useEffect(() => {
     const storedHistory = window.localStorage.getItem(EXPORT_HISTORY_STORAGE_KEY)
 
     if (!storedHistory) {
@@ -438,6 +995,100 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(EXPORT_HISTORY_STORAGE_KEY, JSON.stringify(recentExports))
   }, [recentExports])
+
+  useEffect(() => {
+    const storedSettings = window.localStorage.getItem(BACKEND_SETTINGS_STORAGE_KEY)
+
+    if (!storedSettings) {
+      return
+    }
+
+      try {
+        const parsedSettings = JSON.parse(storedSettings) as {
+          sam3ModelSize?: 'base' | 'large'
+          autoMosaicStrength?: 'light' | 'medium' | 'strong'
+          nsfwThreshold?: string
+          manualSegmentPoints?: Sam3SegmentPoint[]
+        }
+
+      if (parsedSettings.sam3ModelSize === 'large' || parsedSettings.sam3ModelSize === 'base') {
+        setBackendSam3ModelSize(parsedSettings.sam3ModelSize)
+      }
+
+      if (
+        parsedSettings.autoMosaicStrength === 'light' ||
+        parsedSettings.autoMosaicStrength === 'medium' ||
+        parsedSettings.autoMosaicStrength === 'strong'
+      ) {
+        setBackendAutoMosaicStrength(parsedSettings.autoMosaicStrength)
+      }
+
+        if (typeof parsedSettings.nsfwThreshold === 'string') {
+          setBackendNsfwThreshold(parsedSettings.nsfwThreshold)
+        }
+
+        if (Array.isArray(parsedSettings.manualSegmentPoints)) {
+          const validPoints = parsedSettings.manualSegmentPoints.filter(
+            (point): point is Sam3SegmentPoint =>
+              Boolean(point) &&
+              typeof point.x === 'number' &&
+              typeof point.y === 'number' &&
+              (point.label === 0 || point.label === 1),
+          )
+
+          if (validPoints.length >= DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length) {
+            setBackendManualSegmentPoints(validPoints)
+          }
+        }
+      } catch {
+        window.localStorage.removeItem(BACKEND_SETTINGS_STORAGE_KEY)
+      }
+    }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      BACKEND_SETTINGS_STORAGE_KEY,
+        JSON.stringify({
+          sam3ModelSize: backendSam3ModelSize,
+          autoMosaicStrength: backendAutoMosaicStrength,
+          nsfwThreshold: backendNsfwThreshold,
+          manualSegmentPoints: backendManualSegmentPoints,
+        }),
+      )
+  }, [backendAutoMosaicStrength, backendManualSegmentPoints, backendNsfwThreshold, backendSam3ModelSize])
+
+  useEffect(() => {
+    const storedBackendActionHistory = window.localStorage.getItem(BACKEND_ACTION_HISTORY_STORAGE_KEY)
+
+    if (!storedBackendActionHistory) {
+      return
+    }
+
+    try {
+      const parsedHistory = JSON.parse(storedBackendActionHistory) as BackendActionHistoryEntry[]
+              if (Array.isArray(parsedHistory)) {
+                setBackendActionHistory(
+                  parsedHistory
+                    .filter(
+                      (entry): entry is BackendActionHistoryEntry =>
+                Boolean(entry) &&
+                typeof entry.id === 'string' &&
+                typeof entry.label === 'string' &&
+                (entry.type === 'sam3-auto-mosaic' ||
+                  entry.type === 'nsfw-detection' ||
+                  entry.type === 'sam3-manual-segment'),
+                    )
+                    .slice(0, 5),
+                )
+      }
+    } catch {
+      window.localStorage.removeItem(BACKEND_ACTION_HISTORY_STORAGE_KEY)
+    }
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(BACKEND_ACTION_HISTORY_STORAGE_KEY, JSON.stringify(backendActionHistory))
+  }, [backendActionHistory])
 
   const getCanvasCoordinatesFromRect = (clientX: number, clientY: number, rect: DOMRect | Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>) => {
     const relativeX = rect.width > 0 ? (clientX - rect.left) / rect.width : 0
@@ -477,6 +1128,10 @@ function App() {
   }
 
   const handleCanvasMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (backendManualPointPickingMode !== 'off') {
+      return
+    }
+
     if (layerDragState || layerResizeState) {
       return
     }
@@ -496,6 +1151,20 @@ function App() {
   }
 
   const handleCanvasMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (backendManualPointDragState) {
+      const coordinates = getCanvasCoordinates(event)
+      setBackendManualPointDragState((current) =>
+        current
+          ? {
+              ...current,
+              currentX: coordinates.x,
+              currentY: coordinates.y,
+            }
+          : current,
+      )
+      return
+    }
+
     if (layerResizeState) {
       const coordinates = getCanvasCoordinates(event)
       setLayerResizeState((current) =>
@@ -541,6 +1210,35 @@ function App() {
   }
 
   const handleCanvasMouseUp = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (backendManualPointDragState) {
+      const coordinates = getCanvasCoordinates(event)
+      setBackendManualSegmentPoints((current) =>
+        current.map((point, index) =>
+          index === backendManualPointDragState.index
+            ? {
+                ...point,
+                x: coordinates.x,
+                y: coordinates.y,
+              }
+            : point,
+        ),
+      )
+      setSelectedBackendManualSegmentPointIndex(backendManualPointDragState.index)
+      setBackendManualPointDragState(null)
+      return
+    }
+
+    if (backendManualPointPickingMode !== 'off') {
+      const coordinates = getCanvasCoordinates(event)
+      addBackendManualSegmentPointAtCoordinates(
+        coordinates.x,
+        coordinates.y,
+        backendManualPointPickingMode === 'negative' ? 0 : 1,
+      )
+      setBackendManualPointPickingMode('off')
+      return
+    }
+
     if (layerResizeState) {
       const coordinates = getCanvasCoordinates(event)
       resizeSelectedLayersByDelta(
@@ -596,6 +1294,34 @@ function App() {
       canvasFrame.getBoundingClientRect(),
     )
     setLayerDragState({
+      startX: coordinates.x,
+      startY: coordinates.y,
+      currentX: coordinates.x,
+      currentY: coordinates.y,
+    })
+  }
+
+  const handleManualSegmentPointMouseDown = (event: ReactMouseEvent<HTMLButtonElement>, index: number) => {
+    event.stopPropagation()
+
+    if (event.button !== 0) {
+      return
+    }
+
+    const canvasFrame = event.currentTarget.closest('.canvas-frame')
+    if (!canvasFrame) {
+      return
+    }
+
+    const coordinates = getCanvasCoordinatesFromRect(
+      event.clientX,
+      event.clientY,
+      canvasFrame.getBoundingClientRect(),
+    )
+
+    setSelectedBackendManualSegmentPointIndex(index)
+    setBackendManualPointDragState({
+      index,
       startX: coordinates.x,
       startY: coordinates.y,
       currentX: coordinates.x,
@@ -712,6 +1438,16 @@ function App() {
     event.target.value = ''
   }
 
+  const handleWatermarkFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    loadWatermarkImageFile(file)
+    event.target.value = ''
+  }
+
   const handleCanvasDrop = (event: DragEvent<HTMLButtonElement>) => {
     event.preventDefault()
     const files = Array.from(event.dataTransfer.files ?? [])
@@ -723,6 +1459,19 @@ function App() {
   useEffect(() => {
     restoreSavedProject()
   }, [restoreSavedProject])
+
+  useEffect(() => {
+    void loadBackendStatus()
+  }, [])
+
+    useEffect(
+      () => () => {
+        for (const modelName of ['sam3', 'nudenet'] as const) {
+          clearBackendModelProgressWatch(modelName)
+        }
+      },
+      [],
+    )
 
   useEffect(() => {
     if (!isDirty) {
@@ -872,6 +1621,21 @@ function App() {
               <button type="button" onClick={addTextLayer} disabled={!image}>
                 Add text layer
               </button>
+              <button type="button" onClick={addMessageWindowLayer} disabled={!image}>
+                Add message window layer
+              </button>
+              <button type="button" onClick={addWatermarkLayer} disabled={!image}>
+                Add watermark layer
+              </button>
+              <label className="file-picker">
+                <span>Watermark asset</span>
+                <input
+                  aria-label="Open watermark image"
+                  type="file"
+                  accept=".png,image/png"
+                  onChange={handleWatermarkFileChange}
+                />
+              </label>
               <button type="button" onClick={addBubbleLayer} disabled={!image}>
                 Add bubble layer
               </button>
@@ -896,6 +1660,9 @@ function App() {
               <button type="button" onClick={saveNow} disabled={!isDirty}>
                 Save now
               </button>
+              <button type="button" onClick={saveCurrentPageAsTemplate} disabled={!image}>
+                Save page as template
+              </button>
               <button type="button" onClick={handleExportPng} disabled={!image}>
                 Export PNG
               </button>
@@ -907,6 +1674,27 @@ function App() {
               </button>
               <button type="button" onClick={deleteActivePage} disabled={!image}>
                 Delete active page
+              </button>
+              <button type="button" onClick={duplicateActivePage} disabled={!image}>
+                Duplicate active page
+              </button>
+              <label className="text-layer-field">
+                <span>Variant text</span>
+                <input
+                  aria-label="Duplicate page text swap"
+                  type="text"
+                  value={duplicatePageTextDraft}
+                  onChange={(event) => {
+                    setDuplicatePageTextDraft(event.target.value)
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => duplicateActivePageWithTextSwap(duplicatePageTextDraft)}
+                disabled={!image}
+              >
+                Duplicate page with text swap
               </button>
               <button type="button" onClick={moveActivePageUp} disabled={!image}>
                 Move active page up
@@ -960,6 +1748,25 @@ function App() {
                       aria-label={`Select text layer: ${layer.text}`}
                     >
                       {layer.text}
+                    </button>
+                  ))}
+                  {image.messageWindowLayers.map((layer) => (
+                    <button
+                      key={layer.id}
+                      type="button"
+                      className={selectedLayerId === layer.id ? 'overlay-layer-chip message-window-chip selected' : 'overlay-layer-chip message-window-chip'}
+                      style={{
+                        left: `${layer.x / 19.2}%`,
+                        top: `${layer.y / 10.8}%`,
+                        width: `${Math.max(140, Math.round(layer.width * 0.24))}px`,
+                        minHeight: `${Math.max(80, Math.round(layer.height * 0.2))}px`,
+                        opacity: layer.opacity,
+                      }}
+                      onClick={() => selectMessageWindowLayer(layer.id)}
+                      aria-label={`Select message window layer: ${layer.speaker}`}
+                    >
+                      <strong>{layer.speaker}</strong>
+                      <span>{layer.body}</span>
                     </button>
                   ))}
                   {image.bubbleLayers.filter((layer) => layer.visible).map((layer) => (
@@ -1020,6 +1827,55 @@ function App() {
                       aria-label={`Select overlay layer ${layer.opacity}`}
                     >
                       Overlay
+                    </button>
+                  ))}
+                  {image.watermarkLayers.map((layer) => (
+                    <button
+                      key={layer.id}
+                      type="button"
+                      className={selectedLayerId === layer.id ? 'watermark-layer-chip selected' : 'watermark-layer-chip'}
+                      style={{
+                        left: `${(layer.x / 1920) * 100}%`,
+                        top: `${(layer.y / 1080) * 100}%`,
+                        opacity: layer.opacity,
+                        color: layer.color,
+                        transform: `translate(-50%, -50%) rotate(${layer.angle}deg) scale(${layer.scale})`,
+                        letterSpacing: `${0.08 * layer.density}em`,
+                        width: layer.tiled ? '74%' : 'auto',
+                      }}
+                      onClick={() => selectWatermarkLayer(layer.id)}
+                      aria-label={`Select watermark layer: ${layer.assetName ?? layer.text}`}
+                    >
+                      {layer.mode === 'image'
+                        ? `[${layer.assetName ?? 'watermark.png'}]`
+                        : layer.repeated
+                        ? Array.from({ length: Math.max(3, layer.density + 2) }, () => layer.text).join(' • ')
+                        : layer.text}
+                    </button>
+                  ))}
+                  {previewBackendManualSegmentPoints.map((point, index) => (
+                    <button
+                      key={`manual-point-${index}-${point.label}`}
+                      type="button"
+                      className={
+                        index === selectedBackendManualSegmentPointIndex
+                          ? 'manual-segment-point selected'
+                          : 'manual-segment-point'
+                      }
+                      style={{
+                        left: `${(point.x / 1920) * 100}%`,
+                        top: `${(point.y / 1080) * 100}%`,
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setSelectedBackendManualSegmentPointIndex(index)
+                      }}
+                      onMouseDown={(event) => handleManualSegmentPointMouseDown(event, index)}
+                      aria-label={`Select manual segment point ${index + 1}: ${
+                        point.label === 0 ? 'negative' : 'positive'
+                      }`}
+                    >
+                      {index + 1}
                     </button>
                   ))}
                   {marqueeBounds ? (
@@ -1305,6 +2161,101 @@ function App() {
                     </button>
                   </div>
                 ) : null}
+                {activeMessageWindowLayer ? (
+                  <div className="selection-controls text-controls" role="group" aria-label="Message window controls">
+                    <label className="text-layer-field">
+                      <span>Speaker</span>
+                      <input
+                        aria-label="Selected message speaker"
+                        type="text"
+                        value={activeMessageWindowLayer.speaker}
+                        onChange={(event) => {
+                          updateSelectedMessageWindowSpeaker(event.target.value)
+                        }}
+                      />
+                    </label>
+                    <label className="text-layer-field">
+                      <span>Body</span>
+                      <input
+                        aria-label="Selected message body"
+                        type="text"
+                        value={activeMessageWindowLayer.body}
+                        onChange={(event) => {
+                          updateSelectedMessageWindowBody(event.target.value)
+                        }}
+                      />
+                    </label>
+                    <button type="button" onClick={() => moveSelectedMessageWindowLayer(32, 0)}>
+                      Move message window right
+                    </button>
+                    <button type="button" onClick={() => moveSelectedMessageWindowLayer(0, -32)}>
+                      Move message window up
+                    </button>
+                    <button type="button" onClick={() => resizeSelectedMessageWindowLayer(32, 0)}>
+                      Increase message window width
+                    </button>
+                    <button type="button" onClick={() => resizeSelectedMessageWindowLayer(0, 32)}>
+                      Increase message window height
+                    </button>
+                    <button type="button" onClick={saveSelectedMessageWindowPreset}>
+                      Save message preset
+                    </button>
+                    {messageWindowPresets.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => applyMessageWindowPreset(preset.id)}
+                      >
+                        {`Apply message preset: ${preset.label}`}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {activeWatermarkLayer ? (
+                  <div className="selection-controls text-controls" role="group" aria-label="Watermark layer controls">
+                    <label className="text-layer-field">
+                      <span>Watermark</span>
+                      <input
+                        aria-label="Selected watermark text"
+                        type="text"
+                        value={activeWatermarkLayer.text}
+                        onChange={(event) => {
+                          updateSelectedWatermarkText(event.target.value)
+                        }}
+                      />
+                    </label>
+                    <button type="button" onClick={() => changeSelectedWatermarkOpacity(0.1)}>
+                      Increase watermark opacity
+                    </button>
+                    <button type="button" onClick={toggleSelectedWatermarkPattern}>
+                      Toggle watermark pattern
+                    </button>
+                    <button type="button" onClick={() => setSelectedWatermarkPreset('patreon')}>
+                      Apply Patreon CTA watermark
+                    </button>
+                    <button type="button" onClick={() => setSelectedWatermarkPreset('discord')}>
+                      Apply Discord CTA watermark
+                    </button>
+                    <button type="button" onClick={() => changeSelectedWatermarkAngle(8)}>
+                      Rotate watermark more
+                    </button>
+                    <button type="button" onClick={() => changeSelectedWatermarkDensity(1)}>
+                      Increase watermark density
+                    </button>
+                    <button type="button" onClick={() => moveSelectedWatermarkLayer(96, 0)}>
+                      Move watermark right
+                    </button>
+                    <button type="button" onClick={() => moveSelectedWatermarkLayer(0, 64)}>
+                      Move watermark down
+                    </button>
+                    <button type="button" onClick={() => changeSelectedWatermarkScale(0.2)}>
+                      Increase watermark scale
+                    </button>
+                    <button type="button" onClick={toggleSelectedWatermarkTileLayout}>
+                      Toggle watermark tile layout
+                    </button>
+                  </div>
+                ) : null}
                 {activeBubbleLayer ? (
                   <div className="selection-controls text-controls" role="group" aria-label="Bubble layer controls">
                     <label className="text-layer-field">
@@ -1569,6 +2520,22 @@ function App() {
                   </div>
                 </>
               ) : null}
+              {activeMessageWindowLayer ? (
+                <>
+                  <div>
+                    <dt>Window</dt>
+                    <dd>{`Window: ${activeMessageWindowLayer.speaker}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Body</dt>
+                    <dd>{`Body ${activeMessageWindowLayer.body}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Opacity</dt>
+                    <dd>{`Window opacity ${activeMessageWindowLayer.opacity.toFixed(1)}`}</dd>
+                  </div>
+                </>
+              ) : null}
               {activeBubbleLayer ? (
                 <>
                   <div>
@@ -1625,6 +2592,42 @@ function App() {
                   </div>
                 </>
               ) : null}
+              {activeWatermarkLayer ? (
+                <>
+                  <div>
+                    <dt>Watermark</dt>
+                    <dd>{`Watermark: ${activeWatermarkLayer.assetName ?? activeWatermarkLayer.text}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Mode</dt>
+                    <dd>{`Mode ${activeWatermarkLayer.mode === 'image' ? 'Image' : 'Text'}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Opacity</dt>
+                    <dd>{`Watermark opacity ${activeWatermarkLayer.opacity.toFixed(1)}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Pattern</dt>
+                    <dd>{`Pattern ${activeWatermarkLayer.repeated ? 'Repeated' : 'Single'}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Angle</dt>
+                    <dd>{`Angle ${activeWatermarkLayer.angle} deg`}</dd>
+                  </div>
+                  <div>
+                    <dt>Density</dt>
+                    <dd>{`Density ${activeWatermarkLayer.density}x`}</dd>
+                  </div>
+                  <div>
+                    <dt>Scale</dt>
+                    <dd>{`Scale ${activeWatermarkLayer.scale.toFixed(1)}x`}</dd>
+                  </div>
+                  <div>
+                    <dt>Layout</dt>
+                    <dd>{`Layout ${activeWatermarkLayer.tiled ? 'Tiled' : 'Single'}`}</dd>
+                  </div>
+                </>
+              ) : null}
             </dl>
           </section>
 
@@ -1661,6 +2664,21 @@ function App() {
                   <span>Text overlay</span>
                 </li>
               )}
+              {image?.messageWindowLayers.map((layer) => (
+                <li key={layer.id} className={selectedLayerId === layer.id ? 'selected-layer' : undefined}>
+                  <span className="layer-visibility" aria-hidden="true">
+                    eye
+                  </span>
+                  <button
+                    type="button"
+                    className="layer-select-button"
+                    onClick={() => selectMessageWindowLayer(layer.id)}
+                    aria-label={`Message window layer: ${layer.speaker}`}
+                  >
+                    Message window: {layer.speaker}
+                  </button>
+                </li>
+              ))}
               {image?.bubbleLayers.map((layer) => (
                 <li key={layer.id} className={selectedLayerId === layer.id ? 'selected-layer' : undefined}>
                   <span className="layer-visibility" aria-hidden="true">
@@ -1705,6 +2723,21 @@ function App() {
                     </button>
                 </li>
               ))}
+              {image?.watermarkLayers.map((layer) => (
+                <li key={layer.id} className={selectedLayerId === layer.id ? 'selected-layer' : undefined}>
+                  <span className="layer-visibility" aria-hidden="true">
+                    eye
+                  </span>
+                  <button
+                    type="button"
+                    className="layer-select-button"
+                    onClick={() => selectWatermarkLayer(layer.id)}
+                    aria-label={`Watermark layer: ${layer.assetName ?? layer.text}`}
+                  >
+                    Watermark: {layer.assetName ?? layer.text}
+                  </button>
+                </li>
+              ))}
             </ul>
           </section>
 
@@ -1728,6 +2761,395 @@ function App() {
                     <span>{project.pageCount} pages</span>
                   </button>
                 ))
+              )}
+            </div>
+          </section>
+
+          <section aria-label="Backend status" className="sidebar-card">
+            <div className="panel-title">Backend status</div>
+            {backendStatusError ? (
+              <div className="page-list">
+                <div className="page-card empty">
+                  <strong>{backendStatusError}</strong>
+                </div>
+                <button type="button" className="page-card page-button" onClick={() => void loadBackendStatus()}>
+                  Retry backend status
+                </button>
+              </div>
+            ) : backendStatus ? (
+              <div className="page-list">
+                <div className="page-card">
+                  <strong>{backendStatus.sam3_loaded ? 'SAM3 Ready' : 'SAM3 Loading'}</strong>
+                  <span>{getBackendModelStatusDetail('sam3')}</span>
+                </div>
+                <div className="page-card">
+                  <strong>{backendStatus.nudenet_loaded ? 'NudeNet Ready' : 'NudeNet Loading'}</strong>
+                  <span>{getBackendModelStatusDetail('nudenet')}</span>
+                </div>
+                <div className="page-card">
+                  <strong>{backendStatus.gpu_available ? 'GPU Available' : 'GPU Unavailable'}</strong>
+                </div>
+                <label className="text-layer-field">
+                  <span>SAM3 model size</span>
+                  <select
+                    aria-label="SAM3 model size"
+                    value={backendSam3ModelSize}
+                    onChange={(event) => {
+                      setBackendSam3ModelSize(event.target.value === 'large' ? 'large' : 'base')
+                    }}
+                  >
+                    <option value="base">base</option>
+                    <option value="large">large</option>
+                  </select>
+                </label>
+                <div className="page-card">
+                  <strong>{`SAM3 model size: ${backendSam3ModelSize}`}</strong>
+                </div>
+                <label className="text-layer-field">
+                  <span>Auto mosaic strength</span>
+                  <select
+                    aria-label="Auto mosaic strength"
+                    value={backendAutoMosaicStrength}
+                    onChange={(event) => {
+                      const nextValue = event.target.value
+                      setBackendAutoMosaicStrength(
+                        nextValue === 'light' || nextValue === 'strong' ? nextValue : 'medium',
+                      )
+                    }}
+                  >
+                    <option value="light">light</option>
+                    <option value="medium">medium</option>
+                    <option value="strong">strong</option>
+                  </select>
+                </label>
+                <div className="page-card">
+                  <strong>{`Auto mosaic strength: ${backendAutoMosaicStrength}`}</strong>
+                </div>
+                <label className="text-layer-field">
+                  <span>NSFW threshold</span>
+                  <input
+                    aria-label="NSFW threshold"
+                    type="number"
+                    min="0.1"
+                    max="0.99"
+                    step="0.01"
+                    value={backendNsfwThreshold}
+                    onChange={(event) => {
+                      setBackendNsfwThreshold(event.target.value)
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="page-card page-button"
+                  onClick={() => void startBackendModelDownload('sam3')}
+                  disabled={isBackendModelReady('sam3') || isBackendModelDownloading('sam3')}
+                >
+                  {getBackendModelButtonLabel('sam3')}
+                </button>
+                <button
+                  type="button"
+                  className="page-card page-button"
+                  onClick={() => void startBackendModelDownload('nudenet')}
+                  disabled={isBackendModelReady('nudenet') || isBackendModelDownloading('nudenet')}
+                >
+                  {getBackendModelButtonLabel('nudenet')}
+                </button>
+                <button
+                  type="button"
+                  className="page-card page-button"
+                  onClick={() => void runBackendSam3AutoMosaic()}
+                  disabled={!hasActiveImage}
+                >
+                  Run SAM3 auto mosaic
+                </button>
+                <button
+                  type="button"
+                  className="page-card page-button"
+                  onClick={() => void runBackendNsfwDetection()}
+                  disabled={!hasActiveImage}
+                >
+                  Run NSFW detection
+                </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={addBackendManualSegmentPoint}
+                    disabled={!hasActiveImage}
+                  >
+                    Add manual segment point
+                  </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={addNegativeBackendManualSegmentPoint}
+                    disabled={!hasActiveImage}
+                  >
+                    Add negative manual segment point
+                  </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={() => setBackendManualPointPickingMode('positive')}
+                    disabled={!hasActiveImage}
+                  >
+                    Enable positive point picking
+                  </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={() => setBackendManualPointPickingMode('negative')}
+                    disabled={!hasActiveImage}
+                  >
+                    Enable negative point picking
+                  </button>
+                  {backendManualPointPickingMode !== 'off' ? (
+                    <button
+                      type="button"
+                      className="page-card page-button"
+                      onClick={() => setBackendManualPointPickingMode('off')}
+                      disabled={!hasActiveImage}
+                    >
+                      Cancel manual point picking
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={resetBackendManualSegmentPoints}
+                    disabled={!hasActiveImage}
+                  >
+                    Reset manual segment points
+                  </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={toggleLastBackendManualSegmentPointLabel}
+                    disabled={!hasActiveImage || backendManualSegmentPoints.length === 0}
+                  >
+                    Toggle last manual point label
+                  </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={moveLastBackendManualSegmentPoint}
+                    disabled={!hasActiveImage || backendManualSegmentPoints.length === 0}
+                  >
+                    Move last manual point
+                  </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={removeLastBackendManualSegmentPoint}
+                    disabled={!hasActiveImage || backendManualSegmentPoints.length <= DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length}
+                  >
+                    Remove last manual point
+                  </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={toggleSelectedBackendManualSegmentPointLabel}
+                    disabled={!hasActiveImage || selectedBackendManualSegmentPoint === null}
+                  >
+                    Toggle selected manual point label
+                  </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={moveSelectedBackendManualSegmentPoint}
+                    disabled={!hasActiveImage || selectedBackendManualSegmentPoint === null}
+                  >
+                    Move selected manual point
+                  </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={removeSelectedBackendManualSegmentPoint}
+                    disabled={
+                      !hasActiveImage ||
+                      selectedBackendManualSegmentPoint === null ||
+                      backendManualSegmentPoints.length <= DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length
+                    }
+                  >
+                    Remove selected manual point
+                  </button>
+                  <div className="page-card">
+                    <strong>{`Manual segment points: ${backendManualSegmentPoints.length}`}</strong>
+                  </div>
+                  <div className="page-card">
+                    <strong>{`Selected manual point: ${selectedBackendManualSegmentPointIndex + 1} of ${
+                      backendManualSegmentPoints.length
+                    }`}</strong>
+                  </div>
+                  <div className="page-card">
+                    <strong>{`Selected manual point label: ${
+                      selectedBackendManualSegmentPoint?.label === 0 ? 'negative' : 'positive'
+                    }`}</strong>
+                  </div>
+                  <div className="page-card">
+                    <strong>{`Selected manual point coordinates: ${selectedBackendManualSegmentPoint?.x ?? 0}, ${
+                      selectedBackendManualSegmentPoint?.y ?? 0
+                    }`}</strong>
+                  </div>
+                  <div className="page-card">
+                    <strong>{`Last manual point label: ${
+                      backendManualSegmentPoints[backendManualSegmentPoints.length - 1]?.label === 0
+                        ? 'negative'
+                        : 'positive'
+                    }`}</strong>
+                  </div>
+                  <div className="page-card">
+                    <strong>{`Last manual point: ${
+                      backendManualSegmentPoints[backendManualSegmentPoints.length - 1]?.x ?? 0
+                    }, ${backendManualSegmentPoints[backendManualSegmentPoints.length - 1]?.y ?? 0}`}</strong>
+                  </div>
+                  <div className="page-card">
+                    <strong>{`Manual point picking: ${backendManualPointPickingMode}`}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={() => void runBackendSam3ManualSegment()}
+                    disabled={!hasActiveImage}
+                  >
+                  Run SAM3 manual segment
+                </button>
+                {backendDownloads.sam3 ? (
+                  <div className="page-card">
+                    <strong>{backendDownloads.sam3}</strong>
+                  </div>
+                ) : null}
+                {backendDownloads.nudenet ? (
+                  <div className="page-card">
+                    <strong>{backendDownloads.nudenet}</strong>
+                  </div>
+                ) : null}
+                {backendActions.sam3AutoMosaic ? (
+                  <div className="page-card">
+                    <strong>{backendActions.sam3AutoMosaic}</strong>
+                  </div>
+                ) : null}
+                {backendActions.nsfwDetection ? (
+                  <div className="page-card">
+                    <strong>{backendActions.nsfwDetection}</strong>
+                  </div>
+                ) : null}
+                {backendActions.sam3ManualSegment ? (
+                  <div className="page-card">
+                    <strong>{backendActions.sam3ManualSegment}</strong>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className="page-card page-button"
+                  onClick={() => void rerunLastBackendAction()}
+                  disabled={!hasActiveImage || backendActionHistory.length === 0}
+                >
+                  Run last backend action again
+                </button>
+                <button
+                  type="button"
+                  className="page-card page-button"
+                  onClick={clearBackendActionHistory}
+                  disabled={backendActionHistory.length === 0}
+                >
+                  Clear backend action history
+                </button>
+                <div className="page-card">
+                  <strong>Recent backend actions</strong>
+                  <span>{backendActionHistory.length === 0 ? 'No backend actions yet' : backendActionHistory[0].label}</span>
+                </div>
+                {backendActionHistory.map((entry, index) => (
+                  <div key={entry.id} className="page-card">
+                    {index > 0 ? <span>{entry.label}</span> : null}
+                    <button
+                      type="button"
+                      className="page-button"
+                      onClick={() => void rerunBackendAction(entry)}
+                      disabled={!hasActiveImage}
+                      aria-label={`Run backend action again: ${entry.label}`}
+                    >
+                      Run again
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="page-card empty">
+                <strong>Checking backend status...</strong>
+              </div>
+            )}
+          </section>
+
+          <section aria-label="Page templates" className="sidebar-card">
+            <div className="panel-title">Templates</div>
+            <div className="page-list">
+              {templates.length === 0 ? (
+                <div className="page-card empty">
+                  <strong>No templates yet</strong>
+                </div>
+              ) : (
+                templates.map((template) => {
+                  const templateLabel = template.label.trim() || 'Untitled template'
+                  const layerCount =
+                    template.textLayers.length +
+                    template.messageWindowLayers.length +
+                    template.bubbleLayers.length +
+                    template.mosaicLayers.length +
+                    template.overlayLayers.length +
+                    template.watermarkLayers.length
+
+                  return (
+                    <div key={template.id} className="page-card">
+                      <label className="text-layer-field">
+                        <span>Template</span>
+                        <input
+                          aria-label={`Template name: ${templateLabel}`}
+                          type="text"
+                          value={template.label}
+                          onChange={(event) => {
+                            renameTemplate(template.id, event.target.value)
+                          }}
+                        />
+                      </label>
+                      <span>{`${layerCount} layers`}</span>
+                      <div className="selection-controls">
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => applyTemplateToActivePage(template.id)}
+                          aria-label={`Apply template: ${templateLabel}`}
+                        >
+                          Apply to active page
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => applyTemplateToAllPages(template.id)}
+                          aria-label={`Apply template to all pages: ${templateLabel}`}
+                        >
+                          Apply to all pages
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => duplicateTemplate(template.id)}
+                          aria-label={`Duplicate template: ${templateLabel}`}
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => deleteTemplate(template.id)}
+                          aria-label={`Delete template: ${templateLabel}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })
               )}
             </div>
           </section>
