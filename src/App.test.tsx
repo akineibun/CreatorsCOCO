@@ -1,10 +1,11 @@
 import { act } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import App from './App'
 import {
+  CURRENT_PROJECT_SCHEMA_VERSION,
   PROJECT_STORAGE_KEY,
   RECENT_PROJECTS_STORAGE_KEY,
   resetWorkspaceStore,
@@ -76,7 +77,11 @@ describe('App shell', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('Backend status unavailable')).toBeInTheDocument()
+    expect(await screen.findByText('Backend connection unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Target http://127.0.0.1:8765')).toBeInTheDocument()
+    expect(
+      screen.getByText('Portable build may take a few seconds to unpack and launch the backend.'),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Retry backend status' }))
 
     expect(await screen.findByText('SAM3 Loading')).toBeInTheDocument()
@@ -1248,7 +1253,8 @@ describe('App shell', () => {
   })
 
   it('keeps backend review candidates separated per page when switching the active page', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    let sam3BatchRequestCount = 0
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
 
       if (url.endsWith('/api/status')) {
@@ -5914,6 +5920,285 @@ describe('App shell', () => {
 
     expect(screen.getByRole('button', { name: 'Watermark layer: discord-stamp.png' })).toBeInTheDocument()
     expect(screen.getByText('Mode Image')).toBeInTheDocument()
+  })
+
+  it('writes the current schema version into saved project storage', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Save now' }))
+
+    const storedProject = window.localStorage.getItem(PROJECT_STORAGE_KEY)
+    expect(storedProject).not.toBeNull()
+
+    const parsedProject = JSON.parse(storedProject ?? '{}') as { schemaVersion?: number; pages?: unknown[] }
+    expect(parsedProject.schemaVersion).toBe(CURRENT_PROJECT_SCHEMA_VERSION)
+    expect(Array.isArray(parsedProject.pages)).toBe(true)
+  })
+
+  it('migrates legacy saved projects to the current schema version on restore', async () => {
+    window.localStorage.setItem(
+      PROJECT_STORAGE_KEY,
+      JSON.stringify({
+        id: 'legacy-project',
+        name: 'Legacy project',
+        pages: [
+          {
+            id: 'legacy-page',
+            name: 'legacy-scene.png',
+            width: 1920,
+            height: 1080,
+            textLayers: [],
+            messageWindowLayers: [],
+            bubbleLayers: [],
+            mosaicLayers: [],
+            overlayLayers: [],
+            watermarkLayers: [],
+          },
+        ],
+        activePageId: 'legacy-page',
+        selectedLayerId: null,
+        imageTransform: null,
+        outputSettings: {
+          presetId: 'hd-landscape',
+          fileNamePrefix: 'legacy-export',
+          startNumber: 3,
+          numberPadding: 4,
+        },
+        lastSavedAt: '2026-03-20T10:00:00.000Z',
+      }),
+    )
+
+    render(<App />)
+
+    expect(await screen.findByRole('button', { name: 'Open page 01: legacy-scene.png' })).toBeInTheDocument()
+
+    const migratedProject = JSON.parse(window.localStorage.getItem(PROJECT_STORAGE_KEY) ?? '{}') as {
+      schemaVersion?: number
+      outputSettings?: { resizeFitMode?: string; resizeBackgroundMode?: string; qualityMode?: string }
+    }
+
+    expect(migratedProject.schemaVersion).toBe(CURRENT_PROJECT_SCHEMA_VERSION)
+    expect(migratedProject.outputSettings?.resizeFitMode).toBe('contain')
+    expect(migratedProject.outputSettings?.resizeBackgroundMode).toBe('white')
+    expect(migratedProject.outputSettings?.qualityMode).toBe('high')
+  })
+
+  it('migrates an explicit schemaVersion 0 project through the current migration path', async () => {
+    window.localStorage.setItem(
+      PROJECT_STORAGE_KEY,
+      JSON.stringify({
+        schemaVersion: 0,
+        id: 'legacy-v0-project',
+        name: 'Legacy v0 project',
+        pages: [
+          {
+            id: 'legacy-v0-page',
+            name: 'legacy-v0-scene.png',
+            width: 1920,
+            height: 1080,
+            textLayers: [],
+            messageWindowLayers: [],
+            bubbleLayers: [],
+            mosaicLayers: [],
+            overlayLayers: [],
+            watermarkLayers: [],
+          },
+        ],
+        activePageId: 'legacy-v0-page',
+        outputSettings: {
+          presetId: 'custom',
+          width: 1200,
+          height: 1600,
+          fileNamePrefix: 'legacy-v0',
+          startNumber: 9,
+          numberPadding: 3,
+        },
+      }),
+    )
+
+    render(<App />)
+
+    expect(await screen.findByRole('button', { name: 'Open page 01: legacy-v0-scene.png' })).toBeInTheDocument()
+
+    const migratedProject = JSON.parse(window.localStorage.getItem(PROJECT_STORAGE_KEY) ?? '{}') as {
+      schemaVersion?: number
+      outputSettings?: { width?: number; height?: number; resizeFitMode?: string; resizeBackgroundMode?: string }
+    }
+
+    expect(migratedProject.schemaVersion).toBe(CURRENT_PROJECT_SCHEMA_VERSION)
+    expect(migratedProject.outputSettings?.width).toBe(1200)
+    expect(migratedProject.outputSettings?.height).toBe(1600)
+    expect(migratedProject.outputSettings?.resizeFitMode).toBe('contain')
+    expect(migratedProject.outputSettings?.resizeBackgroundMode).toBe('white')
+  })
+
+  it('recalculates SAM3 review candidates and resets edited focused values', async () => {
+    let sam3RequestCount = 0
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        sam3RequestCount += 1
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks:
+              sam3RequestCount === 1
+                ? [{ x: 520, y: 320, width: 240, height: 180 }]
+                : [{ x: 760, y: 420, width: 180, height: 140 }],
+            status: 'ok',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Run SAM3 auto mosaic' }))
+    await user.clear(screen.getByLabelText('Focused SAM3 candidate label'))
+    await user.type(screen.getByLabelText('Focused SAM3 candidate label'), 'Edited mask')
+    await user.click(screen.getByRole('button', { name: 'Cycle focused SAM3 style' }))
+    await user.click(screen.getByRole('button', { name: 'Increase focused SAM3 intensity' }))
+
+    expect(screen.getByText('Edited mask selected')).toBeInTheDocument()
+    expect(screen.getAllByText('Style blur').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Intensity 24').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: 'Recalculate SAM3 candidates' }))
+
+    expect((await screen.findAllByText('SAM3 review candidates recalculated')).length).toBeGreaterThan(0)
+    expect(screen.getByText('SAM3 mask 1 selected')).toBeInTheDocument()
+    expect(screen.getAllByText('Style pixelate').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Intensity 16').length).toBeGreaterThan(0)
+    expect(screen.getByText('180 x 140 at 760, 420')).toBeInTheDocument()
+  })
+
+  it('reverts the focused NSFW review candidate back to backend defaults', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [{ x: 520, y: 320, width: 240, height: 180 }],
+            status: 'ok',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Run NSFW detection' }))
+    await user.clear(screen.getByLabelText('Focused NSFW candidate label'))
+    await user.type(screen.getByLabelText('Focused NSFW candidate label'), 'Edited warning')
+    await user.click(screen.getByRole('button', { name: 'Cycle focused NSFW color' }))
+    await user.click(screen.getByRole('button', { name: 'Increase focused NSFW opacity' }))
+
+    expect(screen.getByText('Edited warning selected')).toBeInTheDocument()
+    expect(screen.getAllByText('Color #ff9f1c').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Opacity 0.5').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: 'Revert focused NSFW edits' }))
+
+    expect((await screen.findAllByText('Focused NSFW review candidate reverted')).length).toBeGreaterThan(0)
+    expect(screen.getByText('NSFW region 1 selected')).toBeInTheDocument()
+    expect(screen.getAllByText('Color #ff4d6d').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Opacity 0.4').length).toBeGreaterThan(0)
+  })
+
+  it('runs SAM3 auto mosaic for all pages and applies batch mosaic layers per page', async () => {
+    let sam3BatchRequestCount = 0
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        sam3BatchRequestCount += 1
+        const body = JSON.parse(String(init?.body ?? '{}')) as { image_base64?: string }
+        const isSecondPage = sam3BatchRequestCount === 2 && typeof body.image_base64 === 'string'
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: isSecondPage
+              ? [{ x: 860, y: 480, width: 180, height: 140 }]
+              : [{ x: 520, y: 320, width: 240, height: 180 }],
+            status: 'ok',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Duplicate active page' }))
+    expect(await screen.findByRole('button', { name: 'Open page 02: sample-page-01-copy.webp' })).toBeInTheDocument()
+
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic for all pages' }))
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter(([value]) => String(value).endsWith('/api/sam3/auto-mosaic'))).toHaveLength(2)
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Open page 01: sample-page-01.webp' }))
+    expect(screen.getByRole('button', { name: 'Mosaic layer sample-page-01.webp SAM3 mask 1 (1)' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Open page 02: sample-page-01-copy.webp' }))
+    expect(screen.getByRole('button', { name: 'Mosaic layer sample-page-01-copy.webp SAM3 mask 1 (1)' })).toBeInTheDocument()
   })
 
   it('moves and scales an image watermark asset', async () => {

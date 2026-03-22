@@ -1,2 +1,8 @@
 node_modules/
 dist/
+release/
+python-backend/build/
+python-backend/dist/
+python-backend/.venv/
+**/__pycache__/
+*.pyc

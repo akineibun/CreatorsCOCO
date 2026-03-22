@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require('electron')
 const path = require('node:path')
+const packageJson = require('../package.json')
 const { BACKEND_URL, startPythonServer, stopPythonServer } = require('./python-manager.cjs')
 
 const createWindow = () => {
@@ -11,7 +12,10 @@ const createWindow = () => {
     backgroundColor: '#14110f',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
-      additionalArguments: [`--creators-coco-backend-url=${BACKEND_URL}`],
+      additionalArguments: [
+        `--creators-coco-backend-url=${BACKEND_URL}`,
+        `--creators-coco-app-version=${packageJson.version}`,
+      ],
     },
   })
 
