@@ -170,6 +170,13 @@ const parseBackendLayerSuggestion = (
   }
 }
 
+const getBackendMaskPreviewUrl = (value: Record<string, unknown> | null | undefined) => {
+  const maskBase64 = typeof value?.mask_base64 === 'string' ? value.mask_base64 : null
+  return maskBase64 ? `data:image/png;base64,${maskBase64}` : null
+}
+
+const getPageBackendImageSource = (page: { sourceUrl?: string | null; src?: string | null }) => page.src ?? page.sourceUrl ?? ''
+
 type ExportHistoryEntry = {
   format: 'PNG' | 'PDF' | 'ZIP'
   label: string
@@ -179,6 +186,10 @@ type BackendStatusState = {
   sam3_loaded: boolean
   nudenet_loaded: boolean
   gpu_available: boolean
+  sam3_status?: string
+  sam3_progress?: number
+  nudenet_status?: string
+  nudenet_progress?: number
 }
 
 type BackendDownloadState = {
@@ -192,9 +203,28 @@ type BackendActionState = {
   sam3AutoMosaic: string | null
   nsfwDetection: string | null
   sam3ManualSegment: string | null
+  sam3Batch: string | null
 }
 
 type BackendCandidatePriority = 'low' | 'medium' | 'high'
+
+type Sam3ReviewBaseline = {
+  masks: Array<Record<string, unknown>>
+  labels: string[]
+  notes: string[]
+  priority: BackendCandidatePriority[]
+  style: Array<'pixelate' | 'blur' | 'noise'>
+  intensity: number[]
+}
+
+type NsfwReviewBaseline = {
+  detections: Array<Record<string, unknown>>
+  labels: string[]
+  notes: string[]
+  priority: BackendCandidatePriority[]
+  color: string[]
+  opacity: number[]
+}
 
 type BackendActionResultState = {
   sam3AutoMosaic: Array<Record<string, unknown>>
@@ -212,6 +242,9 @@ type BackendActionResultState = {
   nsfwDetectionColor: string[]
   nsfwDetectionOpacity: number[]
   sam3ManualSegmentMaskReady: boolean
+  sam3ManualSegmentMask: Record<string, unknown> | null
+  sam3AutoMosaicBaseline: Sam3ReviewBaseline | null
+  nsfwDetectionBaseline: NsfwReviewBaseline | null
 }
 
 type BackendReviewPageState = {
@@ -289,6 +322,9 @@ const createEmptyBackendActionResults = (): BackendActionResultState => ({
   nsfwDetectionColor: [],
   nsfwDetectionOpacity: [],
   sam3ManualSegmentMaskReady: false,
+  sam3ManualSegmentMask: null,
+  sam3AutoMosaicBaseline: null,
+  nsfwDetectionBaseline: null,
 })
 
 const createEmptyBackendReviewPageState = (): BackendReviewPageState => ({
@@ -296,6 +332,31 @@ const createEmptyBackendReviewPageState = (): BackendReviewPageState => ({
   focusedSam3ReviewCandidateIndex: null,
   focusedNsfwReviewCandidateIndex: null,
 })
+
+const DakiniWordmark = () => (
+  <div className="dakini-mark" aria-label="Dakini brand mark">
+    <svg viewBox="0 0 96 96" role="img" aria-hidden="true">
+      <rect x="12" y="16" width="72" height="52" rx="4" />
+      <path d="M16 22 L48 49 L80 22" fill="none" stroke="currentColor" strokeWidth="6" strokeLinejoin="round" />
+      <path d="M16 64 L37 46" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+      <path d="M80 64 L59 46" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+      <path d="M18 75 H24 C28 75 30 77 30 82 C30 87 28 89 24 89 H18 Z" />
+      <path d="M35 75 H41 C46 75 49 78 49 82 C49 86 46 89 41 89 H35 Z M41 80 H39 V84 H41 C42.5 84 43.5 83.3 43.5 82 C43.5 80.7 42.5 80 41 80 Z" />
+      <path d="M54 75 H60 V80 L65 75 H72 L65 82 L72 89 H65 L60 84 V89 H54 Z" />
+      <path d="M75 75 H81 L87 84 V75 H92 V89 H86 L80 80 V89 H75 Z" />
+    </svg>
+    <div className="dakini-credit">
+      <strong>Provided by Dakini_tencho</strong>
+      <span>Dakini creative tools</span>
+    </div>
+  </div>
+)
+
+const getRendererBackendUrl = () =>
+  ((window as { creatorsCoco?: { backendUrl?: string } }).creatorsCoco?.backendUrl ?? 'http://127.0.0.1:8765')
+
+const getRendererAppVersion = () =>
+  ((window as { creatorsCoco?: { appVersion?: string } }).creatorsCoco?.appVersion ?? '1.0.0')
 
 const getExportPreviewLayout = (
   image: { width: number; height: number } | null,
@@ -347,9 +408,11 @@ function App() {
     sam3AutoMosaic: null,
     nsfwDetection: null,
     sam3ManualSegment: null,
+    sam3Batch: null,
   })
   const [backendManualPointPickingMode, setBackendManualPointPickingMode] =
     useState<BackendManualPointPickingMode>('off')
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [backendManualSegmentPoints, setBackendManualSegmentPoints] = useState<Sam3SegmentPoint[]>(
     DEFAULT_SAM3_MANUAL_SEGMENT_POINTS,
   )
@@ -549,7 +612,9 @@ function App() {
     moveSelectedOverlayLayerForward,
     deleteSelectedOverlayLayer,
     addBackendMosaicLayers,
+    addBackendMosaicLayersToPage,
     addBackendOverlayLayers,
+    addBackendOverlayLayersToPage,
     toggleSelectedLayerVisibility,
     toggleSelectedLayerLock,
     groupSelectedLayers,
@@ -704,6 +769,7 @@ function App() {
     priority: getSam3CandidatePriority(index),
     style: backendActionResults.sam3AutoMosaicStyle[index] ?? 'pixelate',
     intensity: backendActionResults.sam3AutoMosaicIntensity[index] ?? 16,
+    maskPreviewUrl: getBackendMaskPreviewUrl(mask),
   }))
   const previewNsfwReviewCandidates = backendActionResults.nsfwDetections.map((detection, index) => ({
     ...parseBackendLayerSuggestion(detection, index),
@@ -715,7 +781,14 @@ function App() {
     priority: getNsfwCandidatePriority(index),
     color: backendActionResults.nsfwDetectionColor[index] ?? '#ff4d6d',
     opacity: backendActionResults.nsfwDetectionOpacity[index] ?? 0.4,
+    maskPreviewUrl: getBackendMaskPreviewUrl(detection),
   }))
+  const manualSegmentMaskPreviewUrl = getBackendMaskPreviewUrl(backendActionResults.sam3ManualSegmentMask)
+  const backendBaseUrl = getRendererBackendUrl()
+  const appVersion = getRendererAppVersion()
+  const manualSegmentMaskBounds = backendActionResults.sam3ManualSegmentMask
+    ? parseBackendLayerSuggestion(backendActionResults.sam3ManualSegmentMask, 0)
+    : null
   const activeLayerGroupId =
     activeTextLayer?.groupId ??
     activeMessageWindowLayer?.groupId ??
@@ -982,7 +1055,7 @@ function App() {
       setBackendStatus(status)
       setBackendStatusError(null)
     } catch {
-      setBackendStatusError('Backend status unavailable')
+      setBackendStatusError('Backend connection unavailable')
     }
   }
 
@@ -1046,19 +1119,32 @@ function App() {
     }))
 
     try {
-      const response = await runSam3AutoMosaic(image.src, backendSam3ModelSize, backendAutoMosaicStrength)
+      const response = await runSam3AutoMosaic(
+        getPageBackendImageSource(image),
+        backendSam3ModelSize,
+        backendAutoMosaicStrength,
+      )
+      const baseline: Sam3ReviewBaseline = {
+        masks: response.masks,
+        labels: response.masks.map((_, index) => `SAM3 mask ${index + 1}`),
+        notes: response.masks.map(() => ''),
+        priority: response.masks.map(() => 'medium'),
+        style: response.masks.map(() => 'pixelate'),
+        intensity: response.masks.map(() =>
+          backendAutoMosaicStrength === 'light' ? 8 : backendAutoMosaicStrength === 'strong' ? 24 : 16,
+        ),
+      }
       const resultLabel = `SAM3 auto mosaic ready with ${response.masks.length} mask${response.masks.length === 1 ? '' : 's'}`
       updateActiveBackendActionResults((current) => ({
         ...current,
-        sam3AutoMosaic: response.masks,
-        sam3AutoMosaicSelection: response.masks.map(() => true),
-        sam3AutoMosaicLabel: response.masks.map((_, index) => `SAM3 mask ${index + 1}`),
-        sam3AutoMosaicNote: response.masks.map(() => ''),
-        sam3AutoMosaicPriority: response.masks.map(() => 'medium'),
-        sam3AutoMosaicStyle: response.masks.map(() => 'pixelate'),
-        sam3AutoMosaicIntensity: response.masks.map(() =>
-          backendAutoMosaicStrength === 'light' ? 8 : backendAutoMosaicStrength === 'strong' ? 24 : 16,
-        ),
+        sam3AutoMosaic: baseline.masks,
+        sam3AutoMosaicSelection: baseline.masks.map(() => true),
+        sam3AutoMosaicLabel: baseline.labels,
+        sam3AutoMosaicNote: baseline.notes,
+        sam3AutoMosaicPriority: baseline.priority,
+        sam3AutoMosaicStyle: baseline.style,
+        sam3AutoMosaicIntensity: baseline.intensity,
+        sam3AutoMosaicBaseline: baseline,
       }))
       setActiveFocusedSam3ReviewCandidateIndex(response.masks.length > 0 ? 0 : null)
       setBackendActions((current) => ({
@@ -1085,17 +1171,29 @@ function App() {
     }))
 
     try {
-      const response = await runNsfwDetection(image.src, Number.parseFloat(backendNsfwThreshold) || 0.7)
+      const response = await runNsfwDetection(
+        getPageBackendImageSource(image),
+        Number.parseFloat(backendNsfwThreshold) || 0.7,
+      )
+      const baseline: NsfwReviewBaseline = {
+        detections: response.detections,
+        labels: response.detections.map((_, index) => `NSFW region ${index + 1}`),
+        notes: response.detections.map(() => ''),
+        priority: response.detections.map(() => 'medium'),
+        color: response.detections.map(() => '#ff4d6d'),
+        opacity: response.detections.map(() => 0.4),
+      }
       const resultLabel = `NSFW detection found ${response.detections.length} region${response.detections.length === 1 ? '' : 's'}`
       updateActiveBackendActionResults((current) => ({
         ...current,
-        nsfwDetections: response.detections,
-        nsfwDetectionSelection: response.detections.map(() => true),
-        nsfwDetectionLabel: response.detections.map((_, index) => `NSFW region ${index + 1}`),
-        nsfwDetectionNote: response.detections.map(() => ''),
-        nsfwDetectionPriority: response.detections.map(() => 'medium'),
-        nsfwDetectionColor: response.detections.map(() => '#ff4d6d'),
-        nsfwDetectionOpacity: response.detections.map(() => 0.4),
+        nsfwDetections: baseline.detections,
+        nsfwDetectionSelection: baseline.detections.map(() => true),
+        nsfwDetectionLabel: baseline.labels,
+        nsfwDetectionNote: baseline.notes,
+        nsfwDetectionPriority: baseline.priority,
+        nsfwDetectionColor: baseline.color,
+        nsfwDetectionOpacity: baseline.opacity,
+        nsfwDetectionBaseline: baseline,
       }))
       setActiveFocusedNsfwReviewCandidateIndex(response.detections.length > 0 ? 0 : null)
       setBackendActions((current) => ({
@@ -1122,13 +1220,18 @@ function App() {
     }))
 
     try {
-      await runSam3ManualSegment(image.src, backendSam3ModelSize, backendManualSegmentPoints)
+      const response = await runSam3ManualSegment(
+        getPageBackendImageSource(image),
+        backendSam3ModelSize,
+        backendManualSegmentPoints,
+      )
       const resultLabel = `SAM3 manual segment ready with ${backendManualSegmentPoints.length} point${
         backendManualSegmentPoints.length === 1 ? '' : 's'
       }`
       updateActiveBackendActionResults((current) => ({
         ...current,
         sam3ManualSegmentMaskReady: true,
+        sam3ManualSegmentMask: response.bbox,
       }))
       setBackendActions((current) => ({
         ...current,
@@ -1199,16 +1302,19 @@ function App() {
   }
 
   const applyBackendSam3ManualSegmentToCanvas = () => {
+    const manualBounds = backendActionResults.sam3ManualSegmentMask
+      ? parseBackendLayerSuggestion(backendActionResults.sam3ManualSegmentMask, 0)
+      : null
     const positivePoints = backendManualSegmentPoints.filter((point) => point.label === 1)
     const fallbackX = positivePoints.reduce((sum, point) => sum + point.x, 0) / Math.max(1, positivePoints.length)
     const fallbackY = positivePoints.reduce((sum, point) => sum + point.y, 0) / Math.max(1, positivePoints.length)
 
     addBackendMosaicLayers([
       {
-        x: Number.isFinite(fallbackX) ? fallbackX : 960,
-        y: Number.isFinite(fallbackY) ? fallbackY : 540,
-        width: 240,
-        height: 160,
+        x: manualBounds?.x ?? (Number.isFinite(fallbackX) ? fallbackX : 960),
+        y: manualBounds?.y ?? (Number.isFinite(fallbackY) ? fallbackY : 540),
+        width: manualBounds?.width ?? 240,
+        height: manualBounds?.height ?? 160,
         intensity: backendSam3ModelSize === 'large' ? 24 : 16,
         style: 'blur',
         name: 'SAM3 manual segment',
@@ -1218,6 +1324,206 @@ function App() {
       ...current,
       sam3ManualSegment: `${current.sam3ManualSegment ?? 'SAM3 manual segment ready'} applied to canvas`,
     }))
+  }
+
+  const recalculateActiveBackendSam3Review = async () => {
+    if (!image) {
+      return
+    }
+
+    await runBackendSam3AutoMosaic()
+    setBackendActions((current) => ({
+      ...current,
+      sam3AutoMosaic: 'SAM3 review candidates recalculated',
+    }))
+  }
+
+  const revertFocusedBackendSam3Candidate = () => {
+    if (focusedSam3ReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => {
+      const baseline = current.sam3AutoMosaicBaseline
+      if (!baseline) {
+        return current
+      }
+
+      return {
+        ...current,
+        sam3AutoMosaic: current.sam3AutoMosaic.map((entry, index) =>
+          index === focusedSam3ReviewCandidateIndex ? baseline.masks[index] ?? entry : entry,
+        ),
+        sam3AutoMosaicLabel: current.sam3AutoMosaicLabel.map((entry, index) =>
+          index === focusedSam3ReviewCandidateIndex ? baseline.labels[index] ?? entry : entry,
+        ),
+        sam3AutoMosaicNote: current.sam3AutoMosaicNote.map((entry, index) =>
+          index === focusedSam3ReviewCandidateIndex ? baseline.notes[index] ?? entry : entry,
+        ),
+        sam3AutoMosaicPriority: current.sam3AutoMosaicPriority.map((entry, index) =>
+          index === focusedSam3ReviewCandidateIndex ? baseline.priority[index] ?? entry : entry,
+        ),
+        sam3AutoMosaicStyle: current.sam3AutoMosaicStyle.map((entry, index) =>
+          index === focusedSam3ReviewCandidateIndex ? baseline.style[index] ?? entry : entry,
+        ),
+        sam3AutoMosaicIntensity: current.sam3AutoMosaicIntensity.map((entry, index) =>
+          index === focusedSam3ReviewCandidateIndex ? baseline.intensity[index] ?? entry : entry,
+        ),
+      }
+    })
+    setBackendActions((current) => ({
+      ...current,
+      sam3AutoMosaic: 'Focused SAM3 review candidate reverted',
+    }))
+  }
+
+  const recalculateActiveBackendNsfwReview = async () => {
+    if (!image) {
+      return
+    }
+
+    await runBackendNsfwDetection()
+    setBackendActions((current) => ({
+      ...current,
+      nsfwDetection: 'NSFW review candidates recalculated',
+    }))
+  }
+
+  const revertFocusedBackendNsfwCandidate = () => {
+    if (focusedNsfwReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => {
+      const baseline = current.nsfwDetectionBaseline
+      if (!baseline) {
+        return current
+      }
+
+      return {
+        ...current,
+        nsfwDetections: current.nsfwDetections.map((entry, index) =>
+          index === focusedNsfwReviewCandidateIndex ? baseline.detections[index] ?? entry : entry,
+        ),
+        nsfwDetectionLabel: current.nsfwDetectionLabel.map((entry, index) =>
+          index === focusedNsfwReviewCandidateIndex ? baseline.labels[index] ?? entry : entry,
+        ),
+        nsfwDetectionNote: current.nsfwDetectionNote.map((entry, index) =>
+          index === focusedNsfwReviewCandidateIndex ? baseline.notes[index] ?? entry : entry,
+        ),
+        nsfwDetectionPriority: current.nsfwDetectionPriority.map((entry, index) =>
+          index === focusedNsfwReviewCandidateIndex ? baseline.priority[index] ?? entry : entry,
+        ),
+        nsfwDetectionColor: current.nsfwDetectionColor.map((entry, index) =>
+          index === focusedNsfwReviewCandidateIndex ? baseline.color[index] ?? entry : entry,
+        ),
+        nsfwDetectionOpacity: current.nsfwDetectionOpacity.map((entry, index) =>
+          index === focusedNsfwReviewCandidateIndex ? baseline.opacity[index] ?? entry : entry,
+        ),
+      }
+    })
+    setBackendActions((current) => ({
+      ...current,
+      nsfwDetection: 'Focused NSFW review candidate reverted',
+    }))
+  }
+
+  const runBackendSam3AutoMosaicForAllPages = async () => {
+    const projectPages = useWorkspaceStore.getState().pages
+
+    if (projectPages.length === 0) {
+      return
+    }
+
+    setBackendActions((current) => ({
+      ...current,
+      sam3Batch: `Running SAM3 batch for ${projectPages.length} page${projectPages.length === 1 ? '' : 's'}...`,
+    }))
+
+    let processedPages = 0
+    let appliedLayers = 0
+    const pageLayerMap = new Map<
+      string,
+      Array<{
+        x: number
+        y: number
+        width: number
+        height: number
+        intensity: number
+        style: 'pixelate'
+        name: string
+      }>
+    >()
+
+    try {
+      for (const page of projectPages) {
+        const response = await runSam3AutoMosaic(
+          getPageBackendImageSource(page),
+          backendSam3ModelSize,
+          backendAutoMosaicStrength,
+        )
+        const suggestions = response.masks.map((mask, index) => {
+          const bounds = parseBackendLayerSuggestion(mask, index)
+          return {
+            ...bounds,
+            intensity: backendAutoMosaicStrength === 'light' ? 8 : backendAutoMosaicStrength === 'strong' ? 24 : 16,
+            style: 'pixelate' as const,
+            name: `${page.name} SAM3 mask ${index + 1}`,
+          }
+        })
+
+        if (suggestions.length > 0) {
+          pageLayerMap.set(page.id, suggestions)
+          appliedLayers += suggestions.length
+        }
+
+        processedPages += 1
+      }
+
+      if (pageLayerMap.size > 0) {
+        useWorkspaceStore.setState((current) => ({
+          ...current,
+          isDirty: true,
+          loadError: null,
+          pages: current.pages.map((page) => {
+            const suggestions = pageLayerMap.get(page.id)
+            if (!suggestions || suggestions.length === 0) {
+              return page
+            }
+
+            return {
+              ...page,
+              mosaicLayers: [
+                ...page.mosaicLayers,
+                ...suggestions.map((layer, index) => ({
+                  id: `mosaic-batch-${page.id}-${index}-${Date.now()}`,
+                  name: layer.name,
+                  groupId: null,
+                  x: layer.x,
+                  y: layer.y,
+                  width: layer.width,
+                  height: layer.height,
+                  intensity: layer.intensity,
+                  style: layer.style,
+                  visible: true,
+                  locked: false,
+                })),
+              ],
+            }
+          }),
+        }))
+      }
+
+      setBackendActions((current) => ({
+        ...current,
+        sam3Batch: `SAM3 batch applied to ${processedPages} page${processedPages === 1 ? '' : 's'} with ${appliedLayers} mosaic layer${appliedLayers === 1 ? '' : 's'}`,
+      }))
+    } catch {
+      setBackendActions((current) => ({
+        ...current,
+        sam3Batch: 'SAM3 batch run failed',
+      }))
+    }
   }
 
   const toggleBackendSam3AutoMosaicSelection = (index: number) => {
@@ -1785,6 +2091,18 @@ function App() {
   }, [backendManualSegmentPoints])
 
   useEffect(() => {
+    updateActiveBackendActionResults((current) =>
+      current.sam3ManualSegmentMaskReady || current.sam3ManualSegmentMask
+        ? {
+            ...current,
+            sam3ManualSegmentMaskReady: false,
+            sam3ManualSegmentMask: null,
+          }
+        : current,
+    )
+  }, [backendManualSegmentPoints, updateActiveBackendActionResults])
+
+  useEffect(() => {
     const storedHistory = window.localStorage.getItem(EXPORT_HISTORY_STORAGE_KEY)
 
     if (!storedHistory) {
@@ -1973,6 +2291,60 @@ function App() {
             typeof rawResults?.sam3ManualSegmentMaskReady === 'boolean'
               ? rawResults.sam3ManualSegmentMaskReady
               : fallback.sam3ManualSegmentMaskReady,
+          sam3ManualSegmentMask:
+            rawResults?.sam3ManualSegmentMask && typeof rawResults.sam3ManualSegmentMask === 'object'
+              ? rawResults.sam3ManualSegmentMask
+              : fallback.sam3ManualSegmentMask,
+          sam3AutoMosaicBaseline:
+            rawResults?.sam3AutoMosaicBaseline && typeof rawResults.sam3AutoMosaicBaseline === 'object'
+              ? {
+                  masks: Array.isArray(rawResults.sam3AutoMosaicBaseline.masks)
+                    ? rawResults.sam3AutoMosaicBaseline.masks
+                    : fallback.sam3AutoMosaicBaseline,
+                  labels: Array.isArray(rawResults.sam3AutoMosaicBaseline.labels)
+                    ? rawResults.sam3AutoMosaicBaseline.labels.map((entry) => (typeof entry === 'string' ? entry : ''))
+                    : fallback.sam3AutoMosaicBaseline?.labels ?? [],
+                  notes: Array.isArray(rawResults.sam3AutoMosaicBaseline.notes)
+                    ? rawResults.sam3AutoMosaicBaseline.notes.map((entry) => (typeof entry === 'string' ? entry : ''))
+                    : fallback.sam3AutoMosaicBaseline?.notes ?? [],
+                  priority: Array.isArray(rawResults.sam3AutoMosaicBaseline.priority)
+                    ? rawResults.sam3AutoMosaicBaseline.priority.map((entry) =>
+                        entry === 'low' || entry === 'high' ? entry : 'medium',
+                      )
+                    : fallback.sam3AutoMosaicBaseline?.priority ?? [],
+                  style: Array.isArray(rawResults.sam3AutoMosaicBaseline.style)
+                    ? rawResults.sam3AutoMosaicBaseline.style
+                    : fallback.sam3AutoMosaicBaseline?.style ?? [],
+                  intensity: Array.isArray(rawResults.sam3AutoMosaicBaseline.intensity)
+                    ? rawResults.sam3AutoMosaicBaseline.intensity
+                    : fallback.sam3AutoMosaicBaseline?.intensity ?? [],
+                }
+              : fallback.sam3AutoMosaicBaseline,
+          nsfwDetectionBaseline:
+            rawResults?.nsfwDetectionBaseline && typeof rawResults.nsfwDetectionBaseline === 'object'
+              ? {
+                  detections: Array.isArray(rawResults.nsfwDetectionBaseline.detections)
+                    ? rawResults.nsfwDetectionBaseline.detections
+                    : fallback.nsfwDetectionBaseline?.detections ?? [],
+                  labels: Array.isArray(rawResults.nsfwDetectionBaseline.labels)
+                    ? rawResults.nsfwDetectionBaseline.labels.map((entry) => (typeof entry === 'string' ? entry : ''))
+                    : fallback.nsfwDetectionBaseline?.labels ?? [],
+                  notes: Array.isArray(rawResults.nsfwDetectionBaseline.notes)
+                    ? rawResults.nsfwDetectionBaseline.notes.map((entry) => (typeof entry === 'string' ? entry : ''))
+                    : fallback.nsfwDetectionBaseline?.notes ?? [],
+                  priority: Array.isArray(rawResults.nsfwDetectionBaseline.priority)
+                    ? rawResults.nsfwDetectionBaseline.priority.map((entry) =>
+                        entry === 'low' || entry === 'high' ? entry : 'medium',
+                      )
+                    : fallback.nsfwDetectionBaseline?.priority ?? [],
+                  color: Array.isArray(rawResults.nsfwDetectionBaseline.color)
+                    ? rawResults.nsfwDetectionBaseline.color.map((entry) => (typeof entry === 'string' ? entry : '#ff4d6d'))
+                    : fallback.nsfwDetectionBaseline?.color ?? [],
+                  opacity: Array.isArray(rawResults.nsfwDetectionBaseline.opacity)
+                    ? rawResults.nsfwDetectionBaseline.opacity
+                    : fallback.nsfwDetectionBaseline?.opacity ?? [],
+                }
+              : fallback.nsfwDetectionBaseline,
         }
       }
 
@@ -2503,6 +2875,7 @@ function App() {
           <strong>CreatorsCOCO</strong>
           <span>{projectName}</span>
         </div>
+        <DakiniWordmark />
         <label className="project-name-field">
           <span>Project</span>
           <input
@@ -2520,9 +2893,42 @@ function App() {
           <button type="button">Edit</button>
           <button type="button">View</button>
           <button type="button">Tools</button>
-          <button type="button">Help</button>
+          <button type="button" onClick={() => setIsHelpOpen(true)}>
+            Help
+          </button>
         </nav>
       </header>
+
+      {isHelpOpen ? (
+        <div className="help-overlay" role="dialog" aria-modal="true" aria-label="About CreatorsCOCO">
+          <div className="help-card">
+            <div className="help-header">
+              <div>
+                <div className="panel-title">About CreatorsCOCO</div>
+                <div className="panel-subtitle">{`Version ${appVersion}`}</div>
+              </div>
+              <button type="button" className="page-card page-button help-close" onClick={() => setIsHelpOpen(false)}>
+                Close
+              </button>
+            </div>
+            <DakiniWordmark />
+            <div className="help-grid">
+              <div className="page-card">
+                <strong>Provided by Dakini_tencho</strong>
+                <span>CreatorsCOCO desktop editor with local FastAPI review tooling.</span>
+                <span>{`Backend target ${backendBaseUrl}`}</span>
+              </div>
+              <div className="page-card">
+                <strong>Portable Smoke Test</strong>
+                <span>1. Copy the portable exe to a clean folder on another PC.</span>
+                <span>2. Launch it once and wait for unpacking to finish.</span>
+                <span>3. Confirm backend status leaves the unavailable state.</span>
+                <span>4. Load the sample image and run SAM3 or NSFW once.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="workspace-grid">
         <aside aria-label="Tool palette" className="tool-palette">
@@ -2906,12 +3312,20 @@ function App() {
                         width: `${(candidate.width / 1920) * 100}%`,
                         height: `${(candidate.height / 1080) * 100}%`,
                         background:
-                          candidate.style === 'blur'
-                            ? 'rgba(255, 215, 177, 0.38)'
-                            : candidate.style === 'noise'
-                              ? 'repeating-linear-gradient(45deg, rgba(255, 215, 177, 0.36), rgba(255, 215, 177, 0.36) 6px, rgba(36, 27, 21, 0.1) 6px, rgba(36, 27, 21, 0.1) 12px)'
-                              : 'repeating-linear-gradient(90deg, rgba(255, 215, 177, 0.34), rgba(255, 215, 177, 0.34) 8px, rgba(36, 27, 21, 0.08) 8px, rgba(36, 27, 21, 0.08) 16px)',
-                        backgroundSize: `${Math.max(6, candidate.intensity)}px ${Math.max(6, candidate.intensity)}px`,
+                          candidate.maskPreviewUrl
+                            ? `${candidate.style === 'blur'
+                                ? 'linear-gradient(135deg, rgba(255, 215, 177, 0.26), rgba(255, 215, 177, 0.14))'
+                                : candidate.style === 'noise'
+                                  ? 'repeating-linear-gradient(45deg, rgba(255, 215, 177, 0.3), rgba(255, 215, 177, 0.3) 6px, rgba(36, 27, 21, 0.1) 6px, rgba(36, 27, 21, 0.1) 12px)'
+                                  : 'repeating-linear-gradient(90deg, rgba(255, 215, 177, 0.28), rgba(255, 215, 177, 0.28) 8px, rgba(36, 27, 21, 0.08) 8px, rgba(36, 27, 21, 0.08) 16px)'}, url(${candidate.maskPreviewUrl}) center / cover no-repeat`
+                            : candidate.style === 'blur'
+                              ? 'rgba(255, 215, 177, 0.38)'
+                              : candidate.style === 'noise'
+                                ? 'repeating-linear-gradient(45deg, rgba(255, 215, 177, 0.36), rgba(255, 215, 177, 0.36) 6px, rgba(36, 27, 21, 0.1) 6px, rgba(36, 27, 21, 0.1) 12px)'
+                                : 'repeating-linear-gradient(90deg, rgba(255, 215, 177, 0.34), rgba(255, 215, 177, 0.34) 8px, rgba(36, 27, 21, 0.08) 8px, rgba(36, 27, 21, 0.08) 16px)',
+                        backgroundSize: candidate.maskPreviewUrl
+                          ? undefined
+                          : `${Math.max(6, candidate.intensity)}px ${Math.max(6, candidate.intensity)}px`,
                       }}
                       onClick={(event) => {
                         event.stopPropagation()
@@ -2943,7 +3357,9 @@ function App() {
                         width: `${(candidate.width / 1920) * 100}%`,
                         height: `${(candidate.height / 1080) * 100}%`,
                         borderColor: candidate.color,
-                        background: `${candidate.color}22`,
+                        background: candidate.maskPreviewUrl
+                          ? `linear-gradient(135deg, ${candidate.color}33, ${candidate.color}14), url(${candidate.maskPreviewUrl}) center / cover no-repeat`
+                          : `${candidate.color}22`,
                         opacity: candidate.opacity,
                       }}
                       onClick={(event) => {
@@ -2957,6 +3373,26 @@ function App() {
                       <span>{`NSFW ${candidate.index + 1}`}</span>
                     </button>
                   ))}
+                  {backendActionResults.sam3ManualSegmentMaskReady && manualSegmentMaskBounds ? (
+                    <div
+                      aria-label="Manual segment preview"
+                      className="backend-review-preview sam3 manual"
+                      style={{
+                        left: `${(manualSegmentMaskBounds.x / 1920) * 100}%`,
+                        top: `${(manualSegmentMaskBounds.y / 1080) * 100}%`,
+                        width: `${(manualSegmentMaskBounds.width / 1920) * 100}%`,
+                        height: `${(manualSegmentMaskBounds.height / 1080) * 100}%`,
+                        backgroundImage: manualSegmentMaskPreviewUrl
+                          ? `linear-gradient(135deg, rgba(116, 196, 255, 0.2), rgba(116, 196, 255, 0.08)), url(${manualSegmentMaskPreviewUrl})`
+                          : undefined,
+                        backgroundRepeat: manualSegmentMaskPreviewUrl ? 'no-repeat' : undefined,
+                        backgroundPosition: manualSegmentMaskPreviewUrl ? 'center' : undefined,
+                        backgroundSize: manualSegmentMaskPreviewUrl ? 'cover' : undefined,
+                      }}
+                    >
+                      <span>Manual mask</span>
+                    </div>
+                  ) : null}
                   {image.watermarkLayers.map((layer) => (
                     <button
                       key={layer.id}
@@ -4265,6 +4701,9 @@ function App() {
               <div className="page-list">
                 <div className="page-card empty">
                   <strong>{backendStatusError}</strong>
+                  <span>{`Target ${backendBaseUrl}`}</span>
+                  <span>Portable build may take a few seconds to unpack and launch the backend.</span>
+                  <span>Retry after a short wait, or reopen the app if the backend never appears.</span>
                 </div>
                 <button type="button" className="page-card page-button" onClick={() => void loadBackendStatus()}>
                   Retry backend status
@@ -4356,6 +4795,14 @@ function App() {
                   disabled={!hasActiveImage}
                 >
                   Run SAM3 auto mosaic
+                </button>
+                <button
+                  type="button"
+                  className="page-card page-button"
+                  onClick={() => void runBackendSam3AutoMosaicForAllPages()}
+                  disabled={pages.length === 0}
+                >
+                  Run SAM3 auto mosaic for all pages
                 </button>
                 <button
                   type="button"
@@ -4457,6 +4904,22 @@ function App() {
                       >
                         Select high priority SAM3 candidates
                       </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={() => void recalculateActiveBackendSam3Review()}
+                        disabled={!hasActiveImage}
+                      >
+                        Recalculate SAM3 candidates
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={revertFocusedBackendSam3Candidate}
+                        disabled={focusedSam3ReviewCandidateIndex === null}
+                      >
+                        Revert focused SAM3 edits
+                      </button>
                     </div>
                     {backendActionResults.sam3AutoMosaic.map((mask, index) => {
                       const bounds = parseBackendLayerSuggestion(mask, index)
@@ -4472,6 +4935,13 @@ function App() {
                           aria-label={`Toggle SAM3 candidate ${index + 1}`}
                         >
                           <strong>{`${getSam3CandidateCardLabel(index)} ${selected ? 'selected' : 'skipped'}`}</strong>
+                          {getBackendMaskPreviewUrl(mask) ? (
+                            <img
+                              alt={`SAM3 mask preview ${index + 1}`}
+                              className="backend-mask-thumbnail"
+                              src={getBackendMaskPreviewUrl(mask) ?? undefined}
+                            />
+                          ) : null}
                           <span>{`Note ${getSam3CandidateCardNote(index)}`}</span>
                           <span>{`Priority ${getSam3CandidatePriority(index)}`}</span>
                           <span>{`Style ${backendActionResults.sam3AutoMosaicStyle[index] ?? 'pixelate'}`}</span>
@@ -4582,6 +5052,22 @@ function App() {
                       >
                         Select high priority NSFW candidates
                       </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={() => void recalculateActiveBackendNsfwReview()}
+                        disabled={!hasActiveImage}
+                      >
+                        Recalculate NSFW candidates
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={revertFocusedBackendNsfwCandidate}
+                        disabled={focusedNsfwReviewCandidateIndex === null}
+                      >
+                        Revert focused NSFW edits
+                      </button>
                     </div>
                     {backendActionResults.nsfwDetections.map((detection, index) => {
                       const bounds = parseBackendLayerSuggestion(detection, index)
@@ -4597,6 +5083,13 @@ function App() {
                           aria-label={`Toggle NSFW candidate ${index + 1}`}
                         >
                           <strong>{`${getNsfwCandidateCardLabel(index)} ${selected ? 'selected' : 'skipped'}`}</strong>
+                          {getBackendMaskPreviewUrl(detection) ? (
+                            <img
+                              alt={`NSFW mask preview ${index + 1}`}
+                              className="backend-mask-thumbnail"
+                              src={getBackendMaskPreviewUrl(detection) ?? undefined}
+                            />
+                          ) : null}
                           <span>{`Note ${getNsfwCandidateCardNote(index)}`}</span>
                           <span>{`Priority ${getNsfwCandidatePriority(index)}`}</span>
                           <span>{`Color ${backendActionResults.nsfwDetectionColor[index] ?? '#ff4d6d'}`}</span>
@@ -4763,6 +5256,16 @@ function App() {
                     <div className="page-card">
                       <strong>SAM3 manual segment review ready</strong>
                       <span>{`${backendManualSegmentPoints.filter((point) => point.label === 1).length} positive / ${backendManualSegmentPoints.filter((point) => point.label === 0).length} negative points`}</span>
+                      {manualSegmentMaskPreviewUrl ? (
+                        <img
+                          alt="Manual segment mask preview"
+                          className="backend-mask-thumbnail"
+                          src={manualSegmentMaskPreviewUrl}
+                        />
+                      ) : null}
+                      {manualSegmentMaskBounds ? (
+                        <span>{`${Math.round(manualSegmentMaskBounds.width)} x ${Math.round(manualSegmentMaskBounds.height)} at ${Math.round(manualSegmentMaskBounds.x)}, ${Math.round(manualSegmentMaskBounds.y)}`}</span>
+                      ) : null}
                     </div>
                     <button
                       type="button"
@@ -4797,6 +5300,11 @@ function App() {
                 {backendActions.sam3ManualSegment ? (
                   <div className="page-card">
                     <strong>{backendActions.sam3ManualSegment}</strong>
+                  </div>
+                ) : null}
+                {backendActions.sam3Batch ? (
+                  <div className="page-card">
+                    <strong>{backendActions.sam3Batch}</strong>
                   </div>
                 ) : null}
                 <button
@@ -5701,6 +6209,7 @@ function App() {
         <span>Image {image ? `${image.width} x ${image.height}` : 'No image loaded'}</span>
         <span>{saveStatusLabel}</span>
         <span>{exportMessage}</span>
+        <span>{`Version ${appVersion}`}</span>
         <span>Cursor 0, 0</span>
       </footer>
     </div>

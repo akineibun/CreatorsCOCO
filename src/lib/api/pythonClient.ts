@@ -33,6 +33,8 @@ export type NsfwDetectionResponse = {
 export type Sam3SegmentResponse = {
   mask_base64: string
   status: string
+  bbox: Record<string, unknown>
+  points_used: number
 }
 
 export type Sam3SegmentPoint = {
