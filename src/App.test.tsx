@@ -1198,6 +1198,124 @@ describe('App shell', () => {
     expect(screen.getByText('Last manual point: 960, 540')).toBeInTheDocument()
   })
 
+  it('restores backend review state from localStorage', async () => {
+    window.localStorage.setItem(
+      'creators-coco.backend-review-state',
+      JSON.stringify({
+        backendActionResults: {
+          sam3AutoMosaic: [{ x: 300, y: 220, width: 180, height: 120 }],
+          sam3AutoMosaicSelection: [true],
+          sam3AutoMosaicLabel: ['Face mask'],
+          sam3AutoMosaicNote: ['Hide only the face'],
+          sam3AutoMosaicStyle: ['noise'],
+          sam3AutoMosaicIntensity: [24],
+          nsfwDetections: [{ x: 520, y: 320, width: 240, height: 180 }],
+          nsfwDetectionSelection: [false],
+          nsfwDetectionLabel: ['Sensitive crop'],
+          nsfwDetectionNote: ['Keep the title readable'],
+          nsfwDetectionColor: ['#ff9f1c'],
+          nsfwDetectionOpacity: [0.5],
+          sam3ManualSegmentMaskReady: true,
+        },
+        focusedSam3ReviewCandidateIndex: 0,
+        focusedNsfwReviewCandidateIndex: 0,
+      }),
+    )
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        sam3_loaded: true,
+        nudenet_loaded: true,
+        gpu_available: true,
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByText('Focused SAM3 candidate: 1')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Face mask')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Hide only the face')).toBeInTheDocument()
+    expect(screen.getAllByText('Style noise').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Intensity 24').length).toBeGreaterThan(0)
+    expect(screen.getByText('Focused NSFW candidate: 1')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Sensitive crop')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Keep the title readable')).toBeInTheDocument()
+    expect(screen.getAllByText('Color #ff9f1c').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Opacity 0.5').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Apply manual segment to canvas' })).toBeInTheDocument()
+  })
+
+  it('keeps backend review candidates separated per page when switching the active page', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: [{ x: 300, y: 220, width: 180, height: 120 }],
+            status: 'stub',
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [{ x: 520, y: 320, width: 240, height: 180 }],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic' }))
+    const sam3LabelInput = screen.getByLabelText('Focused SAM3 candidate label')
+    await user.clear(sam3LabelInput)
+    await user.type(sam3LabelInput, 'Page one face')
+
+    expect(screen.getByDisplayValue('Page one face')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('Page two region')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Duplicate active page' }))
+    await user.click(screen.getByRole('button', { name: 'Open page 02: sample-page-01-copy.webp' }))
+    await user.click(await screen.findByRole('button', { name: 'Run NSFW detection' }))
+    const nsfwLabelInput = screen.getByLabelText('Focused NSFW candidate label')
+    await user.clear(nsfwLabelInput)
+    await user.type(nsfwLabelInput, 'Page two region')
+
+    expect(screen.getByDisplayValue('Page two region')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('Page one face')).not.toBeInTheDocument()
+    expect(screen.getByText('Focused NSFW candidate: 1')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Open page 01: sample-page-01.webp' }))
+
+    expect(screen.getByDisplayValue('Page one face')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('Page two region')).not.toBeInTheDocument()
+  })
+
   it('restores recent backend actions from localStorage', async () => {
     window.localStorage.setItem(
       'creators-coco.backend-action-history',
@@ -2678,6 +2796,21 @@ describe('App shell', () => {
     await user.click(screen.getByRole('button', { name: 'Style thought' }))
 
     expect(screen.getByText('Style Thought')).toBeInTheDocument()
+  })
+
+  it('changes and randomizes the selected bubble shape variant', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add bubble layer' }))
+    await user.click(screen.getByRole('button', { name: 'Shape spiky' }))
+
+    expect(screen.getByText('Shape Spiky / Variant 1')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Randomize bubble shape' }))
+
+    expect(screen.getByText('Shape Spiky / Variant 2')).toBeInTheDocument()
   })
 
   it('duplicates the selected bubble layer', async () => {
@@ -4246,7 +4379,7 @@ describe('App shell', () => {
     await user.click(screen.getByRole('button', { name: 'Increase message window width' }))
     await user.click(screen.getByRole('button', { name: 'Save message preset' }))
     await user.click(screen.getByRole('button', { name: 'Add message window layer' }))
-    await user.click(screen.getByRole('button', { name: 'Apply message preset: Rin' }))
+    await user.click(screen.getAllByRole('button', { name: 'Apply message preset: Rin' })[0])
 
     expect(screen.getByText('Window: Rin')).toBeInTheDocument()
     expect(screen.getByText('Body Preset line')).toBeInTheDocument()
@@ -4301,6 +4434,8 @@ describe('App shell', () => {
 
     expect(screen.getByRole('button', { name: 'Apply template: sample-page-01.webp layout' })).toBeInTheDocument()
     expect(screen.getByText('2 layers')).toBeInTheDocument()
+    expect(screen.getByText('Preview Text Template text')).toBeInTheDocument()
+    expect(screen.getByText('Preview Window Narrator')).toBeInTheDocument()
   })
 
   it('applies a saved template to another page', async () => {
@@ -4391,8 +4526,1166 @@ describe('App shell', () => {
     unmount()
     render(<App />)
 
-    expect(screen.getByRole('button', { name: 'Apply message preset: Restored' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Apply message preset: Restored' }).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Apply template: sample-page-01.webp layout' })).toBeInTheDocument()
+  })
+
+  it('renames duplicates and deletes message presets from the preset library', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add message window layer' }))
+    await user.clear(screen.getByLabelText('Selected message speaker'))
+    await user.type(screen.getByLabelText('Selected message speaker'), 'Library')
+    await user.click(screen.getByRole('button', { name: 'Save message preset' }))
+
+    const presetNameInput = screen.getByLabelText('Message preset name: Library')
+    await user.clear(presetNameInput)
+    await user.type(presetNameInput, 'Story box')
+    await user.click(screen.getByRole('button', { name: 'Duplicate message preset: Story box' }))
+
+    expect(screen.getAllByRole('button', { name: 'Apply message preset: Story box' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Apply message preset: Story box copy' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Preview Speaker Library').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: 'Delete message preset: Story box' }))
+    expect(screen.queryByRole('button', { name: 'Apply message preset: Story box' })).not.toBeInTheDocument()
+  })
+
+  it('saves reapplies and manages text presets from the preset library', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add text layer' }))
+    await user.clear(screen.getByLabelText('Selected text content'))
+    await user.type(screen.getByLabelText('Selected text content'), 'Preset line')
+    await user.click(screen.getByRole('button', { name: 'Increase text size' }))
+    await user.click(screen.getByRole('button', { name: 'Toggle text shadow' }))
+    await user.click(screen.getByRole('button', { name: 'Save text preset' }))
+
+    const textPresetNameInput = screen.getByLabelText('Text preset name: Preset line')
+    await user.clear(textPresetNameInput)
+    await user.type(textPresetNameInput, 'Hero text')
+    await user.click(screen.getByRole('button', { name: 'Duplicate text preset: Hero text' }))
+
+    expect(screen.getAllByRole('button', { name: 'Apply text preset: Hero text' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Apply text preset: Hero text copy' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Preview Text Preset line').length).toBeGreaterThan(0)
+
+    await user.clear(screen.getByLabelText('Selected text content'))
+    await user.type(screen.getByLabelText('Selected text content'), 'Other line')
+    await user.click(screen.getAllByRole('button', { name: 'Apply text preset: Hero text' })[0])
+
+    expect(screen.getByDisplayValue('Preset line')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Delete text preset: Hero text' }))
+    expect(screen.queryByRole('button', { name: 'Apply text preset: Hero text' })).not.toBeInTheDocument()
+  })
+
+  it('saves reapplies restores and manages watermark presets from the preset library', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add watermark layer' }))
+    await user.clear(screen.getByLabelText('Selected watermark text'))
+    await user.type(screen.getByLabelText('Selected watermark text'), 'Supporters club')
+    await user.click(screen.getByRole('button', { name: 'Increase watermark opacity' }))
+    await user.click(screen.getByRole('button', { name: 'Rotate watermark more' }))
+    await user.click(screen.getByRole('button', { name: 'Increase watermark density' }))
+    await user.click(screen.getByRole('button', { name: 'Toggle watermark tile layout' }))
+    await user.click(screen.getByRole('button', { name: 'Save watermark preset' }))
+
+    const watermarkPresetNameInput = screen.getByLabelText('Watermark preset name: Supporters club')
+    await user.clear(watermarkPresetNameInput)
+    await user.type(watermarkPresetNameInput, 'Support stamp')
+    await user.click(screen.getByRole('button', { name: 'Duplicate watermark preset: Support stamp' }))
+
+    expect(screen.getAllByRole('button', { name: 'Apply watermark preset: Support stamp' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Apply watermark preset: Support stamp copy' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Preview Watermark Supporters club').length).toBeGreaterThan(0)
+
+    await user.clear(screen.getByLabelText('Selected watermark text'))
+    await user.type(screen.getByLabelText('Selected watermark text'), 'Other watermark')
+    await user.click(screen.getAllByRole('button', { name: 'Apply watermark preset: Support stamp' })[0])
+
+    expect(screen.getByDisplayValue('Supporters club')).toBeInTheDocument()
+    expect(screen.getByText('Watermark opacity 0.4')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Save now' }))
+    unmount()
+    render(<App />)
+
+    expect(screen.getAllByRole('button', { name: 'Apply watermark preset: Support stamp' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Apply watermark preset: Support stamp copy' }).length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: 'Delete watermark preset: Support stamp' }))
+    expect(screen.queryByRole('button', { name: 'Apply watermark preset: Support stamp' })).not.toBeInTheDocument()
+  })
+
+  it('saves reapplies and manages bubble presets from the preset library', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add bubble layer' }))
+    await user.clear(screen.getByLabelText('Selected bubble content'))
+    await user.type(screen.getByLabelText('Selected bubble content'), 'Alert bubble')
+    await user.click(screen.getByRole('button', { name: 'Style thought' }))
+    await user.click(screen.getByRole('button', { name: 'Shape cloud' }))
+    await user.click(screen.getByRole('button', { name: 'Tail bottom' }))
+    await user.click(screen.getByRole('button', { name: 'Save bubble preset' }))
+
+    const bubblePresetNameInput = screen.getByLabelText('Bubble preset name: Alert bubble')
+    await user.clear(bubblePresetNameInput)
+    await user.type(bubblePresetNameInput, 'Alert style')
+    await user.click(screen.getByRole('button', { name: 'Duplicate bubble preset: Alert style' }))
+
+    expect(screen.getAllByRole('button', { name: 'Apply bubble preset: Alert style' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Apply bubble preset: Alert style copy' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Preview Bubble Alert bubble').length).toBeGreaterThan(0)
+
+    await user.clear(screen.getByLabelText('Selected bubble content'))
+    await user.type(screen.getByLabelText('Selected bubble content'), 'Other bubble')
+    await user.click(screen.getByRole('button', { name: 'Style speech' }))
+    await user.click(screen.getAllByRole('button', { name: 'Apply bubble preset: Alert style' })[0])
+
+    expect(screen.getByDisplayValue('Alert bubble')).toBeInTheDocument()
+    expect(screen.getByText('Style Thought')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Delete bubble preset: Alert style' }))
+    expect(screen.queryByRole('button', { name: 'Apply bubble preset: Alert style' })).not.toBeInTheDocument()
+  })
+
+  it('saves reapplies and manages overlay presets from the preset library', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add overlay layer' }))
+    await user.click(screen.getByRole('button', { name: 'Overlay center band' }))
+    await user.click(screen.getByRole('button', { name: 'Toggle overlay gradient' }))
+    await user.click(screen.getByRole('button', { name: 'Cycle overlay gradient direction' }))
+    await user.click(screen.getByRole('button', { name: 'Increase overlay opacity' }))
+    await user.click(screen.getByRole('button', { name: 'Save overlay preset' }))
+
+    const overlayPresetNameInput = screen.getByLabelText('Overlay preset name: Overlay center-band')
+    await user.clear(overlayPresetNameInput)
+    await user.type(overlayPresetNameInput, 'Band shade')
+    await user.click(screen.getByRole('button', { name: 'Duplicate overlay preset: Band shade' }))
+
+    expect(screen.getAllByRole('button', { name: 'Apply overlay preset: Band shade' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Apply overlay preset: Band shade copy' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Preview Area center-band').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: 'Overlay full' }))
+    await user.click(screen.getAllByRole('button', { name: 'Apply overlay preset: Band shade' })[0])
+
+    expect(screen.getByText('Overlay area center-band')).toBeInTheDocument()
+    expect(screen.getByText('Overlay fill Gradient #ffcc44 to #ff6b6b')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Delete overlay preset: Band shade' }))
+    expect(screen.queryByRole('button', { name: 'Apply overlay preset: Band shade' })).not.toBeInTheDocument()
+  })
+
+  it('saves reapplies and manages mosaic presets from the preset library', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add mosaic layer' }))
+    await user.click(screen.getByRole('button', { name: 'Mosaic noise' }))
+    await user.click(screen.getByRole('button', { name: 'Mosaic intensity Large' }))
+    await user.click(screen.getByRole('button', { name: 'Increase mosaic width' }))
+    await user.click(screen.getByRole('button', { name: 'Save mosaic preset' }))
+
+    const mosaicPresetNameInput = screen.getByLabelText('Mosaic preset name: noise 24')
+    await user.clear(mosaicPresetNameInput)
+    await user.type(mosaicPresetNameInput, 'Strong blur block')
+    await user.click(screen.getByRole('button', { name: 'Duplicate mosaic preset: Strong blur block' }))
+
+    expect(screen.getAllByRole('button', { name: 'Apply mosaic preset: Strong blur block' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Apply mosaic preset: Strong blur block copy' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Preview Style noise').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: 'Mosaic pixelate' }))
+    await user.click(screen.getAllByRole('button', { name: 'Apply mosaic preset: Strong blur block' })[0])
+
+    expect(screen.getByText('Mosaic style noise')).toBeInTheDocument()
+    expect(screen.getByText('Mosaic intensity 24')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Delete mosaic preset: Strong blur block' }))
+    expect(screen.queryByRole('button', { name: 'Apply mosaic preset: Strong blur block' })).not.toBeInTheDocument()
+  })
+
+  it('filters the preset library by category and search query', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add text layer' }))
+    await user.clear(screen.getByLabelText('Selected text content'))
+    await user.type(screen.getByLabelText('Selected text content'), 'Hero caption')
+    await user.click(screen.getByRole('button', { name: 'Save text preset' }))
+
+    await user.click(screen.getByRole('button', { name: 'Add message window layer' }))
+    await user.clear(screen.getByLabelText('Selected message speaker'))
+    await user.type(screen.getByLabelText('Selected message speaker'), 'Narrator box')
+    await user.click(screen.getByRole('button', { name: 'Save message preset' }))
+
+    await user.click(screen.getByRole('button', { name: 'Add bubble layer' }))
+    await user.clear(screen.getByLabelText('Selected bubble content'))
+    await user.type(screen.getByLabelText('Selected bubble content'), 'Cloud callout')
+    await user.click(screen.getByRole('button', { name: 'Save bubble preset' }))
+
+    await user.click(screen.getByRole('button', { name: 'Add overlay layer' }))
+    await user.click(screen.getByRole('button', { name: 'Overlay center band' }))
+    await user.click(screen.getByRole('button', { name: 'Save overlay preset' }))
+
+    await user.click(screen.getByRole('button', { name: 'Add mosaic layer' }))
+    await user.click(screen.getByRole('button', { name: 'Mosaic blur' }))
+    await user.click(screen.getByRole('button', { name: 'Save mosaic preset' }))
+
+    await user.click(screen.getByRole('button', { name: 'Save page as template' }))
+    await user.click(screen.getByRole('button', { name: 'Save page as reusable asset' }))
+
+    await user.click(screen.getByRole('button', { name: 'Show text presets' }))
+    expect(screen.getAllByRole('button', { name: 'Apply text preset: Hero caption' }).length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('Message preset preview: Narrator box')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Show bubble presets' }))
+    expect(screen.getAllByRole('button', { name: 'Apply bubble preset: Cloud callout' }).length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('Overlay preset preview: Overlay center-band')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Show mosaic presets' }))
+    expect(screen.getAllByRole('button', { name: 'Apply mosaic preset: blur 12' }).length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('Bubble preset preview: Cloud callout')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Show all presets' }))
+    await user.clear(screen.getByLabelText('Preset library search'))
+    await user.type(screen.getByLabelText('Preset library search'), 'Narrator')
+
+    expect(screen.getAllByRole('button', { name: 'Apply message preset: Narrator box' }).length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('Text preset preview: Hero caption')).not.toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Preset library search'))
+    await user.type(screen.getByLabelText('Preset library search'), 'center-band')
+
+    expect(screen.getAllByRole('button', { name: 'Apply overlay preset: Overlay center-band' }).length).toBeGreaterThan(0)
+    expect(screen.queryByLabelText('Bubble preset preview: Cloud callout')).not.toBeInTheDocument()
+  })
+
+  it('applies SAM3 auto mosaic results to canvas mosaic layers', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        expect(init?.method).toBe('POST')
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: [
+              { x: 300, y: 220, width: 180, height: 120 },
+              { x: 840, y: 460, width: 220, height: 160 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic' }))
+    await user.click(await screen.findByRole('button', { name: 'Apply SAM3 auto mosaic to canvas' }))
+
+    expect(screen.getByRole('button', { name: 'Mosaic layer SAM3 mask 1 (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mosaic layer SAM3 mask 2 (2)' })).toBeInTheDocument()
+    expect(screen.getAllByText('SAM3 auto mosaic ready with 2 masks applied to 2 mosaic layers').length).toBeGreaterThan(0)
+  })
+
+  it('lets you review and skip individual SAM3 auto mosaic candidates before applying', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: [
+              { x: 300, y: 220, width: 180, height: 120 },
+              { x: 840, y: 460, width: 220, height: 160 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic' }))
+    expect(screen.getByText('SAM3 review candidates: 2')).toBeInTheDocument()
+    expect(screen.getByText('2 selected for apply')).toBeInTheDocument()
+    expect(screen.getByText('Focused SAM3 candidate: 1')).toBeInTheDocument()
+    expect(screen.getByLabelText('SAM3 review preview 1: selected focused')).toBeInTheDocument()
+    expect(screen.getByLabelText('SAM3 review preview 2: selected')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Toggle SAM3 candidate 2' }))
+    expect(screen.getByText('1 selected for apply')).toBeInTheDocument()
+    expect(screen.getByText('Focused SAM3 candidate: 2')).toBeInTheDocument()
+    expect(screen.getByLabelText('SAM3 review preview 2: skipped focused')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Apply SAM3 auto mosaic to canvas' }))
+
+    expect(screen.getByRole('button', { name: 'Mosaic layer SAM3 mask 1 (1)' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mosaic layer SAM3 mask 2 (2)' })).not.toBeInTheDocument()
+    expect(screen.getAllByText('SAM3 auto mosaic ready with 2 masks applied to 1 mosaic layer').length).toBeGreaterThan(0)
+  })
+
+  it('can clear and restore all SAM3 review candidates at once', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: [
+              { x: 300, y: 220, width: 180, height: 120 },
+              { x: 840, y: 460, width: 220, height: 160 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic' }))
+
+    await user.click(screen.getByRole('button', { name: 'Clear SAM3 candidates' }))
+    expect(screen.getByText('0 selected for apply')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apply SAM3 auto mosaic to canvas' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Select all SAM3 candidates' }))
+    expect(screen.getByText('2 selected for apply')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apply SAM3 auto mosaic to canvas' })).toBeEnabled()
+  })
+
+  it('focuses a SAM3 review preview when clicked on the canvas', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: [
+              { x: 300, y: 220, width: 180, height: 120 },
+              { x: 840, y: 460, width: 220, height: 160 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic' }))
+    await user.click(screen.getByLabelText('SAM3 review preview 2: selected'))
+
+    expect(screen.getByText('Focused SAM3 candidate: 2')).toBeInTheDocument()
+    expect(screen.getByLabelText('SAM3 review preview 2: selected focused')).toBeInTheDocument()
+  })
+
+  it('cycles the focused SAM3 candidate style before applying', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: [{ x: 300, y: 220, width: 180, height: 120 }],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic' }))
+
+    expect(screen.getAllByText('Style pixelate').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: 'Cycle focused SAM3 style' }))
+
+    expect(screen.getAllByText('Style blur').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('SAM3 review preview 1: selected focused')).toHaveAttribute('data-style', 'blur')
+
+    await user.click(screen.getByRole('button', { name: 'Apply SAM3 auto mosaic to canvas' }))
+    expect(screen.getByText('Mosaic style blur')).toBeInTheDocument()
+  })
+
+  it('increases the focused SAM3 candidate intensity before applying', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: [{ x: 300, y: 220, width: 180, height: 120 }],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic' }))
+
+    expect(screen.getAllByText('Intensity 16').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: 'Increase focused SAM3 intensity' }))
+
+    expect(screen.getAllByText('Intensity 24').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('SAM3 review preview 1: selected focused')).toHaveAttribute('data-intensity', '24')
+
+    await user.click(screen.getByRole('button', { name: 'Apply SAM3 auto mosaic to canvas' }))
+    expect(screen.getByText('Mosaic intensity 24')).toBeInTheDocument()
+  })
+
+  it('renames the focused SAM3 candidate before applying', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: [{ x: 300, y: 220, width: 180, height: 120 }],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic' }))
+    const sam3LabelInput = screen.getByLabelText('Focused SAM3 candidate label')
+    await user.clear(sam3LabelInput)
+    await user.type(sam3LabelInput, 'Eyes mosaic')
+
+    expect(sam3LabelInput).toHaveValue('Eyes mosaic')
+    expect(screen.getByText('Eyes mosaic selected')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Apply SAM3 auto mosaic to canvas' }))
+    expect(screen.getByRole('button', { name: 'Mosaic layer Eyes mosaic (1)' })).toBeInTheDocument()
+  })
+
+  it('copies the focused SAM3 review settings to other selected candidates', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: [
+              { x: 300, y: 220, width: 180, height: 120 },
+              { x: 840, y: 460, width: 220, height: 160 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic' }))
+    await user.click(screen.getByLabelText('SAM3 review preview 2: selected'))
+    await user.click(screen.getByRole('button', { name: 'Cycle focused SAM3 style' }))
+    await user.click(screen.getByRole('button', { name: 'Increase focused SAM3 intensity' }))
+    const sam3NoteInput = screen.getByLabelText('Focused SAM3 candidate note')
+    await user.clear(sam3NoteInput)
+    await user.type(sam3NoteInput, 'Use blur for both')
+
+    await user.click(screen.getByRole('button', { name: 'Apply focused SAM3 settings to selected' }))
+
+    expect(screen.getByLabelText('SAM3 review preview 1: selected')).toHaveAttribute('data-style', 'blur')
+    expect(screen.getByLabelText('SAM3 review preview 1: selected')).toHaveAttribute('data-intensity', '24')
+    expect(screen.getAllByText('Note Use blur for both').length).toBeGreaterThan(0)
+  })
+
+  it('filters SAM3 review selection to high priority candidates', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/auto-mosaic')) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_image_base64: '',
+            masks: [
+              { x: 300, y: 220, width: 180, height: 120 },
+              { x: 840, y: 460, width: 220, height: 160 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 auto mosaic' }))
+    await user.click(screen.getByLabelText('SAM3 review preview 2: selected'))
+    await user.click(screen.getByRole('button', { name: 'Cycle focused SAM3 priority' }))
+
+    expect(screen.getAllByText('Priority high').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: 'Select high priority SAM3 candidates' }))
+
+    expect(screen.getByText('1 selected for apply')).toBeInTheDocument()
+    expect(screen.getByLabelText('SAM3 review preview 1: skipped')).toBeInTheDocument()
+    expect(screen.getByLabelText('SAM3 review preview 2: selected focused')).toBeInTheDocument()
+  })
+
+  it('applies NSFW detections to canvas overlay layers', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        expect(init?.method).toBe('POST')
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [{ x: 520, y: 320, width: 240, height: 180 }],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run NSFW detection' }))
+    await user.click(await screen.findByRole('button', { name: 'Apply NSFW detections to canvas' }))
+
+    expect(screen.getByRole('button', { name: 'Overlay layer NSFW region 1 (1)' })).toBeInTheDocument()
+    expect(screen.getAllByText('NSFW detection found 1 region applied to 1 overlay layer').length).toBeGreaterThan(0)
+  })
+
+  it('lets you review and skip individual NSFW detections before applying', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [
+              { x: 520, y: 320, width: 240, height: 180 },
+              { x: 860, y: 480, width: 180, height: 140 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run NSFW detection' }))
+    expect(screen.getByText('NSFW review candidates: 2')).toBeInTheDocument()
+    expect(screen.getByText('2 selected for apply')).toBeInTheDocument()
+    expect(screen.getByText('Focused NSFW candidate: 1')).toBeInTheDocument()
+    expect(screen.getByLabelText('NSFW review preview 1: selected focused')).toBeInTheDocument()
+    expect(screen.getByLabelText('NSFW review preview 2: selected')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Toggle NSFW candidate 1' }))
+    expect(screen.getByText('1 selected for apply')).toBeInTheDocument()
+    expect(screen.getByText('Focused NSFW candidate: 1')).toBeInTheDocument()
+    expect(screen.getByLabelText('NSFW review preview 1: skipped focused')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Apply NSFW detections to canvas' }))
+
+    expect(screen.queryByRole('button', { name: 'Overlay layer NSFW region 1 (1)' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Overlay layer NSFW region 2 (1)' })).toBeInTheDocument()
+    expect(screen.getAllByText('NSFW detection found 2 regions applied to 1 overlay layer').length).toBeGreaterThan(0)
+  })
+
+  it('can clear and restore all NSFW review candidates at once', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [
+              { x: 520, y: 320, width: 240, height: 180 },
+              { x: 860, y: 480, width: 180, height: 140 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run NSFW detection' }))
+
+    await user.click(screen.getByRole('button', { name: 'Clear NSFW candidates' }))
+    expect(screen.getByText('0 selected for apply')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apply NSFW detections to canvas' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Select all NSFW candidates' }))
+    expect(screen.getByText('2 selected for apply')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apply NSFW detections to canvas' })).toBeEnabled()
+  })
+
+  it('focuses an NSFW review preview when clicked on the canvas', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [
+              { x: 520, y: 320, width: 240, height: 180 },
+              { x: 860, y: 480, width: 180, height: 140 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run NSFW detection' }))
+    await user.click(screen.getByLabelText('NSFW review preview 2: selected'))
+
+    expect(screen.getByText('Focused NSFW candidate: 2')).toBeInTheDocument()
+    expect(screen.getByLabelText('NSFW review preview 2: selected focused')).toBeInTheDocument()
+  })
+
+  it('cycles the focused NSFW candidate color before applying', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [{ x: 520, y: 320, width: 240, height: 180 }],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run NSFW detection' }))
+
+    expect(screen.getAllByText('Color #ff4d6d').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: 'Cycle focused NSFW color' }))
+
+    expect(screen.getAllByText('Color #ff9f1c').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('NSFW review preview 1: selected focused')).toHaveAttribute('data-color', '#ff9f1c')
+
+    await user.click(screen.getByRole('button', { name: 'Apply NSFW detections to canvas' }))
+    expect(screen.getByText('Overlay fill Gradient #ff9f1c to #111111')).toBeInTheDocument()
+  })
+
+  it('increases the focused NSFW candidate opacity before applying', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [{ x: 520, y: 320, width: 240, height: 180 }],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run NSFW detection' }))
+
+    expect(screen.getAllByText('Opacity 0.4').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: 'Increase focused NSFW opacity' }))
+
+    expect(screen.getAllByText('Opacity 0.5').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('NSFW review preview 1: selected focused')).toHaveAttribute('data-opacity', '0.5')
+
+    await user.click(screen.getByRole('button', { name: 'Apply NSFW detections to canvas' }))
+    expect(screen.getByText('Overlay opacity 0.5')).toBeInTheDocument()
+  })
+
+  it('renames the focused NSFW candidate before applying', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [{ x: 520, y: 320, width: 240, height: 180 }],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run NSFW detection' }))
+    const nsfwLabelInput = screen.getByLabelText('Focused NSFW candidate label')
+    await user.clear(nsfwLabelInput)
+    await user.type(nsfwLabelInput, 'Cover warning')
+
+    expect(nsfwLabelInput).toHaveValue('Cover warning')
+    expect(screen.getByText('Cover warning selected')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Apply NSFW detections to canvas' }))
+    expect(screen.getByRole('button', { name: 'Overlay layer Cover warning (1)' })).toBeInTheDocument()
+  })
+
+  it('copies the focused NSFW review settings to other selected candidates', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [
+              { x: 520, y: 320, width: 240, height: 180 },
+              { x: 860, y: 480, width: 180, height: 140 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run NSFW detection' }))
+    await user.click(screen.getByLabelText('NSFW review preview 2: selected'))
+    await user.click(screen.getByRole('button', { name: 'Cycle focused NSFW color' }))
+    await user.click(screen.getByRole('button', { name: 'Increase focused NSFW opacity' }))
+    const nsfwNoteInput = screen.getByLabelText('Focused NSFW candidate note')
+    await user.clear(nsfwNoteInput)
+    await user.type(nsfwNoteInput, 'Mirror this warning')
+
+    await user.click(screen.getByRole('button', { name: 'Apply focused NSFW settings to selected' }))
+
+    expect(screen.getByLabelText('NSFW review preview 1: selected')).toHaveAttribute('data-color', '#ff9f1c')
+    expect(screen.getByLabelText('NSFW review preview 1: selected')).toHaveAttribute('data-opacity', '0.5')
+    expect(screen.getAllByText('Note Mirror this warning').length).toBeGreaterThan(0)
+  })
+
+  it('filters NSFW review selection to high priority candidates', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [
+              { x: 520, y: 320, width: 240, height: 180 },
+              { x: 860, y: 480, width: 180, height: 140 },
+            ],
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run NSFW detection' }))
+    await user.click(screen.getByLabelText('NSFW review preview 2: selected'))
+    await user.click(screen.getByRole('button', { name: 'Cycle focused NSFW priority' }))
+
+    expect(screen.getAllByText('Priority high').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: 'Select high priority NSFW candidates' }))
+
+    expect(screen.getByText('1 selected for apply')).toBeInTheDocument()
+    expect(screen.getByLabelText('NSFW review preview 1: skipped')).toBeInTheDocument()
+    expect(screen.getByLabelText('NSFW review preview 2: selected focused')).toBeInTheDocument()
+  })
+
+  it('applies manual SAM3 segment results to canvas mosaic layers', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/sam3/segment')) {
+        expect(init?.method).toBe('POST')
+        return {
+          ok: true,
+          json: async () => ({
+            mask_base64: 'encoded-mask',
+            status: 'stub',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(await screen.findByRole('button', { name: 'Run SAM3 manual segment' }))
+    expect(screen.getByText('SAM3 manual segment review ready')).toBeInTheDocument()
+    expect(screen.getByText('2 positive / 0 negative points')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Apply manual segment to canvas' }))
+
+    expect(screen.getByRole('button', { name: 'Mosaic layer SAM3 manual segment (1)' })).toBeInTheDocument()
+    expect(screen.getAllByText('SAM3 manual segment ready with 2 points applied to canvas').length).toBeGreaterThan(0)
   })
 
   it('applies a saved template to all loaded pages', async () => {
@@ -4461,6 +5754,52 @@ describe('App shell', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete template: Story layout' }))
     expect(screen.queryByRole('button', { name: 'Apply template: Story layout' })).not.toBeInTheDocument()
+  })
+
+  it('saves the current page as a reusable asset and applies it as an image watermark layer', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add text layer' }))
+    await user.clear(screen.getByLabelText('Selected text content'))
+    await user.type(screen.getByLabelText('Selected text content'), 'Asset line')
+    await user.click(screen.getByRole('button', { name: 'Save page as reusable asset' }))
+
+    expect(screen.getByText('Preview Text Asset line')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Apply reusable asset: sample-page-01.webp asset' }))
+
+    expect(screen.getByText('Mode Image')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Watermark layer: sample-page-01.webp asset' })).toBeInTheDocument()
+  })
+
+  it('renames duplicates deletes and restores reusable assets after reopening', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add text layer' }))
+    await user.clear(screen.getByLabelText('Selected text content'))
+    await user.type(screen.getByLabelText('Selected text content'), 'Reusable line')
+    await user.click(screen.getByRole('button', { name: 'Save page as reusable asset' }))
+
+    const assetNameInput = screen.getByDisplayValue('sample-page-01.webp asset')
+    await user.clear(assetNameInput)
+    await user.type(assetNameInput, 'Promo layout')
+    await user.click(screen.getByRole('button', { name: 'Duplicate reusable asset: Promo layout' }))
+
+    expect(screen.getByRole('button', { name: 'Apply reusable asset: Promo layout' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apply reusable asset: Promo layout copy' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Delete reusable asset: Promo layout' }))
+    expect(screen.queryByRole('button', { name: 'Apply reusable asset: Promo layout' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Save now' }))
+    unmount()
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: 'Apply reusable asset: Promo layout copy' })).toBeInTheDocument()
+    expect(screen.getByText('Preview Text Reusable line')).toBeInTheDocument()
   })
 
   it('renames the selected layer and reflects it in the inspector and layer panel', async () => {

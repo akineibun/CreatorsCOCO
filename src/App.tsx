@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent } from 'react'
 import {
   downloadBackendModel,
@@ -16,6 +16,7 @@ import {
   createZipEntryName,
   createZipExportName,
 } from './lib/export/fileNames'
+import { getBubbleClipPath, getBubbleShapeLabel, getBubbleShapeVariantNumber } from './lib/bubbleShapes'
 import { EXPORT_METADATA_POLICY_LABEL } from './lib/export/metadata'
 import { exportPageAsPdf } from './lib/export/pdfExporter'
 import { exportPageAsPng } from './lib/export/pngExporter'
@@ -26,6 +27,148 @@ import { outputPresets, selectActiveImage, toolLabels, useWorkspaceStore } from 
 const EXPORT_HISTORY_STORAGE_KEY = 'creators-coco.export-history'
 const BACKEND_SETTINGS_STORAGE_KEY = 'creators-coco.backend-settings'
 const BACKEND_ACTION_HISTORY_STORAGE_KEY = 'creators-coco.backend-action-history'
+const BACKEND_REVIEW_STATE_STORAGE_KEY = 'creators-coco.backend-review-state'
+const GLOBAL_BACKEND_REVIEW_PAGE_ID = '__workspace__'
+
+const getTemplatePreviewLines = (template: {
+  textLayers: Array<{ text: string }>
+  messageWindowLayers: Array<{ speaker: string }>
+  bubbleLayers: Array<{ text: string }>
+  mosaicLayers: Array<{ style: string }>
+  overlayLayers: Array<{ fillMode: string }>
+  watermarkLayers: Array<{ assetName: string | null; text: string }>
+}) =>
+  [
+    template.textLayers[0]?.text ? `Text ${template.textLayers[0].text}` : null,
+    template.messageWindowLayers[0]?.speaker ? `Window ${template.messageWindowLayers[0].speaker}` : null,
+    template.bubbleLayers[0]?.text ? `Bubble ${template.bubbleLayers[0].text}` : null,
+    template.mosaicLayers[0]?.style ? `Mosaic ${template.mosaicLayers[0].style}` : null,
+    template.overlayLayers[0]?.fillMode ? `Overlay ${template.overlayLayers[0].fillMode}` : null,
+    template.watermarkLayers[0] ? `Watermark ${template.watermarkLayers[0].assetName ?? template.watermarkLayers[0].text}` : null,
+  ].filter(Boolean) as string[]
+
+const getMessagePresetPreviewLines = (preset: {
+  speaker: string
+  body: string
+  frameStyle: string
+  assetName: string | null
+}) =>
+  [
+    preset.speaker ? `Speaker ${preset.speaker}` : null,
+    preset.body ? `Body ${preset.body}` : null,
+    `Frame ${preset.frameStyle}`,
+    preset.assetName ? `Asset ${preset.assetName}` : null,
+  ].filter(Boolean) as string[]
+
+const getTextPresetPreviewLines = (preset: {
+  text: string
+  fontSize: number
+  fillMode: string
+  isVertical: boolean
+  shadowEnabled: boolean
+}) =>
+  [
+    preset.text ? `Text ${preset.text}` : null,
+    `Size ${preset.fontSize}px`,
+    `Fill ${preset.fillMode}`,
+    `Direction ${preset.isVertical ? 'vertical' : 'horizontal'}`,
+    `Shadow ${preset.shadowEnabled ? 'on' : 'off'}`,
+  ].filter(Boolean) as string[]
+
+const getWatermarkPresetPreviewLines = (preset: {
+  text: string
+  assetName: string | null
+  opacity: number
+  angle: number
+  density: number
+  tiled: boolean
+}) =>
+  [
+    preset.assetName ? `Asset ${preset.assetName}` : preset.text ? `Watermark ${preset.text}` : null,
+    `Opacity ${preset.opacity.toFixed(1)}`,
+    `Angle ${preset.angle} deg`,
+    `Density ${preset.density}x`,
+    `Layout ${preset.tiled ? 'tiled' : 'single'}`,
+  ].filter(Boolean) as string[]
+
+const getBubblePresetPreviewLines = (preset: {
+  text: string
+  stylePreset: string
+  bubbleShape: string
+  tailDirection: string
+}) =>
+  [
+    preset.text ? `Bubble ${preset.text}` : null,
+    `Style ${preset.stylePreset}`,
+    `Shape ${preset.bubbleShape}`,
+    `Tail ${preset.tailDirection}`,
+  ].filter(Boolean) as string[]
+
+const getOverlayPresetPreviewLines = (preset: {
+  areaPreset: string
+  fillMode: string
+  gradientDirection: string
+  opacity: number
+}) =>
+  [
+    `Area ${preset.areaPreset}`,
+    `Fill ${preset.fillMode}`,
+    `Direction ${preset.gradientDirection}`,
+    `Opacity ${preset.opacity.toFixed(1)}`,
+  ].filter(Boolean) as string[]
+
+const getMosaicPresetPreviewLines = (preset: {
+  style: string
+  intensity: number
+  width: number
+  height: number
+}) =>
+  [
+    `Style ${preset.style}`,
+    `Intensity ${preset.intensity}`,
+    `Size ${preset.width} x ${preset.height}`,
+  ].filter(Boolean) as string[]
+
+type BackendLayerSuggestion = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+const parseBackendLayerSuggestion = (
+  value: Record<string, unknown> | null | undefined,
+  fallbackIndex: number,
+): BackendLayerSuggestion => {
+  const centerX = 420 + fallbackIndex * 160
+  const centerY = 260 + fallbackIndex * 120
+
+  const x = typeof value?.x === 'number' ? value.x : typeof value?.center_x === 'number' ? value.center_x : centerX
+  const y = typeof value?.y === 'number' ? value.y : typeof value?.center_y === 'number' ? value.center_y : centerY
+  const width =
+    typeof value?.width === 'number'
+      ? value.width
+      : typeof value?.w === 'number'
+        ? value.w
+        : typeof value?.box_width === 'number'
+          ? value.box_width
+          : 180
+  const height =
+    typeof value?.height === 'number'
+      ? value.height
+      : typeof value?.h === 'number'
+        ? value.h
+        : typeof value?.box_height === 'number'
+          ? value.box_height
+          : 120
+
+  return {
+    x,
+    y,
+    width,
+    height,
+  }
+}
 
 type ExportHistoryEntry = {
   format: 'PNG' | 'PDF' | 'ZIP'
@@ -49,6 +192,32 @@ type BackendActionState = {
   sam3AutoMosaic: string | null
   nsfwDetection: string | null
   sam3ManualSegment: string | null
+}
+
+type BackendCandidatePriority = 'low' | 'medium' | 'high'
+
+type BackendActionResultState = {
+  sam3AutoMosaic: Array<Record<string, unknown>>
+  sam3AutoMosaicSelection: boolean[]
+  sam3AutoMosaicLabel: string[]
+  sam3AutoMosaicNote: string[]
+  sam3AutoMosaicPriority: BackendCandidatePriority[]
+  sam3AutoMosaicStyle: Array<'pixelate' | 'blur' | 'noise'>
+  sam3AutoMosaicIntensity: number[]
+  nsfwDetections: Array<Record<string, unknown>>
+  nsfwDetectionSelection: boolean[]
+  nsfwDetectionLabel: string[]
+  nsfwDetectionNote: string[]
+  nsfwDetectionPriority: BackendCandidatePriority[]
+  nsfwDetectionColor: string[]
+  nsfwDetectionOpacity: number[]
+  sam3ManualSegmentMaskReady: boolean
+}
+
+type BackendReviewPageState = {
+  backendActionResults: BackendActionResultState
+  focusedSam3ReviewCandidateIndex: number | null
+  focusedNsfwReviewCandidateIndex: number | null
 }
 
 type BackendActionHistoryEntry = {
@@ -103,6 +272,30 @@ const DEFAULT_SAM3_MANUAL_SEGMENT_POINTS: Sam3SegmentPoint[] = [
   { x: 640, y: 360, label: 1 },
   { x: 1280, y: 720, label: 1 },
 ]
+
+const createEmptyBackendActionResults = (): BackendActionResultState => ({
+  sam3AutoMosaic: [],
+  sam3AutoMosaicSelection: [],
+  sam3AutoMosaicLabel: [],
+  sam3AutoMosaicNote: [],
+  sam3AutoMosaicPriority: [],
+  sam3AutoMosaicStyle: [],
+  sam3AutoMosaicIntensity: [],
+  nsfwDetections: [],
+  nsfwDetectionSelection: [],
+  nsfwDetectionLabel: [],
+  nsfwDetectionNote: [],
+  nsfwDetectionPriority: [],
+  nsfwDetectionColor: [],
+  nsfwDetectionOpacity: [],
+  sam3ManualSegmentMaskReady: false,
+})
+
+const createEmptyBackendReviewPageState = (): BackendReviewPageState => ({
+  backendActionResults: createEmptyBackendActionResults(),
+  focusedSam3ReviewCandidateIndex: null,
+  focusedNsfwReviewCandidateIndex: null,
+})
 
 const getExportPreviewLayout = (
   image: { width: number; height: number } | null,
@@ -167,6 +360,7 @@ function App() {
     null,
   )
   const [backendActionHistory, setBackendActionHistory] = useState<BackendActionHistoryEntry[]>([])
+  const [backendReviewStateByPage, setBackendReviewStateByPage] = useState<Record<string, BackendReviewPageState>>({})
   const backendPollTimeouts = useRef<Record<'sam3' | 'nudenet', ReturnType<typeof setTimeout> | null>>({
     sam3: null,
     nudenet: null,
@@ -183,6 +377,8 @@ function App() {
   const [numberPaddingDraft, setNumberPaddingDraft] = useState('2')
   const [duplicatePageTextDraft, setDuplicatePageTextDraft] = useState('Variant line')
   const [variantBatchDraft, setVariantBatchDraft] = useState('Variant A\nVariant B')
+  const [presetLibraryFilter, setPresetLibraryFilter] = useState<'all' | 'text' | 'message' | 'watermark' | 'bubble' | 'overlay' | 'mosaic' | 'template' | 'asset'>('all')
+  const [presetLibrarySearch, setPresetLibrarySearch] = useState('')
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null)
   const [layerDragState, setLayerDragState] = useState<LayerDragState | null>(null)
   const [layerResizeState, setLayerResizeState] = useState<LayerResizeState | null>(null)
@@ -201,6 +397,9 @@ function App() {
     projectName,
     recentProjects,
     templates,
+    reusableAssets,
+    textStylePresets,
+    mosaicStylePresets,
     undoStack,
     redoStack,
     saveNow,
@@ -232,6 +431,7 @@ function App() {
     duplicateActivePageWithTextVariants,
     setActivePageVariantLabel,
     saveCurrentPageAsTemplate,
+    saveCurrentPageAsReusableAsset,
     applyTemplateToActivePage,
     applyTemplateToAllPages,
     addTextLayer,
@@ -256,7 +456,15 @@ function App() {
     toggleSelectedTextLayerVertical,
     changeSelectedTextLayerOutlineWidth,
     toggleSelectedTextLayerShadow,
+    saveSelectedTextStylePreset,
+    applyTextStylePreset,
+    renameTextStylePreset,
+    duplicateTextStylePreset,
+    deleteTextStylePreset,
     messageWindowPresets,
+    watermarkStylePresets,
+    bubbleStylePresets,
+    overlayStylePresets,
     addMessageWindowLayer,
     selectMessageWindowLayer,
     updateSelectedMessageWindowSpeaker,
@@ -267,6 +475,9 @@ function App() {
     loadSelectedMessageWindowAsset,
     saveSelectedMessageWindowPreset,
     applyMessageWindowPreset,
+    renameMessageWindowPreset,
+    duplicateMessageWindowPreset,
+    deleteMessageWindowPreset,
     selectWatermarkLayer,
     updateSelectedWatermarkText,
     changeSelectedWatermarkOpacity,
@@ -277,12 +488,24 @@ function App() {
     moveSelectedWatermarkLayer,
     changeSelectedWatermarkScale,
     toggleSelectedWatermarkTileLayout,
+    saveSelectedWatermarkStylePreset,
+    applyWatermarkStylePreset,
+    renameWatermarkStylePreset,
+    duplicateWatermarkStylePreset,
+    deleteWatermarkStylePreset,
     updateSelectedBubbleLayerText,
     moveSelectedBubbleLayer,
     deleteSelectedBubbleLayer,
     resizeSelectedBubbleLayer,
     setSelectedBubbleTailDirection,
     setSelectedBubbleStylePreset,
+    setSelectedBubbleShape,
+    randomizeSelectedBubbleShape,
+    saveSelectedBubbleStylePreset,
+    applyBubbleStylePreset,
+    renameBubbleStylePreset,
+    duplicateBubbleStylePreset,
+    deleteBubbleStylePreset,
     duplicateSelectedBubbleLayer,
     moveSelectedBubbleLayerBackward,
     moveSelectedBubbleLayerForward,
@@ -296,6 +519,11 @@ function App() {
     setSelectedMosaicIntensity,
     setSelectedMosaicStyle,
     cycleSelectedMosaicStyle,
+    saveSelectedMosaicStylePreset,
+    applyMosaicStylePreset,
+    renameMosaicStylePreset,
+    duplicateMosaicStylePreset,
+    deleteMosaicStylePreset,
     duplicateSelectedMosaicLayer,
     moveSelectedMosaicLayerBackward,
     moveSelectedMosaicLayerForward,
@@ -311,10 +539,17 @@ function App() {
     setSelectedOverlayGradientFrom,
     setSelectedOverlayGradientTo,
     cycleSelectedOverlayGradientDirection,
+    saveSelectedOverlayStylePreset,
+    applyOverlayStylePreset,
+    renameOverlayStylePreset,
+    duplicateOverlayStylePreset,
+    deleteOverlayStylePreset,
     duplicateSelectedOverlayLayer,
     moveSelectedOverlayLayerBackward,
     moveSelectedOverlayLayerForward,
     deleteSelectedOverlayLayer,
+    addBackendMosaicLayers,
+    addBackendOverlayLayers,
     toggleSelectedLayerVisibility,
     toggleSelectedLayerLock,
     groupSelectedLayers,
@@ -338,6 +573,10 @@ function App() {
     renameTemplate,
     duplicateTemplate,
     deleteTemplate,
+    renameReusableAsset,
+    duplicateReusableAsset,
+    deleteReusableAsset,
+    applyReusableAssetToActivePage,
     undo,
     redo,
     selectBaseImageLayer,
@@ -346,6 +585,47 @@ function App() {
     zoomIn,
     zoomOut,
   } = useWorkspaceStore()
+  const backendReviewPageId = activePageId ?? GLOBAL_BACKEND_REVIEW_PAGE_ID
+  const backendReviewPageState = backendReviewStateByPage[backendReviewPageId] ?? createEmptyBackendReviewPageState()
+  const backendActionResults = backendReviewPageState.backendActionResults
+  const focusedSam3ReviewCandidateIndex = backendReviewPageState.focusedSam3ReviewCandidateIndex
+  const focusedNsfwReviewCandidateIndex = backendReviewPageState.focusedNsfwReviewCandidateIndex
+  const updateActiveBackendReviewState = useCallback(
+    (updater: (state: BackendReviewPageState) => BackendReviewPageState) => {
+      setBackendReviewStateByPage((current) => ({
+        ...current,
+        [backendReviewPageId]: updater(current[backendReviewPageId] ?? createEmptyBackendReviewPageState()),
+      }))
+    },
+    [backendReviewPageId],
+  )
+  const updateActiveBackendActionResults = useCallback(
+    (updater: (state: BackendActionResultState) => BackendActionResultState) => {
+      updateActiveBackendReviewState((current) => ({
+        ...current,
+        backendActionResults: updater(current.backendActionResults),
+      }))
+    },
+    [updateActiveBackendReviewState],
+  )
+  const setActiveFocusedSam3ReviewCandidateIndex = useCallback(
+    (index: number | null) => {
+      updateActiveBackendReviewState((current) => ({
+        ...current,
+        focusedSam3ReviewCandidateIndex: index,
+      }))
+    },
+    [updateActiveBackendReviewState],
+  )
+  const setActiveFocusedNsfwReviewCandidateIndex = useCallback(
+    (index: number | null) => {
+      updateActiveBackendReviewState((current) => ({
+        ...current,
+        focusedNsfwReviewCandidateIndex: index,
+      }))
+    },
+    [updateActiveBackendReviewState],
+  )
   const image = selectActiveImage({ pages, activePageId })
   const activeTextLayer =
     image && selectedLayerId && selectedLayerId !== 'base-image'
@@ -379,10 +659,32 @@ function App() {
   const getMosaicLayerLabel = (layer: any) => layer.name?.trim() || `${layer.style} ${layer.intensity}`
   const getOverlayLayerLabel = (layer: any) => layer.name?.trim() || layer.opacity.toFixed(1)
   const getWatermarkLayerLabel = (layer: any) => layer.name?.trim() || layer.assetName || layer.text
+  const activeBubbleShape = activeBubbleLayer?.bubbleShape ?? 'round'
+  const activeBubbleShapeVariant = getBubbleShapeVariantNumber(activeBubbleLayer?.shapeSeed ?? 0)
   const selectedBackendManualSegmentPoint =
     backendManualSegmentPoints[selectedBackendManualSegmentPointIndex] ??
     backendManualSegmentPoints[backendManualSegmentPoints.length - 1] ??
     null
+  const getSam3CandidateRawLabel = (index: number) => backendActionResults.sam3AutoMosaicLabel[index]
+  const getSam3CandidateCardLabel = (index: number) =>
+    getSam3CandidateRawLabel(index)?.trim() || `SAM3 candidate ${index + 1}`
+  const getSam3CandidateInputLabel = (index: number) => getSam3CandidateRawLabel(index) ?? `SAM3 candidate ${index + 1}`
+  const getSam3CandidateLayerName = (index: number) =>
+    getSam3CandidateRawLabel(index)?.trim() || `SAM3 mask ${index + 1}`
+  const getSam3CandidateRawNote = (index: number) => backendActionResults.sam3AutoMosaicNote[index]
+  const getSam3CandidateInputNote = (index: number) => getSam3CandidateRawNote(index) ?? ''
+  const getSam3CandidateCardNote = (index: number) => getSam3CandidateRawNote(index)?.trim() || 'No note'
+  const getSam3CandidatePriority = (index: number) => backendActionResults.sam3AutoMosaicPriority[index] ?? 'medium'
+  const getNsfwCandidateRawLabel = (index: number) => backendActionResults.nsfwDetectionLabel[index]
+  const getNsfwCandidateCardLabel = (index: number) =>
+    getNsfwCandidateRawLabel(index)?.trim() || `NSFW candidate ${index + 1}`
+  const getNsfwCandidateInputLabel = (index: number) => getNsfwCandidateRawLabel(index) ?? `NSFW candidate ${index + 1}`
+  const getNsfwCandidateLayerName = (index: number) =>
+    getNsfwCandidateRawLabel(index)?.trim() || `NSFW region ${index + 1}`
+  const getNsfwCandidateRawNote = (index: number) => backendActionResults.nsfwDetectionNote[index]
+  const getNsfwCandidateInputNote = (index: number) => getNsfwCandidateRawNote(index) ?? ''
+  const getNsfwCandidateCardNote = (index: number) => getNsfwCandidateRawNote(index)?.trim() || 'No note'
+  const getNsfwCandidatePriority = (index: number) => backendActionResults.nsfwDetectionPriority[index] ?? 'medium'
   const previewBackendManualSegmentPoints = backendManualSegmentPoints.map((point, index) =>
     backendManualPointDragState && backendManualPointDragState.index === index
       ? {
@@ -392,6 +694,28 @@ function App() {
         }
       : point,
   )
+  const previewSam3ReviewCandidates = backendActionResults.sam3AutoMosaic.map((mask, index) => ({
+    ...parseBackendLayerSuggestion(mask, index),
+    index,
+    selected: backendActionResults.sam3AutoMosaicSelection[index] !== false,
+    focused: focusedSam3ReviewCandidateIndex === index,
+    label: getSam3CandidateCardLabel(index),
+    note: getSam3CandidateCardNote(index),
+    priority: getSam3CandidatePriority(index),
+    style: backendActionResults.sam3AutoMosaicStyle[index] ?? 'pixelate',
+    intensity: backendActionResults.sam3AutoMosaicIntensity[index] ?? 16,
+  }))
+  const previewNsfwReviewCandidates = backendActionResults.nsfwDetections.map((detection, index) => ({
+    ...parseBackendLayerSuggestion(detection, index),
+    index,
+    selected: backendActionResults.nsfwDetectionSelection[index] !== false,
+    focused: focusedNsfwReviewCandidateIndex === index,
+    label: getNsfwCandidateCardLabel(index),
+    note: getNsfwCandidateCardNote(index),
+    priority: getNsfwCandidatePriority(index),
+    color: backendActionResults.nsfwDetectionColor[index] ?? '#ff4d6d',
+    opacity: backendActionResults.nsfwDetectionOpacity[index] ?? 0.4,
+  }))
   const activeLayerGroupId =
     activeTextLayer?.groupId ??
     activeMessageWindowLayer?.groupId ??
@@ -416,6 +740,9 @@ function App() {
   const activePageVariantLabel = image?.variantLabel?.trim() ?? ''
   const activePageVariantSourceLabel =
     image?.variantSourcePageId && image.variantSourcePageId !== image.id ? image.variantSourcePageId : null
+  const presetSearchQuery = presetLibrarySearch.trim().toLowerCase()
+  const matchesPresetSearch = (...values: Array<string | null | undefined>) =>
+    presetSearchQuery.length === 0 || values.some((value) => value?.toLowerCase().includes(presetSearchQuery))
   const pngPreviewName = image ? createPngExportName(image.name, outputSettings, activePageIndex) : 'No active page'
   const pdfPreviewName = image ? createPdfExportName(image.name, outputSettings, activePageIndex) : 'No active page'
   const zipPreviewName = pageCount > 0 ? createZipExportName(outputSettings, pageCount) : 'No pages loaded'
@@ -721,6 +1048,19 @@ function App() {
     try {
       const response = await runSam3AutoMosaic(image.src, backendSam3ModelSize, backendAutoMosaicStrength)
       const resultLabel = `SAM3 auto mosaic ready with ${response.masks.length} mask${response.masks.length === 1 ? '' : 's'}`
+      updateActiveBackendActionResults((current) => ({
+        ...current,
+        sam3AutoMosaic: response.masks,
+        sam3AutoMosaicSelection: response.masks.map(() => true),
+        sam3AutoMosaicLabel: response.masks.map((_, index) => `SAM3 mask ${index + 1}`),
+        sam3AutoMosaicNote: response.masks.map(() => ''),
+        sam3AutoMosaicPriority: response.masks.map(() => 'medium'),
+        sam3AutoMosaicStyle: response.masks.map(() => 'pixelate'),
+        sam3AutoMosaicIntensity: response.masks.map(() =>
+          backendAutoMosaicStrength === 'light' ? 8 : backendAutoMosaicStrength === 'strong' ? 24 : 16,
+        ),
+      }))
+      setActiveFocusedSam3ReviewCandidateIndex(response.masks.length > 0 ? 0 : null)
       setBackendActions((current) => ({
         ...current,
         sam3AutoMosaic: resultLabel,
@@ -747,6 +1087,17 @@ function App() {
     try {
       const response = await runNsfwDetection(image.src, Number.parseFloat(backendNsfwThreshold) || 0.7)
       const resultLabel = `NSFW detection found ${response.detections.length} region${response.detections.length === 1 ? '' : 's'}`
+      updateActiveBackendActionResults((current) => ({
+        ...current,
+        nsfwDetections: response.detections,
+        nsfwDetectionSelection: response.detections.map(() => true),
+        nsfwDetectionLabel: response.detections.map((_, index) => `NSFW region ${index + 1}`),
+        nsfwDetectionNote: response.detections.map(() => ''),
+        nsfwDetectionPriority: response.detections.map(() => 'medium'),
+        nsfwDetectionColor: response.detections.map(() => '#ff4d6d'),
+        nsfwDetectionOpacity: response.detections.map(() => 0.4),
+      }))
+      setActiveFocusedNsfwReviewCandidateIndex(response.detections.length > 0 ? 0 : null)
       setBackendActions((current) => ({
         ...current,
         nsfwDetection: resultLabel,
@@ -775,6 +1126,10 @@ function App() {
       const resultLabel = `SAM3 manual segment ready with ${backendManualSegmentPoints.length} point${
         backendManualSegmentPoints.length === 1 ? '' : 's'
       }`
+      updateActiveBackendActionResults((current) => ({
+        ...current,
+        sam3ManualSegmentMaskReady: true,
+      }))
       setBackendActions((current) => ({
         ...current,
         sam3ManualSegment: resultLabel,
@@ -786,6 +1141,350 @@ function App() {
         sam3ManualSegment: 'SAM3 manual segment failed',
       }))
     }
+  }
+
+  const applyBackendSam3AutoMosaicToCanvas = () => {
+    const suggestions = backendActionResults.sam3AutoMosaic
+      .map((mask, index) => ({ mask, index }))
+      .filter(({ index }) => backendActionResults.sam3AutoMosaicSelection[index] !== false)
+      .map(({ mask, index }) => {
+        const bounds = parseBackendLayerSuggestion(mask, index)
+        return {
+          ...bounds,
+          intensity: backendActionResults.sam3AutoMosaicIntensity[index] ?? 16,
+          style: backendActionResults.sam3AutoMosaicStyle[index] ?? 'pixelate',
+          name: getSam3CandidateLayerName(index),
+        }
+      })
+
+    if (suggestions.length === 0) {
+      return
+    }
+
+    addBackendMosaicLayers(suggestions)
+    setBackendActions((current) => ({
+      ...current,
+      sam3AutoMosaic: `${current.sam3AutoMosaic ?? 'SAM3 auto mosaic ready'} applied to ${suggestions.length} mosaic layer${suggestions.length === 1 ? '' : 's'}`,
+    }))
+  }
+
+  const applyBackendNsfwDetectionsToCanvas = () => {
+    const suggestions = backendActionResults.nsfwDetections
+      .map((detection, index) => ({ detection, index }))
+      .filter(({ index }) => backendActionResults.nsfwDetectionSelection[index] !== false)
+      .map(({ detection, index }) => {
+        const bounds = parseBackendLayerSuggestion(detection, index)
+        const color = backendActionResults.nsfwDetectionColor[index] ?? '#ff4d6d'
+        return {
+          ...bounds,
+          color,
+          opacity: backendActionResults.nsfwDetectionOpacity[index] ?? 0.4,
+          fillMode: 'gradient' as const,
+          gradientFrom: color,
+          gradientTo: '#111111',
+          gradientDirection: 'vertical' as const,
+          name: getNsfwCandidateLayerName(index),
+        }
+      })
+
+    if (suggestions.length === 0) {
+      return
+    }
+
+    addBackendOverlayLayers(suggestions)
+    setBackendActions((current) => ({
+      ...current,
+      nsfwDetection: `${current.nsfwDetection ?? 'NSFW detection ready'} applied to ${suggestions.length} overlay layer${suggestions.length === 1 ? '' : 's'}`,
+    }))
+  }
+
+  const applyBackendSam3ManualSegmentToCanvas = () => {
+    const positivePoints = backendManualSegmentPoints.filter((point) => point.label === 1)
+    const fallbackX = positivePoints.reduce((sum, point) => sum + point.x, 0) / Math.max(1, positivePoints.length)
+    const fallbackY = positivePoints.reduce((sum, point) => sum + point.y, 0) / Math.max(1, positivePoints.length)
+
+    addBackendMosaicLayers([
+      {
+        x: Number.isFinite(fallbackX) ? fallbackX : 960,
+        y: Number.isFinite(fallbackY) ? fallbackY : 540,
+        width: 240,
+        height: 160,
+        intensity: backendSam3ModelSize === 'large' ? 24 : 16,
+        style: 'blur',
+        name: 'SAM3 manual segment',
+      },
+    ])
+    setBackendActions((current) => ({
+      ...current,
+      sam3ManualSegment: `${current.sam3ManualSegment ?? 'SAM3 manual segment ready'} applied to canvas`,
+    }))
+  }
+
+  const toggleBackendSam3AutoMosaicSelection = (index: number) => {
+    setActiveFocusedSam3ReviewCandidateIndex(index)
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      sam3AutoMosaicSelection: current.sam3AutoMosaicSelection.map((selected, currentIndex) =>
+        currentIndex === index ? !selected : selected,
+      ),
+    }))
+  }
+
+  const setAllBackendSam3AutoMosaicSelection = (selected: boolean) => {
+    setActiveFocusedSam3ReviewCandidateIndex(selected && backendActionResults.sam3AutoMosaicSelection.length > 0 ? 0 : null)
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      sam3AutoMosaicSelection: current.sam3AutoMosaicSelection.map(() => selected),
+    }))
+  }
+
+  const toggleBackendNsfwDetectionSelection = (index: number) => {
+    setActiveFocusedNsfwReviewCandidateIndex(index)
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      nsfwDetectionSelection: current.nsfwDetectionSelection.map((selected, currentIndex) =>
+        currentIndex === index ? !selected : selected,
+      ),
+    }))
+  }
+
+  const setAllBackendNsfwDetectionSelection = (selected: boolean) => {
+    setActiveFocusedNsfwReviewCandidateIndex(selected && backendActionResults.nsfwDetectionSelection.length > 0 ? 0 : null)
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      nsfwDetectionSelection: current.nsfwDetectionSelection.map(() => selected),
+    }))
+  }
+
+  const cycleFocusedBackendSam3AutoMosaicStyle = () => {
+    if (focusedSam3ReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      sam3AutoMosaicStyle: current.sam3AutoMosaicStyle.map((style, index) =>
+        index === focusedSam3ReviewCandidateIndex
+          ? style === 'pixelate'
+            ? 'blur'
+            : style === 'blur'
+              ? 'noise'
+              : 'pixelate'
+          : style,
+      ),
+    }))
+  }
+
+  const increaseFocusedBackendSam3AutoMosaicIntensity = () => {
+    if (focusedSam3ReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      sam3AutoMosaicIntensity: current.sam3AutoMosaicIntensity.map((intensity, index) =>
+        index === focusedSam3ReviewCandidateIndex ? Math.min(64, intensity + 8) : intensity,
+      ),
+    }))
+  }
+
+  const cycleFocusedBackendNsfwDetectionColor = () => {
+    if (focusedNsfwReviewCandidateIndex === null) {
+      return
+    }
+
+    const palette = ['#ff4d6d', '#ff9f1c', '#44ccff']
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      nsfwDetectionColor: current.nsfwDetectionColor.map((color, index) =>
+        index === focusedNsfwReviewCandidateIndex
+          ? palette[(palette.indexOf(color) + 1 + palette.length) % palette.length] ?? palette[0]
+          : color,
+      ),
+    }))
+  }
+
+  const increaseFocusedBackendNsfwDetectionOpacity = () => {
+    if (focusedNsfwReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      nsfwDetectionOpacity: current.nsfwDetectionOpacity.map((opacity, index) =>
+        index === focusedNsfwReviewCandidateIndex ? Math.min(1, Math.round((opacity + 0.1) * 10) / 10) : opacity,
+      ),
+    }))
+  }
+
+  const renameFocusedBackendSam3Candidate = (label: string) => {
+    if (focusedSam3ReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      sam3AutoMosaicLabel: current.sam3AutoMosaic.map((_, index) =>
+        index === focusedSam3ReviewCandidateIndex
+          ? label
+          : (current.sam3AutoMosaicLabel[index] ?? `SAM3 mask ${index + 1}`),
+      ),
+    }))
+  }
+
+  const updateFocusedBackendSam3CandidateNote = (note: string) => {
+    if (focusedSam3ReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      sam3AutoMosaicNote: current.sam3AutoMosaic.map((_, index) =>
+        index === focusedSam3ReviewCandidateIndex ? note : (current.sam3AutoMosaicNote[index] ?? ''),
+      ),
+    }))
+  }
+
+  const applyFocusedBackendSam3SettingsToSelected = () => {
+    if (focusedSam3ReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => {
+      const focusedStyle = current.sam3AutoMosaicStyle[focusedSam3ReviewCandidateIndex] ?? 'pixelate'
+      const focusedIntensity = current.sam3AutoMosaicIntensity[focusedSam3ReviewCandidateIndex] ?? 16
+      const focusedNote = current.sam3AutoMosaicNote[focusedSam3ReviewCandidateIndex] ?? ''
+
+      return {
+        ...current,
+        sam3AutoMosaicStyle: current.sam3AutoMosaicStyle.map((style, index) =>
+          current.sam3AutoMosaicSelection[index] !== false ? focusedStyle : style,
+        ),
+        sam3AutoMosaicIntensity: current.sam3AutoMosaicIntensity.map((intensity, index) =>
+          current.sam3AutoMosaicSelection[index] !== false ? focusedIntensity : intensity,
+        ),
+        sam3AutoMosaicNote: current.sam3AutoMosaic.map((_, index) =>
+          current.sam3AutoMosaicSelection[index] !== false ? focusedNote : (current.sam3AutoMosaicNote[index] ?? ''),
+        ),
+      }
+    })
+  }
+
+  const cycleFocusedBackendSam3Priority = () => {
+    if (focusedSam3ReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      sam3AutoMosaicPriority: current.sam3AutoMosaic.map((_, index) => {
+        const currentPriority = current.sam3AutoMosaicPriority[index] ?? 'medium'
+        if (index !== focusedSam3ReviewCandidateIndex) {
+          return currentPriority
+        }
+
+        return currentPriority === 'low' ? 'medium' : currentPriority === 'medium' ? 'high' : 'low'
+      }),
+    }))
+  }
+
+  const selectBackendSam3CandidatesByPriority = (priority: BackendCandidatePriority) => {
+    setActiveFocusedSam3ReviewCandidateIndex(
+      backendActionResults.sam3AutoMosaic.findIndex((_, index) => getSam3CandidatePriority(index) === priority) >= 0
+        ? backendActionResults.sam3AutoMosaic.findIndex((_, index) => getSam3CandidatePriority(index) === priority)
+        : null,
+    )
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      sam3AutoMosaicSelection: current.sam3AutoMosaic.map(
+        (_, index) => (current.sam3AutoMosaicPriority[index] ?? 'medium') === priority,
+      ),
+    }))
+  }
+
+  const renameFocusedBackendNsfwCandidate = (label: string) => {
+    if (focusedNsfwReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      nsfwDetectionLabel: current.nsfwDetections.map((_, index) =>
+        index === focusedNsfwReviewCandidateIndex
+          ? label
+          : (current.nsfwDetectionLabel[index] ?? `NSFW region ${index + 1}`),
+      ),
+    }))
+  }
+
+  const updateFocusedBackendNsfwCandidateNote = (note: string) => {
+    if (focusedNsfwReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      nsfwDetectionNote: current.nsfwDetections.map((_, index) =>
+        index === focusedNsfwReviewCandidateIndex ? note : (current.nsfwDetectionNote[index] ?? ''),
+      ),
+    }))
+  }
+
+  const applyFocusedBackendNsfwSettingsToSelected = () => {
+    if (focusedNsfwReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => {
+      const focusedColor = current.nsfwDetectionColor[focusedNsfwReviewCandidateIndex] ?? '#ff4d6d'
+      const focusedOpacity = current.nsfwDetectionOpacity[focusedNsfwReviewCandidateIndex] ?? 0.4
+      const focusedNote = current.nsfwDetectionNote[focusedNsfwReviewCandidateIndex] ?? ''
+
+      return {
+        ...current,
+        nsfwDetectionColor: current.nsfwDetectionColor.map((color, index) =>
+          current.nsfwDetectionSelection[index] !== false ? focusedColor : color,
+        ),
+        nsfwDetectionOpacity: current.nsfwDetectionOpacity.map((opacity, index) =>
+          current.nsfwDetectionSelection[index] !== false ? focusedOpacity : opacity,
+        ),
+        nsfwDetectionNote: current.nsfwDetections.map((_, index) =>
+          current.nsfwDetectionSelection[index] !== false ? focusedNote : (current.nsfwDetectionNote[index] ?? ''),
+        ),
+      }
+    })
+  }
+
+  const cycleFocusedBackendNsfwPriority = () => {
+    if (focusedNsfwReviewCandidateIndex === null) {
+      return
+    }
+
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      nsfwDetectionPriority: current.nsfwDetections.map((_, index) => {
+        const currentPriority = current.nsfwDetectionPriority[index] ?? 'medium'
+        if (index !== focusedNsfwReviewCandidateIndex) {
+          return currentPriority
+        }
+
+        return currentPriority === 'low' ? 'medium' : currentPriority === 'medium' ? 'high' : 'low'
+      }),
+    }))
+  }
+
+  const selectBackendNsfwCandidatesByPriority = (priority: BackendCandidatePriority) => {
+    setActiveFocusedNsfwReviewCandidateIndex(
+      backendActionResults.nsfwDetections.findIndex((_, index) => getNsfwCandidatePriority(index) === priority) >= 0
+        ? backendActionResults.nsfwDetections.findIndex((_, index) => getNsfwCandidatePriority(index) === priority)
+        : null,
+    )
+    updateActiveBackendActionResults((current) => ({
+      ...current,
+      nsfwDetectionSelection: current.nsfwDetections.map(
+        (_, index) => (current.nsfwDetectionPriority[index] ?? 'medium') === priority,
+      ),
+    }))
   }
 
   const addBackendManualSegmentPoint = () => {
@@ -1199,6 +1898,125 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(BACKEND_ACTION_HISTORY_STORAGE_KEY, JSON.stringify(backendActionHistory))
   }, [backendActionHistory])
+
+  useEffect(() => {
+    const storedReviewState = window.localStorage.getItem(BACKEND_REVIEW_STATE_STORAGE_KEY)
+
+    if (!storedReviewState) {
+      return
+    }
+
+    try {
+      const parsedReviewState = JSON.parse(storedReviewState) as {
+        pages?: Record<
+          string,
+          {
+            backendActionResults?: Partial<BackendActionResultState>
+            focusedSam3ReviewCandidateIndex?: number | null
+            focusedNsfwReviewCandidateIndex?: number | null
+          }
+        >
+        backendActionResults?: Partial<BackendActionResultState>
+        focusedSam3ReviewCandidateIndex?: number | null
+        focusedNsfwReviewCandidateIndex?: number | null
+      }
+
+      const normalizeBackendActionResults = (
+        rawResults: Partial<BackendActionResultState> | undefined,
+      ): BackendActionResultState => {
+        const fallback = createEmptyBackendActionResults()
+
+        return {
+          sam3AutoMosaic: Array.isArray(rawResults?.sam3AutoMosaic) ? rawResults.sam3AutoMosaic : fallback.sam3AutoMosaic,
+          sam3AutoMosaicSelection: Array.isArray(rawResults?.sam3AutoMosaicSelection)
+            ? rawResults.sam3AutoMosaicSelection
+            : fallback.sam3AutoMosaicSelection,
+          sam3AutoMosaicLabel: Array.isArray(rawResults?.sam3AutoMosaicLabel)
+            ? rawResults.sam3AutoMosaicLabel.map((label) => (typeof label === 'string' ? label : ''))
+            : fallback.sam3AutoMosaicLabel,
+          sam3AutoMosaicNote: Array.isArray(rawResults?.sam3AutoMosaicNote)
+            ? rawResults.sam3AutoMosaicNote.map((note) => (typeof note === 'string' ? note : ''))
+            : fallback.sam3AutoMosaicNote,
+          sam3AutoMosaicPriority: Array.isArray(rawResults?.sam3AutoMosaicPriority)
+            ? rawResults.sam3AutoMosaicPriority.map((priority) =>
+                priority === 'low' || priority === 'high' ? priority : 'medium',
+              )
+            : fallback.sam3AutoMosaicPriority,
+          sam3AutoMosaicStyle: Array.isArray(rawResults?.sam3AutoMosaicStyle)
+            ? rawResults.sam3AutoMosaicStyle
+            : fallback.sam3AutoMosaicStyle,
+          sam3AutoMosaicIntensity: Array.isArray(rawResults?.sam3AutoMosaicIntensity)
+            ? rawResults.sam3AutoMosaicIntensity
+            : fallback.sam3AutoMosaicIntensity,
+          nsfwDetections: Array.isArray(rawResults?.nsfwDetections) ? rawResults.nsfwDetections : fallback.nsfwDetections,
+          nsfwDetectionSelection: Array.isArray(rawResults?.nsfwDetectionSelection)
+            ? rawResults.nsfwDetectionSelection
+            : fallback.nsfwDetectionSelection,
+          nsfwDetectionLabel: Array.isArray(rawResults?.nsfwDetectionLabel)
+            ? rawResults.nsfwDetectionLabel.map((label) => (typeof label === 'string' ? label : ''))
+            : fallback.nsfwDetectionLabel,
+          nsfwDetectionNote: Array.isArray(rawResults?.nsfwDetectionNote)
+            ? rawResults.nsfwDetectionNote.map((note) => (typeof note === 'string' ? note : ''))
+            : fallback.nsfwDetectionNote,
+          nsfwDetectionPriority: Array.isArray(rawResults?.nsfwDetectionPriority)
+            ? rawResults.nsfwDetectionPriority.map((priority) =>
+                priority === 'low' || priority === 'high' ? priority : 'medium',
+              )
+            : fallback.nsfwDetectionPriority,
+          nsfwDetectionColor: Array.isArray(rawResults?.nsfwDetectionColor)
+            ? rawResults.nsfwDetectionColor
+            : fallback.nsfwDetectionColor,
+          nsfwDetectionOpacity: Array.isArray(rawResults?.nsfwDetectionOpacity)
+            ? rawResults.nsfwDetectionOpacity
+            : fallback.nsfwDetectionOpacity,
+          sam3ManualSegmentMaskReady:
+            typeof rawResults?.sam3ManualSegmentMaskReady === 'boolean'
+              ? rawResults.sam3ManualSegmentMaskReady
+              : fallback.sam3ManualSegmentMaskReady,
+        }
+      }
+
+      const normalizeBackendReviewPageState = (rawPageState: {
+        backendActionResults?: Partial<BackendActionResultState>
+        focusedSam3ReviewCandidateIndex?: number | null
+        focusedNsfwReviewCandidateIndex?: number | null
+      }): BackendReviewPageState => ({
+        backendActionResults: normalizeBackendActionResults(rawPageState.backendActionResults),
+        focusedSam3ReviewCandidateIndex:
+          typeof rawPageState.focusedSam3ReviewCandidateIndex === 'number' ||
+          rawPageState.focusedSam3ReviewCandidateIndex === null
+            ? rawPageState.focusedSam3ReviewCandidateIndex
+            : null,
+        focusedNsfwReviewCandidateIndex:
+          typeof rawPageState.focusedNsfwReviewCandidateIndex === 'number' ||
+          rawPageState.focusedNsfwReviewCandidateIndex === null
+            ? rawPageState.focusedNsfwReviewCandidateIndex
+            : null,
+      })
+
+      if (parsedReviewState.pages && typeof parsedReviewState.pages === 'object') {
+        const normalizedPages = Object.fromEntries(
+          Object.entries(parsedReviewState.pages).map(([pageId, state]) => [pageId, normalizeBackendReviewPageState(state)]),
+        )
+        setBackendReviewStateByPage(normalizedPages)
+      } else {
+        setBackendReviewStateByPage({
+          [GLOBAL_BACKEND_REVIEW_PAGE_ID]: normalizeBackendReviewPageState(parsedReviewState),
+        })
+      }
+    } catch {
+      window.localStorage.removeItem(BACKEND_REVIEW_STATE_STORAGE_KEY)
+    }
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      BACKEND_REVIEW_STATE_STORAGE_KEY,
+      JSON.stringify({
+        pages: backendReviewStateByPage,
+      }),
+    )
+  }, [backendReviewStateByPage])
 
   const getCanvasCoordinatesFromRect = (clientX: number, clientY: number, rect: DOMRect | Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>) => {
     const relativeX = rect.width > 0 ? (clientX - rect.left) / rect.width : 0
@@ -1815,6 +2633,9 @@ function App() {
               <button type="button" onClick={saveCurrentPageAsTemplate} disabled={!image}>
                 Save page as template
               </button>
+              <button type="button" onClick={saveCurrentPageAsReusableAsset} disabled={!image}>
+                Save page as reusable asset
+              </button>
               <button type="button" onClick={handleExportPng} disabled={!image}>
                 Export PNG
               </button>
@@ -1994,7 +2815,15 @@ function App() {
                         top: `${layer.y / 10}%`,
                         width: `${Math.max(120, Math.round(layer.width * 0.3))}px`,
                         minHeight: `${Math.max(72, Math.round(layer.height * 0.3))}px`,
-                        borderRadius: layer.stylePreset === 'thought' ? '40%' : '999px',
+                        borderRadius:
+                          (layer.bubbleShape ?? 'round') === 'rounded-rect'
+                            ? '22px'
+                            : (layer.bubbleShape ?? 'round') === 'round'
+                              ? '999px'
+                              : layer.stylePreset === 'thought'
+                                ? '40%'
+                                : '12px',
+                        clipPath: getBubbleClipPath(layer.bubbleShape ?? 'round', layer.shapeSeed ?? 0),
                         background: layer.fillColor,
                         borderColor: layer.borderColor,
                       }}
@@ -2003,6 +2832,7 @@ function App() {
                       aria-label={`Select bubble layer: ${layer.text}`}
                     >
                       {layer.text}
+                      <small>{`${getBubbleShapeLabel(layer.bubbleShape ?? 'round')} v${getBubbleShapeVariantNumber(layer.shapeSeed ?? 0)}`}</small>
                     </button>
                   ))}
                   {image.mosaicLayers.filter((layer) => layer.visible).map((layer) => (
@@ -2055,6 +2885,76 @@ function App() {
                       aria-label={`Select overlay layer ${layer.opacity}`}
                     >
                       Overlay
+                    </button>
+                  ))}
+                  {previewSam3ReviewCandidates.map((candidate) => (
+                    <button
+                      key={`sam3-review-preview-${candidate.index}`}
+                      type="button"
+                      className={
+                        candidate.focused
+                          ? candidate.selected
+                            ? 'backend-review-preview sam3 selected focused'
+                            : 'backend-review-preview sam3 focused'
+                          : candidate.selected
+                            ? 'backend-review-preview sam3 selected'
+                            : 'backend-review-preview sam3'
+                      }
+                      style={{
+                        left: `${(candidate.x / 1920) * 100}%`,
+                        top: `${(candidate.y / 1080) * 100}%`,
+                        width: `${(candidate.width / 1920) * 100}%`,
+                        height: `${(candidate.height / 1080) * 100}%`,
+                        background:
+                          candidate.style === 'blur'
+                            ? 'rgba(255, 215, 177, 0.38)'
+                            : candidate.style === 'noise'
+                              ? 'repeating-linear-gradient(45deg, rgba(255, 215, 177, 0.36), rgba(255, 215, 177, 0.36) 6px, rgba(36, 27, 21, 0.1) 6px, rgba(36, 27, 21, 0.1) 12px)'
+                              : 'repeating-linear-gradient(90deg, rgba(255, 215, 177, 0.34), rgba(255, 215, 177, 0.34) 8px, rgba(36, 27, 21, 0.08) 8px, rgba(36, 27, 21, 0.08) 16px)',
+                        backgroundSize: `${Math.max(6, candidate.intensity)}px ${Math.max(6, candidate.intensity)}px`,
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setActiveFocusedSam3ReviewCandidateIndex(candidate.index)
+                      }}
+                      aria-label={`SAM3 review preview ${candidate.index + 1}: ${candidate.selected ? 'selected' : 'skipped'}${candidate.focused ? ' focused' : ''}`}
+                      data-style={candidate.style}
+                      data-intensity={String(candidate.intensity)}
+                    >
+                      <span>{`SAM3 ${candidate.index + 1} ${candidate.style}`}</span>
+                    </button>
+                  ))}
+                  {previewNsfwReviewCandidates.map((candidate) => (
+                    <button
+                      key={`nsfw-review-preview-${candidate.index}`}
+                      type="button"
+                      className={
+                        candidate.focused
+                          ? candidate.selected
+                            ? 'backend-review-preview nsfw selected focused'
+                            : 'backend-review-preview nsfw focused'
+                          : candidate.selected
+                            ? 'backend-review-preview nsfw selected'
+                            : 'backend-review-preview nsfw'
+                      }
+                      style={{
+                        left: `${(candidate.x / 1920) * 100}%`,
+                        top: `${(candidate.y / 1080) * 100}%`,
+                        width: `${(candidate.width / 1920) * 100}%`,
+                        height: `${(candidate.height / 1080) * 100}%`,
+                        borderColor: candidate.color,
+                        background: `${candidate.color}22`,
+                        opacity: candidate.opacity,
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setActiveFocusedNsfwReviewCandidateIndex(candidate.index)
+                      }}
+                      aria-label={`NSFW review preview ${candidate.index + 1}: ${candidate.selected ? 'selected' : 'skipped'}${candidate.focused ? ' focused' : ''}`}
+                      data-color={candidate.color}
+                      data-opacity={candidate.opacity.toFixed(1)}
+                    >
+                      <span>{`NSFW ${candidate.index + 1}`}</span>
                     </button>
                   ))}
                   {image.watermarkLayers.map((layer) => (
@@ -2430,6 +3330,18 @@ function App() {
                     <button type="button" onClick={toggleSelectedTextLayerShadow}>
                       Toggle text shadow
                     </button>
+                    <button type="button" onClick={saveSelectedTextStylePreset}>
+                      Save text preset
+                    </button>
+                    {textStylePresets.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => applyTextStylePreset(preset.id)}
+                      >
+                        {`Apply text preset: ${preset.label}`}
+                      </button>
+                    ))}
                     <button type="button" onClick={moveSelectedTextLayerBackward}>
                       Send text backward
                     </button>
@@ -2568,6 +3480,22 @@ function App() {
                     <button type="button" onClick={toggleSelectedWatermarkTileLayout}>
                       Toggle watermark tile layout
                     </button>
+                    <button type="button" onClick={saveSelectedWatermarkStylePreset}>
+                      Save watermark preset
+                    </button>
+                    {watermarkStylePresets.length > 0 ? (
+                      <div className="selection-controls">
+                        {watermarkStylePresets.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => applyWatermarkStylePreset(preset.id)}
+                          >
+                            {`Apply watermark preset: ${preset.label}`}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {activeBubbleLayer ? (
@@ -2643,6 +3571,24 @@ function App() {
                     <button type="button" onClick={() => setSelectedBubbleStylePreset('thought')}>
                       Style thought
                     </button>
+                    <button type="button" onClick={() => setSelectedBubbleShape('round')}>
+                      Shape round
+                    </button>
+                    <button type="button" onClick={() => setSelectedBubbleShape('rounded-rect')}>
+                      Shape rounded rect
+                    </button>
+                    <button type="button" onClick={() => setSelectedBubbleShape('spiky')}>
+                      Shape spiky
+                    </button>
+                    <button type="button" onClick={() => setSelectedBubbleShape('cloud')}>
+                      Shape cloud
+                    </button>
+                    <button type="button" onClick={() => setSelectedBubbleShape('urchin')}>
+                      Shape urchin
+                    </button>
+                    <button type="button" onClick={randomizeSelectedBubbleShape}>
+                      Randomize bubble shape
+                    </button>
                     <button type="button" onClick={moveSelectedBubbleLayerBackward}>
                       Send bubble backward
                     </button>
@@ -2652,6 +3598,18 @@ function App() {
                     <button type="button" onClick={duplicateSelectedBubbleLayer}>
                       Duplicate bubble layer
                     </button>
+                    <button type="button" onClick={saveSelectedBubbleStylePreset}>
+                      Save bubble preset
+                    </button>
+                    {bubbleStylePresets.length > 0 ? (
+                      <div className="selection-controls">
+                        {bubbleStylePresets.map((preset) => (
+                          <button key={preset.id} type="button" onClick={() => applyBubbleStylePreset(preset.id)}>
+                            {`Apply bubble preset: ${preset.label}`}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                     <button type="button" onClick={deleteSelectedBubbleLayer}>
                       Delete bubble layer
                     </button>
@@ -2715,6 +3673,18 @@ function App() {
                     <button type="button" onClick={duplicateSelectedMosaicLayer}>
                       Duplicate mosaic layer
                     </button>
+                    <button type="button" onClick={saveSelectedMosaicStylePreset}>
+                      Save mosaic preset
+                    </button>
+                    {mosaicStylePresets.length > 0 ? (
+                      <div className="selection-controls">
+                        {mosaicStylePresets.map((preset) => (
+                          <button key={preset.id} type="button" onClick={() => applyMosaicStylePreset(preset.id)}>
+                            {`Apply mosaic preset: ${preset.label}`}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                     <button type="button" onClick={deleteSelectedMosaicLayer}>
                       Delete mosaic layer
                     </button>
@@ -2802,6 +3772,18 @@ function App() {
                     <button type="button" onClick={duplicateSelectedOverlayLayer}>
                       Duplicate overlay layer
                     </button>
+                    <button type="button" onClick={saveSelectedOverlayStylePreset}>
+                      Save overlay preset
+                    </button>
+                    {overlayStylePresets.length > 0 ? (
+                      <div className="selection-controls">
+                        {overlayStylePresets.map((preset) => (
+                          <button key={preset.id} type="button" onClick={() => applyOverlayStylePreset(preset.id)}>
+                            {`Apply overlay preset: ${preset.label}`}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                     <button type="button" onClick={deleteSelectedOverlayLayer}>
                       Delete overlay layer
                     </button>
@@ -3021,6 +4003,10 @@ function App() {
                   <div>
                     <dt>Style</dt>
                     <dd>{`Style ${activeBubbleLayer.stylePreset.charAt(0).toUpperCase()}${activeBubbleLayer.stylePreset.slice(1)}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Shape</dt>
+                    <dd>{`Shape ${getBubbleShapeLabel(activeBubbleShape)} / Variant ${activeBubbleShapeVariant}`}</dd>
                   </div>
                   <div>
                     <dt>Fill</dt>
@@ -3379,6 +4365,256 @@ function App() {
                 >
                   Run NSFW detection
                 </button>
+                {backendActionResults.sam3AutoMosaic.length > 0 ? (
+                  <>
+                    <div className="page-card">
+                      <strong>{`SAM3 review candidates: ${backendActionResults.sam3AutoMosaic.length}`}</strong>
+                      <span>{`${backendActionResults.sam3AutoMosaicSelection.filter(Boolean).length} selected for apply`}</span>
+                    </div>
+                    <div className="page-card">
+                      <strong>{`Focused SAM3 candidate: ${focusedSam3ReviewCandidateIndex === null ? 'none' : focusedSam3ReviewCandidateIndex + 1}`}</strong>
+                      <span>{`Label ${focusedSam3ReviewCandidateIndex === null ? 'none' : getSam3CandidateCardLabel(focusedSam3ReviewCandidateIndex)}`}</span>
+                      <span>{`Note ${focusedSam3ReviewCandidateIndex === null ? 'none' : getSam3CandidateCardNote(focusedSam3ReviewCandidateIndex)}`}</span>
+                      <span>{`Priority ${focusedSam3ReviewCandidateIndex === null ? 'none' : getSam3CandidatePriority(focusedSam3ReviewCandidateIndex)}`}</span>
+                      <span>{`Style ${focusedSam3ReviewCandidateIndex === null ? 'none' : backendActionResults.sam3AutoMosaicStyle[focusedSam3ReviewCandidateIndex] ?? 'pixelate'}`}</span>
+                      <span>{`Intensity ${focusedSam3ReviewCandidateIndex === null ? 'none' : backendActionResults.sam3AutoMosaicIntensity[focusedSam3ReviewCandidateIndex] ?? 16}`}</span>
+                    </div>
+                    <label className="text-layer-field">
+                      <span>Focused SAM3 label</span>
+                      <input
+                        aria-label="Focused SAM3 candidate label"
+                        type="text"
+                        value={focusedSam3ReviewCandidateIndex === null ? '' : getSam3CandidateInputLabel(focusedSam3ReviewCandidateIndex)}
+                        onChange={(event) => {
+                          renameFocusedBackendSam3Candidate(event.target.value)
+                        }}
+                        disabled={focusedSam3ReviewCandidateIndex === null}
+                      />
+                    </label>
+                    <label className="text-layer-field">
+                      <span>Focused SAM3 note</span>
+                      <input
+                        aria-label="Focused SAM3 candidate note"
+                        type="text"
+                        value={focusedSam3ReviewCandidateIndex === null ? '' : getSam3CandidateInputNote(focusedSam3ReviewCandidateIndex)}
+                        onChange={(event) => {
+                          updateFocusedBackendSam3CandidateNote(event.target.value)
+                        }}
+                        disabled={focusedSam3ReviewCandidateIndex === null}
+                      />
+                    </label>
+                    <div className="selection-controls">
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={() => setAllBackendSam3AutoMosaicSelection(true)}
+                      >
+                        Select all SAM3 candidates
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={() => setAllBackendSam3AutoMosaicSelection(false)}
+                      >
+                        Clear SAM3 candidates
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={cycleFocusedBackendSam3AutoMosaicStyle}
+                        disabled={focusedSam3ReviewCandidateIndex === null}
+                      >
+                        Cycle focused SAM3 style
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={increaseFocusedBackendSam3AutoMosaicIntensity}
+                        disabled={focusedSam3ReviewCandidateIndex === null}
+                      >
+                        Increase focused SAM3 intensity
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={cycleFocusedBackendSam3Priority}
+                        disabled={focusedSam3ReviewCandidateIndex === null}
+                      >
+                        Cycle focused SAM3 priority
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={applyFocusedBackendSam3SettingsToSelected}
+                        disabled={focusedSam3ReviewCandidateIndex === null}
+                      >
+                        Apply focused SAM3 settings to selected
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={() => selectBackendSam3CandidatesByPriority('high')}
+                      >
+                        Select high priority SAM3 candidates
+                      </button>
+                    </div>
+                    {backendActionResults.sam3AutoMosaic.map((mask, index) => {
+                      const bounds = parseBackendLayerSuggestion(mask, index)
+                      const selected = backendActionResults.sam3AutoMosaicSelection[index] !== false
+
+                      return (
+                        <button
+                          key={`sam3-candidate-${index}`}
+                          type="button"
+                          className="page-card page-button"
+                          onClick={() => toggleBackendSam3AutoMosaicSelection(index)}
+                          aria-pressed={selected}
+                          aria-label={`Toggle SAM3 candidate ${index + 1}`}
+                        >
+                          <strong>{`${getSam3CandidateCardLabel(index)} ${selected ? 'selected' : 'skipped'}`}</strong>
+                          <span>{`Note ${getSam3CandidateCardNote(index)}`}</span>
+                          <span>{`Priority ${getSam3CandidatePriority(index)}`}</span>
+                          <span>{`Style ${backendActionResults.sam3AutoMosaicStyle[index] ?? 'pixelate'}`}</span>
+                          <span>{`Intensity ${backendActionResults.sam3AutoMosaicIntensity[index] ?? 16}`}</span>
+                          <span>{`${Math.round(bounds.width)} x ${Math.round(bounds.height)} at ${Math.round(bounds.x)}, ${Math.round(bounds.y)}`}</span>
+                        </button>
+                      )
+                    })}
+                    <button
+                      type="button"
+                      className="page-card page-button"
+                      onClick={applyBackendSam3AutoMosaicToCanvas}
+                      disabled={!hasActiveImage || backendActionResults.sam3AutoMosaicSelection.every((selected) => !selected)}
+                    >
+                      Apply SAM3 auto mosaic to canvas
+                    </button>
+                  </>
+                ) : null}
+                {backendActionResults.nsfwDetections.length > 0 ? (
+                  <>
+                    <div className="page-card">
+                      <strong>{`NSFW review candidates: ${backendActionResults.nsfwDetections.length}`}</strong>
+                      <span>{`${backendActionResults.nsfwDetectionSelection.filter(Boolean).length} selected for apply`}</span>
+                    </div>
+                    <div className="page-card">
+                      <strong>{`Focused NSFW candidate: ${focusedNsfwReviewCandidateIndex === null ? 'none' : focusedNsfwReviewCandidateIndex + 1}`}</strong>
+                      <span>{`Label ${focusedNsfwReviewCandidateIndex === null ? 'none' : getNsfwCandidateCardLabel(focusedNsfwReviewCandidateIndex)}`}</span>
+                      <span>{`Note ${focusedNsfwReviewCandidateIndex === null ? 'none' : getNsfwCandidateCardNote(focusedNsfwReviewCandidateIndex)}`}</span>
+                      <span>{`Priority ${focusedNsfwReviewCandidateIndex === null ? 'none' : getNsfwCandidatePriority(focusedNsfwReviewCandidateIndex)}`}</span>
+                      <span>{`Color ${focusedNsfwReviewCandidateIndex === null ? 'none' : backendActionResults.nsfwDetectionColor[focusedNsfwReviewCandidateIndex] ?? '#ff4d6d'}`}</span>
+                      <span>{`Opacity ${focusedNsfwReviewCandidateIndex === null ? 'none' : (backendActionResults.nsfwDetectionOpacity[focusedNsfwReviewCandidateIndex] ?? 0.4).toFixed(1)}`}</span>
+                    </div>
+                    <label className="text-layer-field">
+                      <span>Focused NSFW label</span>
+                      <input
+                        aria-label="Focused NSFW candidate label"
+                        type="text"
+                        value={focusedNsfwReviewCandidateIndex === null ? '' : getNsfwCandidateInputLabel(focusedNsfwReviewCandidateIndex)}
+                        onChange={(event) => {
+                          renameFocusedBackendNsfwCandidate(event.target.value)
+                        }}
+                        disabled={focusedNsfwReviewCandidateIndex === null}
+                      />
+                    </label>
+                    <label className="text-layer-field">
+                      <span>Focused NSFW note</span>
+                      <input
+                        aria-label="Focused NSFW candidate note"
+                        type="text"
+                        value={focusedNsfwReviewCandidateIndex === null ? '' : getNsfwCandidateInputNote(focusedNsfwReviewCandidateIndex)}
+                        onChange={(event) => {
+                          updateFocusedBackendNsfwCandidateNote(event.target.value)
+                        }}
+                        disabled={focusedNsfwReviewCandidateIndex === null}
+                      />
+                    </label>
+                    <div className="selection-controls">
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={() => setAllBackendNsfwDetectionSelection(true)}
+                      >
+                        Select all NSFW candidates
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={() => setAllBackendNsfwDetectionSelection(false)}
+                      >
+                        Clear NSFW candidates
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={cycleFocusedBackendNsfwDetectionColor}
+                        disabled={focusedNsfwReviewCandidateIndex === null}
+                      >
+                        Cycle focused NSFW color
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={increaseFocusedBackendNsfwDetectionOpacity}
+                        disabled={focusedNsfwReviewCandidateIndex === null}
+                      >
+                        Increase focused NSFW opacity
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={cycleFocusedBackendNsfwPriority}
+                        disabled={focusedNsfwReviewCandidateIndex === null}
+                      >
+                        Cycle focused NSFW priority
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={applyFocusedBackendNsfwSettingsToSelected}
+                        disabled={focusedNsfwReviewCandidateIndex === null}
+                      >
+                        Apply focused NSFW settings to selected
+                      </button>
+                      <button
+                        type="button"
+                        className="page-card page-button"
+                        onClick={() => selectBackendNsfwCandidatesByPriority('high')}
+                      >
+                        Select high priority NSFW candidates
+                      </button>
+                    </div>
+                    {backendActionResults.nsfwDetections.map((detection, index) => {
+                      const bounds = parseBackendLayerSuggestion(detection, index)
+                      const selected = backendActionResults.nsfwDetectionSelection[index] !== false
+
+                      return (
+                        <button
+                          key={`nsfw-candidate-${index}`}
+                          type="button"
+                          className="page-card page-button"
+                          onClick={() => toggleBackendNsfwDetectionSelection(index)}
+                          aria-pressed={selected}
+                          aria-label={`Toggle NSFW candidate ${index + 1}`}
+                        >
+                          <strong>{`${getNsfwCandidateCardLabel(index)} ${selected ? 'selected' : 'skipped'}`}</strong>
+                          <span>{`Note ${getNsfwCandidateCardNote(index)}`}</span>
+                          <span>{`Priority ${getNsfwCandidatePriority(index)}`}</span>
+                          <span>{`Color ${backendActionResults.nsfwDetectionColor[index] ?? '#ff4d6d'}`}</span>
+                          <span>{`Opacity ${(backendActionResults.nsfwDetectionOpacity[index] ?? 0.4).toFixed(1)}`}</span>
+                          <span>{`${Math.round(bounds.width)} x ${Math.round(bounds.height)} at ${Math.round(bounds.x)}, ${Math.round(bounds.y)}`}</span>
+                        </button>
+                      )
+                    })}
+                    <button
+                      type="button"
+                      className="page-card page-button"
+                      onClick={applyBackendNsfwDetectionsToCanvas}
+                      disabled={!hasActiveImage || backendActionResults.nsfwDetectionSelection.every((selected) => !selected)}
+                    >
+                      Apply NSFW detections to canvas
+                    </button>
+                  </>
+                ) : null}
                   <button
                     type="button"
                     className="page-card page-button"
@@ -3522,6 +4758,22 @@ function App() {
                   >
                   Run SAM3 manual segment
                 </button>
+                {backendActionResults.sam3ManualSegmentMaskReady ? (
+                  <>
+                    <div className="page-card">
+                      <strong>SAM3 manual segment review ready</strong>
+                      <span>{`${backendManualSegmentPoints.filter((point) => point.label === 1).length} positive / ${backendManualSegmentPoints.filter((point) => point.label === 0).length} negative points`}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="page-card page-button"
+                      onClick={applyBackendSam3ManualSegmentToCanvas}
+                      disabled={!hasActiveImage}
+                    >
+                      Apply manual segment to canvas
+                    </button>
+                  </>
+                ) : null}
                 {backendDownloads.sam3 ? (
                   <div className="page-card">
                     <strong>{backendDownloads.sam3}</strong>
@@ -3589,15 +4841,417 @@ function App() {
             )}
           </section>
 
+          <section aria-label="Preset library" className="sidebar-card">
+            <div className="panel-title">Preset library</div>
+            <div className="page-list">
+              <div className="page-card">
+                <strong>{`${messageWindowPresets.length} message presets`}</strong>
+                <span>{`${textStylePresets.length} text presets / ${watermarkStylePresets.length} watermark presets / ${bubbleStylePresets.length} bubble presets / ${overlayStylePresets.length} overlay presets / ${mosaicStylePresets.length} mosaic presets / ${templates.length} templates / ${reusableAssets.length} reusable assets`}</span>
+              </div>
+              <label className="text-layer-field">
+                <span>Search</span>
+                <input
+                  aria-label="Preset library search"
+                  type="text"
+                  value={presetLibrarySearch}
+                  onChange={(event) => {
+                    setPresetLibrarySearch(event.target.value)
+                  }}
+                />
+              </label>
+              <div className="selection-controls">
+                <button type="button" className="page-button" onClick={() => setPresetLibraryFilter('all')}>
+                  Show all presets
+                </button>
+                <button type="button" className="page-button" onClick={() => setPresetLibraryFilter('text')}>
+                  Show text presets
+                </button>
+                <button type="button" className="page-button" onClick={() => setPresetLibraryFilter('message')}>
+                  Show message presets
+                </button>
+                <button type="button" className="page-button" onClick={() => setPresetLibraryFilter('watermark')}>
+                  Show watermark presets
+                </button>
+                <button type="button" className="page-button" onClick={() => setPresetLibraryFilter('bubble')}>
+                  Show bubble presets
+                </button>
+                <button type="button" className="page-button" onClick={() => setPresetLibraryFilter('overlay')}>
+                  Show overlay presets
+                </button>
+                <button type="button" className="page-button" onClick={() => setPresetLibraryFilter('mosaic')}>
+                  Show mosaic presets
+                </button>
+                <button type="button" className="page-button" onClick={() => setPresetLibraryFilter('template')}>
+                  Show templates
+                </button>
+                <button type="button" className="page-button" onClick={() => setPresetLibraryFilter('asset')}>
+                  Show reusable assets
+                </button>
+              </div>
+              {(presetLibraryFilter === 'all' || presetLibraryFilter === 'text') && textStylePresets.length === 0 ? (
+                <div className="page-card empty">
+                  <strong>No text presets yet</strong>
+                </div>
+              ) : presetLibraryFilter === 'all' || presetLibraryFilter === 'text' ? (
+                textStylePresets.filter((preset) => matchesPresetSearch(preset.label, preset.text)).map((preset) => {
+                  const presetLabel = preset.label.trim() || 'Untitled text preset'
+                  const previewLines = getTextPresetPreviewLines(preset).slice(0, 3)
+
+                  return (
+                    <div key={preset.id} className="page-card">
+                      <label className="text-layer-field">
+                        <span>Text preset</span>
+                        <input
+                          aria-label={`Text preset name: ${presetLabel}`}
+                          type="text"
+                          value={preset.label}
+                          onChange={(event) => {
+                            renameTextStylePreset(preset.id, event.target.value)
+                          }}
+                        />
+                      </label>
+                      <div className="template-preview" aria-label={`Text preset preview: ${presetLabel}`}>
+                        {previewLines.map((line) => (
+                          <small key={line}>{`Preview ${line}`}</small>
+                        ))}
+                      </div>
+                      <div className="selection-controls">
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => applyTextStylePreset(preset.id)}
+                          aria-label={`Apply text preset: ${presetLabel}`}
+                        >
+                          Apply to selected text
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => duplicateTextStylePreset(preset.id)}
+                          aria-label={`Duplicate text preset: ${presetLabel}`}
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => deleteTextStylePreset(preset.id)}
+                          aria-label={`Delete text preset: ${presetLabel}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })
+              ) : null}
+              {(presetLibraryFilter === 'all' || presetLibraryFilter === 'message') && messageWindowPresets.length === 0 ? (
+                <div className="page-card empty">
+                  <strong>No message presets yet</strong>
+                </div>
+              ) : presetLibraryFilter === 'all' || presetLibraryFilter === 'message' ? (
+                messageWindowPresets.filter((preset) => matchesPresetSearch(preset.label, preset.speaker, preset.body)).map((preset) => {
+                  const presetLabel = preset.label.trim() || 'Untitled preset'
+                  const previewLines = getMessagePresetPreviewLines(preset).slice(0, 3)
+
+                  return (
+                    <div key={preset.id} className="page-card">
+                      <label className="text-layer-field">
+                        <span>Preset</span>
+                        <input
+                          aria-label={`Message preset name: ${presetLabel}`}
+                          type="text"
+                          value={preset.label}
+                          onChange={(event) => {
+                            renameMessageWindowPreset(preset.id, event.target.value)
+                          }}
+                        />
+                      </label>
+                      <div className="template-preview" aria-label={`Message preset preview: ${presetLabel}`}>
+                        {previewLines.map((line) => (
+                          <small key={line}>{`Preview ${line}`}</small>
+                        ))}
+                      </div>
+                      <div className="selection-controls">
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => applyMessageWindowPreset(preset.id)}
+                          aria-label={`Apply message preset: ${presetLabel}`}
+                        >
+                          Apply to selected window
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => duplicateMessageWindowPreset(preset.id)}
+                          aria-label={`Duplicate message preset: ${presetLabel}`}
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => deleteMessageWindowPreset(preset.id)}
+                          aria-label={`Delete message preset: ${presetLabel}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })
+              ) : null}
+              {(presetLibraryFilter === 'all' || presetLibraryFilter === 'bubble') && bubbleStylePresets.length === 0 ? (
+                <div className="page-card empty">
+                  <strong>No bubble presets yet</strong>
+                </div>
+              ) : presetLibraryFilter === 'all' || presetLibraryFilter === 'bubble' ? (
+                bubbleStylePresets
+                  .filter((preset) => matchesPresetSearch(preset.label, preset.text, preset.stylePreset, preset.bubbleShape))
+                  .map((preset) => {
+                    const presetLabel = preset.label.trim() || 'Untitled bubble preset'
+                    const previewLines = getBubblePresetPreviewLines(preset).slice(0, 3)
+
+                    return (
+                      <div key={preset.id} className="page-card">
+                        <label className="text-layer-field">
+                          <span>Bubble preset</span>
+                          <input
+                            aria-label={`Bubble preset name: ${presetLabel}`}
+                            type="text"
+                            value={preset.label}
+                            onChange={(event) => {
+                              renameBubbleStylePreset(preset.id, event.target.value)
+                            }}
+                          />
+                        </label>
+                        <div className="template-preview" aria-label={`Bubble preset preview: ${presetLabel}`}>
+                          {previewLines.map((line) => (
+                            <small key={line}>{`Preview ${line}`}</small>
+                          ))}
+                        </div>
+                        <div className="selection-controls">
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => applyBubbleStylePreset(preset.id)}
+                            aria-label={`Apply bubble preset: ${presetLabel}`}
+                          >
+                            Apply to selected bubble
+                          </button>
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => duplicateBubbleStylePreset(preset.id)}
+                            aria-label={`Duplicate bubble preset: ${presetLabel}`}
+                          >
+                            Duplicate
+                          </button>
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => deleteBubbleStylePreset(preset.id)}
+                            aria-label={`Delete bubble preset: ${presetLabel}`}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })
+              ) : null}
+              {(presetLibraryFilter === 'all' || presetLibraryFilter === 'overlay') && overlayStylePresets.length === 0 ? (
+                <div className="page-card empty">
+                  <strong>No overlay presets yet</strong>
+                </div>
+              ) : presetLibraryFilter === 'all' || presetLibraryFilter === 'overlay' ? (
+                overlayStylePresets
+                  .filter((preset) => matchesPresetSearch(preset.label, preset.areaPreset, preset.fillMode, preset.gradientDirection))
+                  .map((preset) => {
+                    const presetLabel = preset.label.trim() || 'Untitled overlay preset'
+                    const previewLines = getOverlayPresetPreviewLines(preset).slice(0, 3)
+
+                    return (
+                      <div key={preset.id} className="page-card">
+                        <label className="text-layer-field">
+                          <span>Overlay preset</span>
+                          <input
+                            aria-label={`Overlay preset name: ${presetLabel}`}
+                            type="text"
+                            value={preset.label}
+                            onChange={(event) => {
+                              renameOverlayStylePreset(preset.id, event.target.value)
+                            }}
+                          />
+                        </label>
+                        <div className="template-preview" aria-label={`Overlay preset preview: ${presetLabel}`}>
+                          {previewLines.map((line) => (
+                            <small key={line}>{`Preview ${line}`}</small>
+                          ))}
+                        </div>
+                        <div className="selection-controls">
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => applyOverlayStylePreset(preset.id)}
+                            aria-label={`Apply overlay preset: ${presetLabel}`}
+                          >
+                            Apply to selected overlay
+                          </button>
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => duplicateOverlayStylePreset(preset.id)}
+                            aria-label={`Duplicate overlay preset: ${presetLabel}`}
+                          >
+                            Duplicate
+                          </button>
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => deleteOverlayStylePreset(preset.id)}
+                            aria-label={`Delete overlay preset: ${presetLabel}`}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })
+              ) : null}
+              {(presetLibraryFilter === 'all' || presetLibraryFilter === 'mosaic') && mosaicStylePresets.length === 0 ? (
+                <div className="page-card empty">
+                  <strong>No mosaic presets yet</strong>
+                </div>
+              ) : presetLibraryFilter === 'all' || presetLibraryFilter === 'mosaic' ? (
+                mosaicStylePresets
+                  .filter((preset) => matchesPresetSearch(preset.label, preset.style))
+                  .map((preset) => {
+                    const presetLabel = preset.label.trim() || 'Untitled mosaic preset'
+                    const previewLines = getMosaicPresetPreviewLines(preset).slice(0, 3)
+
+                    return (
+                      <div key={preset.id} className="page-card">
+                        <label className="text-layer-field">
+                          <span>Mosaic preset</span>
+                          <input
+                            aria-label={`Mosaic preset name: ${presetLabel}`}
+                            type="text"
+                            value={preset.label}
+                            onChange={(event) => {
+                              renameMosaicStylePreset(preset.id, event.target.value)
+                            }}
+                          />
+                        </label>
+                        <div className="template-preview" aria-label={`Mosaic preset preview: ${presetLabel}`}>
+                          {previewLines.map((line) => (
+                            <small key={line}>{`Preview ${line}`}</small>
+                          ))}
+                        </div>
+                        <div className="selection-controls">
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => applyMosaicStylePreset(preset.id)}
+                            aria-label={`Apply mosaic preset: ${presetLabel}`}
+                          >
+                            Apply to selected mosaic
+                          </button>
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => duplicateMosaicStylePreset(preset.id)}
+                            aria-label={`Duplicate mosaic preset: ${presetLabel}`}
+                          >
+                            Duplicate
+                          </button>
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => deleteMosaicStylePreset(preset.id)}
+                            aria-label={`Delete mosaic preset: ${presetLabel}`}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })
+              ) : null}
+              {(presetLibraryFilter === 'all' || presetLibraryFilter === 'watermark') && watermarkStylePresets.length === 0 ? (
+                <div className="page-card empty">
+                  <strong>No watermark presets yet</strong>
+                </div>
+              ) : presetLibraryFilter === 'all' || presetLibraryFilter === 'watermark' ? (
+                watermarkStylePresets
+                  .filter((preset) => matchesPresetSearch(preset.label, preset.text, preset.assetName))
+                  .map((preset) => {
+                    const presetLabel = preset.label.trim() || 'Untitled watermark preset'
+                    const previewLines = getWatermarkPresetPreviewLines(preset).slice(0, 3)
+
+                    return (
+                      <div key={preset.id} className="page-card">
+                        <label className="text-layer-field">
+                          <span>Watermark preset</span>
+                          <input
+                            aria-label={`Watermark preset name: ${presetLabel}`}
+                            type="text"
+                            value={preset.label}
+                            onChange={(event) => {
+                              renameWatermarkStylePreset(preset.id, event.target.value)
+                            }}
+                          />
+                        </label>
+                        <div className="template-preview" aria-label={`Watermark preset preview: ${presetLabel}`}>
+                          {previewLines.map((line) => (
+                            <small key={line}>{`Preview ${line}`}</small>
+                          ))}
+                        </div>
+                        <div className="selection-controls">
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => applyWatermarkStylePreset(preset.id)}
+                            aria-label={`Apply watermark preset: ${presetLabel}`}
+                          >
+                            Apply to selected watermark
+                          </button>
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => duplicateWatermarkStylePreset(preset.id)}
+                            aria-label={`Duplicate watermark preset: ${presetLabel}`}
+                          >
+                            Duplicate
+                          </button>
+                          <button
+                            type="button"
+                            className="page-button"
+                            onClick={() => deleteWatermarkStylePreset(preset.id)}
+                            aria-label={`Delete watermark preset: ${presetLabel}`}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })
+              ) : null}
+            </div>
+          </section>
+
           <section aria-label="Page templates" className="sidebar-card">
             <div className="panel-title">Templates</div>
             <div className="page-list">
-              {templates.length === 0 ? (
+              {(presetLibraryFilter === 'all' || presetLibraryFilter === 'template') && templates.length === 0 ? (
                 <div className="page-card empty">
                   <strong>No templates yet</strong>
                 </div>
-              ) : (
-                templates.map((template) => {
+              ) : presetLibraryFilter === 'all' || presetLibraryFilter === 'template' ? (
+                templates
+                  .filter((template) => matchesPresetSearch(template.label, ...getTemplatePreviewLines(template)))
+                  .map((template) => {
                   const templateLabel = template.label.trim() || 'Untitled template'
                   const layerCount =
                     template.textLayers.length +
@@ -3606,6 +5260,7 @@ function App() {
                     template.mosaicLayers.length +
                     template.overlayLayers.length +
                     template.watermarkLayers.length
+                  const previewLines = getTemplatePreviewLines(template).slice(0, 3)
 
                   return (
                     <div key={template.id} className="page-card">
@@ -3621,6 +5276,13 @@ function App() {
                         />
                       </label>
                       <span>{`${layerCount} layers`}</span>
+                      <div className="template-preview" aria-label={`Template preview: ${templateLabel}`}>
+                        {previewLines.length === 0 ? (
+                          <small>Preview Empty layout</small>
+                        ) : (
+                          previewLines.map((line) => <small key={line}>{`Preview ${line}`}</small>)
+                        )}
+                      </div>
                       <div className="selection-controls">
                         <button
                           type="button"
@@ -3658,7 +5320,68 @@ function App() {
                     </div>
                   )
                 })
-              )}
+              ) : null}
+            </div>
+          </section>
+
+          <section aria-label="Reusable assets" className="sidebar-card">
+            <div className="panel-title">Reusable assets</div>
+            <div className="page-list">
+              {(presetLibraryFilter === 'all' || presetLibraryFilter === 'asset') && reusableAssets.length === 0 ? (
+                <div className="page-card empty">
+                  <strong>No reusable assets yet</strong>
+                </div>
+              ) : presetLibraryFilter === 'all' || presetLibraryFilter === 'asset' ? (
+                reusableAssets.filter((asset) => matchesPresetSearch(asset.label, asset.assetName, asset.summary)).map((asset) => {
+                  const assetLabel = asset.label.trim() || 'Untitled asset'
+
+                  return (
+                    <div key={asset.id} className="page-card">
+                      <label className="text-layer-field">
+                        <span>Asset</span>
+                        <input
+                          aria-label={`Reusable asset name: ${assetLabel}`}
+                          type="text"
+                          value={asset.label}
+                          onChange={(event) => {
+                            renameReusableAsset(asset.id, event.target.value)
+                          }}
+                        />
+                      </label>
+                      <div className="template-preview" aria-label={`Reusable asset preview: ${assetLabel}`}>
+                        <small>{`Asset ${asset.assetName}`}</small>
+                        <small>{`Preview ${asset.summary}`}</small>
+                      </div>
+                      <div className="selection-controls">
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => applyReusableAssetToActivePage(asset.id)}
+                          aria-label={`Apply reusable asset: ${assetLabel}`}
+                        >
+                          Apply to active page
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => duplicateReusableAsset(asset.id)}
+                          aria-label={`Duplicate reusable asset: ${assetLabel}`}
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button"
+                          onClick={() => deleteReusableAsset(asset.id)}
+                          aria-label={`Delete reusable asset: ${assetLabel}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })
+              ) : null}
             </div>
           </section>
 

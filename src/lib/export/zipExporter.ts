@@ -1,5 +1,6 @@
 import JSZip from 'jszip'
 import type { CanvasImage, OutputSettings } from '../../stores/workspaceStore'
+import { getBubbleShapeVariantNumber } from '../bubbleShapes'
 import { createZipEntryName, createZipExportName } from './fileNames'
 import { createMetadataRemovalSummary } from './metadata'
 
@@ -51,7 +52,7 @@ export const exportPagesAsZip = async (
         ),
         ...page.bubbleLayers.filter((layer) => layer.visible).map(
           (layer, layerIndex) =>
-            `bubble${layerIndex + 1}=${layer.text}@${layer.x},${layer.y},${layer.width},${layer.height},tail:${layer.tailDirection},style:${layer.stylePreset},fill:${layer.fillColor},border:${layer.borderColor}`,
+            `bubble${layerIndex + 1}=${layer.text}@${layer.x},${layer.y},${layer.width},${layer.height},tail:${layer.tailDirection},style:${layer.stylePreset},shape:${layer.bubbleShape ?? 'round'},variant:${getBubbleShapeVariantNumber(layer.shapeSeed ?? 0)},fill:${layer.fillColor},border:${layer.borderColor}`,
         ),
         ...page.mosaicLayers.filter((layer) => layer.visible).map(
           (layer, layerIndex) =>

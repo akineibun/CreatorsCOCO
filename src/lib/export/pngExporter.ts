@@ -1,4 +1,5 @@
 import type { CanvasImage, CanvasTransform, OutputSettings } from '../../stores/workspaceStore'
+import { getBubblePolygonPoints, getBubbleShapeLabel, getBubbleShapeVariantNumber } from '../bubbleShapes'
 import { createPngExportName } from './fileNames'
 import { sanitizeRenderedExportBlob } from './metadata'
 
@@ -51,6 +52,45 @@ const getExportFrame = (image: CanvasImage, outputSettings: OutputSettings) => {
     scaleX: width / image.width,
     scaleY: height / image.height,
   }
+}
+
+const traceBubbleBody = (
+  context: CanvasRenderingContext2D,
+  shape: string,
+  seed: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+) => {
+  context.beginPath?.()
+
+  if (shape === 'round' && 'ellipse' in context) {
+    context.ellipse?.(x + width / 2, y + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2)
+    context.closePath?.()
+    return
+  }
+
+  if (shape === 'rounded-rect' && 'roundRect' in context) {
+    context.roundRect(x, y, width, height, Math.min(height / 3, 32))
+    context.closePath?.()
+    return
+  }
+
+  const points = getBubblePolygonPoints(
+    shape === 'rounded-rect' ? 'round' : (shape as 'round' | 'rounded-rect' | 'spiky' | 'cloud' | 'urchin'),
+    seed,
+  )
+  const firstPoint = points[0]
+  if (!firstPoint) {
+    return
+  }
+
+  context.moveTo?.(x + firstPoint.x * width, y + firstPoint.y * height)
+  points.slice(1).forEach((point) => {
+    context.lineTo?.(x + point.x * width, y + point.y * height)
+  })
+  context.closePath?.()
 }
 
 const wrapText = (text: string, maxCharsPerLine: number) => {
@@ -282,6 +322,13 @@ export const exportPageAsPng = async (
   })
 
   image.bubbleLayers.filter((layer) => layer.visible).forEach((layer) => {
+    const bubbleShape = layer.bubbleShape ?? 'round'
+    const bubbleSeed = layer.shapeSeed ?? 0
+    const bubbleX = mapX(layer.x - layer.width / 2)
+    const bubbleY = mapY(layer.y - layer.height / 2)
+    const bubbleWidth = mapSize(layer.width)
+    const bubbleHeight = mapSize(layer.height)
+
     context.shadowColor = 'transparent'
     context.shadowBlur = 0
     context.shadowOffsetX = 0
@@ -289,24 +336,12 @@ export const exportPageAsPng = async (
     context.fillStyle = layer.fillColor
     context.strokeStyle = layer.borderColor
     context.lineWidth = 3
-    if ('beginPath' in context && 'roundRect' in context && 'stroke' in context) {
-      context.beginPath()
-      context.roundRect(
-        mapX(layer.x - layer.width / 2),
-        mapY(layer.y - layer.height / 2),
-        mapSize(layer.width),
-        mapSize(layer.height),
-        Math.min(mapSize(layer.height / 2), mapSize(48)),
-      )
+    if ('beginPath' in context && 'stroke' in context) {
+      traceBubbleBody(context, bubbleShape, bubbleSeed, bubbleX, bubbleY, bubbleWidth, bubbleHeight)
       context.fill()
       context.stroke()
     } else {
-      context.fillRect(
-        mapX(layer.x - layer.width / 2),
-        mapY(layer.y - layer.height / 2),
-        mapSize(layer.width),
-        mapSize(layer.height),
-      )
+      context.fillRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight)
     }
     context.beginPath?.()
     if (layer.tailDirection === 'left') {
@@ -328,6 +363,12 @@ export const exportPageAsPng = async (
     context.font = `${Math.max(12, Math.round(mapSize(28)))}px Segoe UI`
     context.textAlign = 'center'
     context.fillText(layer.text, mapX(layer.x), mapY(layer.y + 8))
+    context.font = `${Math.max(10, Math.round(mapSize(16)))}px Segoe UI`
+    context.fillText(
+      `${getBubbleShapeLabel(bubbleShape)} v${getBubbleShapeVariantNumber(bubbleSeed)}`,
+      mapX(layer.x),
+      mapY(layer.y + layer.height / 2 - 10),
+    )
   })
 
   image.mosaicLayers.filter((layer) => layer.visible).forEach((layer) => {

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { BubbleShape } from '../lib/bubbleShapes'
 
 export type Tool = 'select' | 'text' | 'message-window' | 'bubble' | 'mosaic' | 'overlay'
 
@@ -56,6 +57,8 @@ export type CanvasBubbleLayer = {
   height: number
   tailDirection: 'left' | 'right' | 'bottom'
   stylePreset: 'speech' | 'thought'
+  bubbleShape?: BubbleShape
+  shapeSeed?: number
   fillColor: string
   borderColor: string
   visible: boolean
@@ -168,6 +171,73 @@ export type MessageWindowPreset = {
   assetName: string | null
 }
 
+export type TextStylePreset = {
+  id: string
+  label: string
+  text: string
+  fontSize: number
+  color: string
+  lineHeight: number
+  letterSpacing: number
+  maxWidth: number
+  fillMode: 'solid' | 'gradient'
+  gradientFrom: string
+  gradientTo: string
+  isVertical: boolean
+  strokeWidth: number
+  strokeColor: string
+  shadowEnabled: boolean
+}
+
+export type WatermarkStylePreset = {
+  id: string
+  label: string
+  text: string
+  opacity: number
+  color: string
+  repeated: boolean
+  angle: number
+  density: number
+  preset: 'custom' | 'patreon' | 'discord'
+  mode: 'text' | 'image'
+  assetName: string | null
+  scale: number
+  tiled: boolean
+}
+
+export type BubbleStylePreset = {
+  id: string
+  label: string
+  text: string
+  tailDirection: CanvasBubbleLayer['tailDirection']
+  stylePreset: CanvasBubbleLayer['stylePreset']
+  bubbleShape: BubbleShape
+  shapeSeed: number
+  fillColor: string
+  borderColor: string
+}
+
+export type OverlayStylePreset = {
+  id: string
+  label: string
+  areaPreset: CanvasOverlayLayer['areaPreset']
+  color: string
+  fillMode: CanvasOverlayLayer['fillMode']
+  gradientFrom: string
+  gradientTo: string
+  gradientDirection: CanvasOverlayLayer['gradientDirection']
+  opacity: number
+}
+
+export type MosaicStylePreset = {
+  id: string
+  label: string
+  intensity: number
+  style: CanvasMosaicLayer['style']
+  width: number
+  height: number
+}
+
 export type PageTemplate = {
   id: string
   label: string
@@ -177,6 +247,13 @@ export type PageTemplate = {
   mosaicLayers: CanvasMosaicLayer[]
   overlayLayers: CanvasOverlayLayer[]
   watermarkLayers: CanvasWatermarkLayer[]
+}
+
+export type ReusablePageAsset = {
+  id: string
+  label: string
+  assetName: string
+  summary: string
 }
 
 type LayerType = 'text' | 'message-window' | 'bubble' | 'mosaic' | 'overlay' | 'watermark'
@@ -200,7 +277,13 @@ type PersistedProject = {
   outputSettings: OutputSettings
   lastSavedAt: string | null
   messageWindowPresets: MessageWindowPreset[]
+  textStylePresets: TextStylePreset[]
+  watermarkStylePresets: WatermarkStylePreset[]
+  bubbleStylePresets: BubbleStylePreset[]
+  overlayStylePresets: OverlayStylePreset[]
+  mosaicStylePresets: MosaicStylePreset[]
   templates: PageTemplate[]
+  reusableAssets: ReusablePageAsset[]
 }
 
 export type RecentProjectEntry = {
@@ -233,7 +316,13 @@ type WorkspaceState = {
   projectName: string
   recentProjects: RecentProjectEntry[]
   messageWindowPresets: MessageWindowPreset[]
+  textStylePresets: TextStylePreset[]
+  watermarkStylePresets: WatermarkStylePreset[]
+  bubbleStylePresets: BubbleStylePreset[]
+  overlayStylePresets: OverlayStylePreset[]
+  mosaicStylePresets: MosaicStylePreset[]
   templates: PageTemplate[]
+  reusableAssets: ReusablePageAsset[]
   undoStack: HistoryEntry[]
   redoStack: HistoryEntry[]
   zoomIn: () => void
@@ -274,6 +363,11 @@ type WorkspaceState = {
   deleteTemplate: (templateId: string) => void
   applyTemplateToActivePage: (templateId: string) => void
   applyTemplateToAllPages: (templateId: string) => void
+  saveCurrentPageAsReusableAsset: () => void
+  renameReusableAsset: (assetId: string, name: string) => void
+  duplicateReusableAsset: (assetId: string) => void
+  deleteReusableAsset: (assetId: string) => void
+  applyReusableAssetToActivePage: (assetId: string) => void
   addTextLayer: () => void
   selectTextLayer: (layerId: string, additive?: boolean) => void
   updateSelectedTextLayerText: (text: string) => void
@@ -292,6 +386,11 @@ type WorkspaceState = {
   toggleSelectedTextLayerVertical: () => void
   changeSelectedTextLayerOutlineWidth: (delta: number) => void
   toggleSelectedTextLayerShadow: () => void
+  saveSelectedTextStylePreset: () => void
+  applyTextStylePreset: (presetId: string) => void
+  renameTextStylePreset: (presetId: string, name: string) => void
+  duplicateTextStylePreset: (presetId: string) => void
+  deleteTextStylePreset: (presetId: string) => void
   addMessageWindowLayer: () => void
   selectMessageWindowLayer: (layerId: string, additive?: boolean) => void
   updateSelectedMessageWindowSpeaker: (speaker: string) => void
@@ -302,6 +401,9 @@ type WorkspaceState = {
   loadSelectedMessageWindowAsset: (file: File) => void
   saveSelectedMessageWindowPreset: () => void
   applyMessageWindowPreset: (presetId: string) => void
+  renameMessageWindowPreset: (presetId: string, name: string) => void
+  duplicateMessageWindowPreset: (presetId: string) => void
+  deleteMessageWindowPreset: (presetId: string) => void
   addWatermarkLayer: () => void
   loadWatermarkImageFile: (file: File) => void
   selectWatermarkLayer: (layerId: string, additive?: boolean) => void
@@ -314,6 +416,11 @@ type WorkspaceState = {
   moveSelectedWatermarkLayer: (dx: number, dy: number) => void
   changeSelectedWatermarkScale: (delta: number) => void
   toggleSelectedWatermarkTileLayout: () => void
+  saveSelectedWatermarkStylePreset: () => void
+  applyWatermarkStylePreset: (presetId: string) => void
+  renameWatermarkStylePreset: (presetId: string, name: string) => void
+  duplicateWatermarkStylePreset: (presetId: string) => void
+  deleteWatermarkStylePreset: (presetId: string) => void
   addBubbleLayer: () => void
   selectBubbleLayer: (layerId: string, additive?: boolean) => void
   updateSelectedBubbleLayerText: (text: string) => void
@@ -322,6 +429,13 @@ type WorkspaceState = {
   resizeSelectedBubbleLayer: (widthDelta: number, heightDelta: number) => void
   setSelectedBubbleTailDirection: (direction: 'left' | 'right' | 'bottom') => void
   setSelectedBubbleStylePreset: (preset: 'speech' | 'thought') => void
+  setSelectedBubbleShape: (shape: BubbleShape) => void
+  randomizeSelectedBubbleShape: () => void
+  saveSelectedBubbleStylePreset: () => void
+  applyBubbleStylePreset: (presetId: string) => void
+  renameBubbleStylePreset: (presetId: string, name: string) => void
+  duplicateBubbleStylePreset: (presetId: string) => void
+  deleteBubbleStylePreset: (presetId: string) => void
   duplicateSelectedBubbleLayer: () => void
   moveSelectedBubbleLayerBackward: () => void
   moveSelectedBubbleLayerForward: () => void
@@ -335,6 +449,11 @@ type WorkspaceState = {
   setSelectedMosaicIntensity: (intensity: number) => void
   setSelectedMosaicStyle: (style: CanvasMosaicLayer['style']) => void
   cycleSelectedMosaicStyle: () => void
+  saveSelectedMosaicStylePreset: () => void
+  applyMosaicStylePreset: (presetId: string) => void
+  renameMosaicStylePreset: (presetId: string, name: string) => void
+  duplicateMosaicStylePreset: (presetId: string) => void
+  deleteMosaicStylePreset: (presetId: string) => void
   duplicateSelectedMosaicLayer: () => void
   moveSelectedMosaicLayerBackward: () => void
   moveSelectedMosaicLayerForward: () => void
@@ -350,10 +469,41 @@ type WorkspaceState = {
   setSelectedOverlayGradientFrom: (color: string) => void
   setSelectedOverlayGradientTo: (color: string) => void
   cycleSelectedOverlayGradientDirection: () => void
+  saveSelectedOverlayStylePreset: () => void
+  applyOverlayStylePreset: (presetId: string) => void
+  renameOverlayStylePreset: (presetId: string, name: string) => void
+  duplicateOverlayStylePreset: (presetId: string) => void
+  deleteOverlayStylePreset: (presetId: string) => void
   duplicateSelectedOverlayLayer: () => void
   moveSelectedOverlayLayerBackward: () => void
   moveSelectedOverlayLayerForward: () => void
   deleteSelectedOverlayLayer: () => void
+  addBackendMosaicLayers: (
+    layers: Array<{
+      x: number
+      y: number
+      width: number
+      height: number
+      intensity: number
+      style: CanvasMosaicLayer['style']
+      name?: string | null
+    }>,
+  ) => void
+  addBackendOverlayLayers: (
+    layers: Array<{
+      x: number
+      y: number
+      width: number
+      height: number
+      color: string
+      opacity: number
+      fillMode?: CanvasOverlayLayer['fillMode']
+      gradientFrom?: string
+      gradientTo?: string
+      gradientDirection?: CanvasOverlayLayer['gradientDirection']
+      name?: string | null
+    }>,
+  ) => void
   toggleSelectedLayerVisibility: () => void
   toggleSelectedLayerLock: () => void
   groupSelectedLayers: () => void
@@ -578,9 +728,22 @@ const createWatermarkLayerId = () =>
 
 const createMessagePresetId = () =>
   `message-preset-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+const createTextPresetId = () =>
+  `text-preset-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+const createWatermarkPresetId = () =>
+  `watermark-preset-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+const createBubblePresetId = () =>
+  `bubble-preset-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+const createOverlayPresetId = () =>
+  `overlay-preset-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+const createMosaicPresetId = () =>
+  `mosaic-preset-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
 
 const createTemplateId = () =>
   `template-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
+
+const createReusableAssetId = () =>
+  `asset-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
 
 const createGroupId = () =>
   `group-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`
@@ -619,6 +782,8 @@ const createBubbleLayer = (): CanvasBubbleLayer => ({
   height: 120,
   tailDirection: 'left',
   stylePreset: 'speech',
+  bubbleShape: 'round',
+  shapeSeed: 0,
   fillColor: '#ffffff',
   borderColor: '#241b15',
   visible: true,
@@ -735,7 +900,13 @@ const createInitialState = () => ({
   projectName: 'Untitled project',
   recentProjects: [] as RecentProjectEntry[],
   messageWindowPresets: [] as MessageWindowPreset[],
+  textStylePresets: [] as TextStylePreset[],
+  watermarkStylePresets: [] as WatermarkStylePreset[],
+  bubbleStylePresets: [] as BubbleStylePreset[],
+  overlayStylePresets: [] as OverlayStylePreset[],
+  mosaicStylePresets: [] as MosaicStylePreset[],
   templates: [] as PageTemplate[],
+  reusableAssets: [] as ReusablePageAsset[],
   undoStack: [] as HistoryEntry[],
   redoStack: [] as HistoryEntry[],
 })
@@ -780,6 +951,25 @@ const cloneTemplate = (template: PageTemplate): PageTemplate => ({
   watermarkLayers: template.watermarkLayers.map((layer) => ({ ...layer })),
 })
 
+const cloneReusableAsset = (asset: ReusablePageAsset): ReusablePageAsset => ({
+  ...asset,
+})
+
+const createReusableAssetSummary = (page: CanvasImage) => {
+  const summaryParts = [
+    page.textLayers[0]?.text ? `Text ${page.textLayers[0].text}` : null,
+    page.messageWindowLayers[0]?.speaker ? `Window ${page.messageWindowLayers[0].speaker}` : null,
+    page.bubbleLayers[0]?.text ? `Bubble ${page.bubbleLayers[0].text}` : null,
+    page.overlayLayers[0] ? `Overlay ${page.overlayLayers[0].fillMode}` : null,
+    page.mosaicLayers[0] ? `Mosaic ${page.mosaicLayers[0].style}` : null,
+    page.watermarkLayers[0]?.assetName ?? page.watermarkLayers[0]?.text
+      ? `Watermark ${page.watermarkLayers[0]?.assetName ?? page.watermarkLayers[0]?.text}`
+      : null,
+  ].filter(Boolean)
+
+  return summaryParts.slice(0, 3).join(' / ') || 'Layer composition'
+}
+
 const snapshotHistory = (state: Pick<
   WorkspaceState,
   'pages' | 'activePageId' | 'imageTransform' | 'selectedLayerId'
@@ -820,7 +1010,13 @@ const serializeProject = (
     | 'projectId'
     | 'projectName'
     | 'messageWindowPresets'
+    | 'textStylePresets'
+    | 'watermarkStylePresets'
+    | 'bubbleStylePresets'
+    | 'overlayStylePresets'
+    | 'mosaicStylePresets'
     | 'templates'
+    | 'reusableAssets'
   >,
 ): PersistedProject => ({
   id: state.projectId !== 'project-default' ? state.projectId : state.pages[0]?.id ? `project-${state.pages[0].id}` : 'project-default',
@@ -845,7 +1041,13 @@ const serializeProject = (
   outputSettings: state.outputSettings,
   lastSavedAt: state.lastSavedAt,
   messageWindowPresets: state.messageWindowPresets.map((preset) => ({ ...preset })),
+  textStylePresets: state.textStylePresets.map((preset) => ({ ...preset })),
+  watermarkStylePresets: state.watermarkStylePresets.map((preset) => ({ ...preset })),
+  bubbleStylePresets: state.bubbleStylePresets.map((preset) => ({ ...preset })),
+  overlayStylePresets: state.overlayStylePresets.map((preset) => ({ ...preset })),
+  mosaicStylePresets: state.mosaicStylePresets.map((preset) => ({ ...preset })),
   templates: state.templates.map(cloneTemplate),
+  reusableAssets: state.reusableAssets.map(cloneReusableAsset),
 })
 
 const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
@@ -984,12 +1186,14 @@ const readProjectFromStorage = (): PersistedProject | null => {
                 }))
               : [],
             bubbleLayers: Array.isArray(page.bubbleLayers)
-              ? page.bubbleLayers.map((layer) => ({
+                ? page.bubbleLayers.map((layer) => ({
                   ...layer,
                   name: layer.name ?? null,
                   groupId: layer.groupId ?? null,
                   tailDirection: layer.tailDirection ?? 'left',
                   stylePreset: layer.stylePreset ?? 'speech',
+                  bubbleShape: layer.bubbleShape ?? 'round',
+                  shapeSeed: layer.shapeSeed ?? 0,
                   fillColor: layer.fillColor ?? '#ffffff',
                   borderColor: layer.borderColor ?? '#241b15',
                   visible: layer.visible ?? true,
@@ -1051,6 +1255,21 @@ const readProjectFromStorage = (): PersistedProject | null => {
       messageWindowPresets: Array.isArray(parsedProject.messageWindowPresets)
         ? parsedProject.messageWindowPresets.map((preset) => ({ ...preset }))
         : [],
+      textStylePresets: Array.isArray(parsedProject.textStylePresets)
+        ? parsedProject.textStylePresets.map((preset) => ({ ...preset }))
+        : [],
+      watermarkStylePresets: Array.isArray(parsedProject.watermarkStylePresets)
+        ? parsedProject.watermarkStylePresets.map((preset) => ({ ...preset }))
+        : [],
+      bubbleStylePresets: Array.isArray(parsedProject.bubbleStylePresets)
+        ? parsedProject.bubbleStylePresets.map((preset) => ({ ...preset }))
+        : [],
+      overlayStylePresets: Array.isArray(parsedProject.overlayStylePresets)
+        ? parsedProject.overlayStylePresets.map((preset) => ({ ...preset }))
+        : [],
+      mosaicStylePresets: Array.isArray(parsedProject.mosaicStylePresets)
+        ? parsedProject.mosaicStylePresets.map((preset) => ({ ...preset }))
+        : [],
       templates: Array.isArray(parsedProject.templates)
         ? parsedProject.templates.map((template) => ({
             ...template,
@@ -1064,6 +1283,11 @@ const readProjectFromStorage = (): PersistedProject | null => {
             watermarkLayers: Array.isArray(template.watermarkLayers)
               ? template.watermarkLayers.map((layer) => ({ ...layer }))
               : [],
+          }))
+        : [],
+      reusableAssets: Array.isArray(parsedProject.reusableAssets)
+        ? parsedProject.reusableAssets.map((asset) => ({
+            ...asset,
           }))
         : [],
     }
@@ -1641,7 +1865,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           projectId: state.projectId,
           projectName: state.projectName,
           messageWindowPresets: state.messageWindowPresets,
+          textStylePresets: state.textStylePresets,
+          watermarkStylePresets: state.watermarkStylePresets,
+          bubbleStylePresets: state.bubbleStylePresets,
+          overlayStylePresets: state.overlayStylePresets,
+          mosaicStylePresets: state.mosaicStylePresets,
           templates: state.templates,
+          reusableAssets: state.reusableAssets,
         })
       const recentProjects = upsertRecentProject(persistedProject)
       writeProjectToStorage(persistedProject)
@@ -1677,7 +1907,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         projectId: savedProject.id,
         projectName: savedProject.name,
         messageWindowPresets: savedProject.messageWindowPresets,
+        textStylePresets: savedProject.textStylePresets,
+        watermarkStylePresets: savedProject.watermarkStylePresets,
+        bubbleStylePresets: savedProject.bubbleStylePresets,
+        overlayStylePresets: savedProject.overlayStylePresets,
+        mosaicStylePresets: savedProject.mosaicStylePresets,
         templates: savedProject.templates,
+        reusableAssets: savedProject.reusableAssets,
         recentProjects,
         loadError: null,
         isDirty: false,
@@ -1809,7 +2045,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         projectId: savedProject.id,
         projectName: savedProject.name,
         messageWindowPresets: savedProject.messageWindowPresets,
+        textStylePresets: savedProject.textStylePresets,
+        watermarkStylePresets: savedProject.watermarkStylePresets,
+        bubbleStylePresets: savedProject.bubbleStylePresets,
+        overlayStylePresets: savedProject.overlayStylePresets,
+        mosaicStylePresets: savedProject.mosaicStylePresets,
         templates: savedProject.templates,
+        reusableAssets: savedProject.reusableAssets,
         recentProjects,
         loadError: null,
         isDirty: false,
@@ -1991,7 +2233,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                 projectId: current.projectId,
                 projectName: current.projectName,
                 messageWindowPresets: current.messageWindowPresets,
+                textStylePresets: current.textStylePresets,
+                watermarkStylePresets: current.watermarkStylePresets,
+                bubbleStylePresets: current.bubbleStylePresets,
+                overlayStylePresets: current.overlayStylePresets,
+                mosaicStylePresets: current.mosaicStylePresets,
                 templates: current.templates,
+                reusableAssets: current.reusableAssets,
               }),
             )
           }
@@ -2072,7 +2320,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                   projectId: current.projectId,
                   projectName: current.projectName,
                   messageWindowPresets: current.messageWindowPresets,
+                  textStylePresets: current.textStylePresets,
+                  watermarkStylePresets: current.watermarkStylePresets,
+                  bubbleStylePresets: current.bubbleStylePresets,
+                  overlayStylePresets: current.overlayStylePresets,
+                  mosaicStylePresets: current.mosaicStylePresets,
                   templates: current.templates,
+                  reusableAssets: current.reusableAssets,
                 }),
               )
             }
@@ -2326,6 +2580,95 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  saveCurrentPageAsReusableAsset: () =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      if (!page) {
+        return state
+      }
+
+      const asset: ReusablePageAsset = {
+        id: createReusableAssetId(),
+        label: `${page.name} asset`,
+        assetName: page.name.replace(/(\.[^.]+)$/, '-layout.png'),
+        summary: createReusableAssetSummary(page),
+      }
+
+      return {
+        reusableAssets: [asset, ...state.reusableAssets.filter((entry) => entry.label !== asset.label)].slice(0, 12),
+      }
+    }),
+  renameReusableAsset: (assetId, name) =>
+    set((state) => ({
+      reusableAssets: state.reusableAssets.map((asset) =>
+        asset.id === assetId
+          ? {
+              ...asset,
+              label: name,
+            }
+          : asset,
+      ),
+    })),
+  duplicateReusableAsset: (assetId) =>
+    set((state) => {
+      const asset = state.reusableAssets.find((entry) => entry.id === assetId)
+      if (!asset) {
+        return state
+      }
+
+      const duplicatedAsset: ReusablePageAsset = {
+        ...cloneReusableAsset(asset),
+        id: createReusableAssetId(),
+        label: `${asset.label} copy`,
+      }
+
+      return {
+        reusableAssets: [duplicatedAsset, ...state.reusableAssets].slice(0, 12),
+      }
+    }),
+  deleteReusableAsset: (assetId) =>
+    set((state) => ({
+      reusableAssets: state.reusableAssets.filter((asset) => asset.id !== assetId),
+    })),
+  applyReusableAssetToActivePage: (assetId) =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      const asset = state.reusableAssets.find((entry) => entry.id === assetId)
+      if (!page || !asset || !state.activePageId) {
+        return state
+      }
+
+      const watermarkLayer: CanvasWatermarkLayer = {
+        id: createWatermarkLayerId(),
+        name: asset.label,
+        groupId: null,
+        text: asset.assetName,
+        opacity: 0.35,
+        color: '#fff4d6',
+        repeated: false,
+        angle: -12,
+        density: 1,
+        preset: 'custom',
+        mode: 'image',
+        assetName: asset.assetName,
+        x: 960,
+        y: 540,
+        scale: 1,
+        tiled: false,
+        visible: true,
+        locked: false,
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+          ...entry,
+          watermarkLayers: [...entry.watermarkLayers, watermarkLayer],
+        })),
+        selectedLayerId: watermarkLayer.id,
+        selectedLayerIds: [watermarkLayer.id],
+        loadError: null,
+      })
+    }),
   addWatermarkLayer: () =>
     set((state) => {
       if (!state.activePageId) {
@@ -2566,6 +2909,93 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  saveSelectedWatermarkStylePreset: () =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      if (!activeWatermarkLayer) {
+        return state
+      }
+
+      const preset: WatermarkStylePreset = {
+        id: createWatermarkPresetId(),
+        label: activeWatermarkLayer.name?.trim() || activeWatermarkLayer.assetName || activeWatermarkLayer.text || 'Watermark preset',
+        text: activeWatermarkLayer.text,
+        opacity: activeWatermarkLayer.opacity,
+        color: activeWatermarkLayer.color,
+        repeated: activeWatermarkLayer.repeated,
+        angle: activeWatermarkLayer.angle,
+        density: activeWatermarkLayer.density,
+        preset: activeWatermarkLayer.preset,
+        mode: activeWatermarkLayer.mode,
+        assetName: activeWatermarkLayer.assetName,
+        scale: activeWatermarkLayer.scale,
+        tiled: activeWatermarkLayer.tiled,
+      }
+
+      return {
+        watermarkStylePresets: [preset, ...state.watermarkStylePresets.filter((entry) => entry.label !== preset.label)].slice(0, 12),
+      }
+    }),
+  applyWatermarkStylePreset: (presetId) =>
+    set((state) => {
+      const activeWatermarkLayer = selectActiveWatermarkLayer(state)
+      const preset = state.watermarkStylePresets.find((entry) => entry.id === presetId)
+      if (!activeWatermarkLayer || !preset || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === activeWatermarkLayer.id
+              ? {
+                  ...layer,
+                  text: preset.text,
+                  opacity: preset.opacity,
+                  color: preset.color,
+                  repeated: preset.repeated,
+                  angle: preset.angle,
+                  density: preset.density,
+                  preset: preset.preset,
+                  mode: preset.mode,
+                  assetName: preset.assetName,
+                  scale: preset.scale,
+                  tiled: preset.tiled,
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  renameWatermarkStylePreset: (presetId, name) =>
+    set((state) => ({
+      watermarkStylePresets: state.watermarkStylePresets.map((preset) =>
+        preset.id === presetId ? { ...preset, label: name } : preset,
+      ),
+    })),
+  duplicateWatermarkStylePreset: (presetId) =>
+    set((state) => {
+      const preset = state.watermarkStylePresets.find((entry) => entry.id === presetId)
+      if (!preset) {
+        return state
+      }
+
+      const duplicatedPreset: WatermarkStylePreset = {
+        ...preset,
+        id: createWatermarkPresetId(),
+        label: `${preset.label} copy`,
+      }
+
+      return {
+        watermarkStylePresets: [duplicatedPreset, ...state.watermarkStylePresets].slice(0, 12),
+      }
+    }),
+  deleteWatermarkStylePreset: (presetId) =>
+    set((state) => ({
+      watermarkStylePresets: state.watermarkStylePresets.filter((preset) => preset.id !== presetId),
+    })),
   addTextLayer: () =>
     set((state) => {
       if (!state.activePageId) {
@@ -2907,6 +3337,97 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  saveSelectedTextStylePreset: () =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer) {
+        return state
+      }
+
+      const preset: TextStylePreset = {
+        id: createTextPresetId(),
+        label: activeTextLayer.name?.trim() || activeTextLayer.text || 'Text preset',
+        text: activeTextLayer.text,
+        fontSize: activeTextLayer.fontSize,
+        color: activeTextLayer.color,
+        lineHeight: activeTextLayer.lineHeight,
+        letterSpacing: activeTextLayer.letterSpacing,
+        maxWidth: activeTextLayer.maxWidth,
+        fillMode: activeTextLayer.fillMode,
+        gradientFrom: activeTextLayer.gradientFrom,
+        gradientTo: activeTextLayer.gradientTo,
+        isVertical: activeTextLayer.isVertical,
+        strokeWidth: activeTextLayer.strokeWidth,
+        strokeColor: activeTextLayer.strokeColor,
+        shadowEnabled: activeTextLayer.shadowEnabled,
+      }
+
+      return {
+        textStylePresets: [preset, ...state.textStylePresets.filter((entry) => entry.label !== preset.label)].slice(0, 12),
+      }
+    }),
+  applyTextStylePreset: (presetId) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      const preset = state.textStylePresets.find((entry) => entry.id === presetId)
+      if (!activeTextLayer || !preset || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id
+              ? {
+                  ...layer,
+                  text: preset.text,
+                  fontSize: preset.fontSize,
+                  color: preset.color,
+                  lineHeight: preset.lineHeight,
+                  letterSpacing: preset.letterSpacing,
+                  maxWidth: preset.maxWidth,
+                  fillMode: preset.fillMode,
+                  gradientFrom: preset.gradientFrom,
+                  gradientTo: preset.gradientTo,
+                  isVertical: preset.isVertical,
+                  strokeWidth: preset.strokeWidth,
+                  strokeColor: preset.strokeColor,
+                  shadowEnabled: preset.shadowEnabled,
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  renameTextStylePreset: (presetId, name) =>
+    set((state) => ({
+      textStylePresets: state.textStylePresets.map((preset) =>
+        preset.id === presetId ? { ...preset, label: name } : preset,
+      ),
+    })),
+  duplicateTextStylePreset: (presetId) =>
+    set((state) => {
+      const preset = state.textStylePresets.find((entry) => entry.id === presetId)
+      if (!preset) {
+        return state
+      }
+
+      const duplicatedPreset: TextStylePreset = {
+        ...preset,
+        id: createTextPresetId(),
+        label: `${preset.label} copy`,
+      }
+
+      return {
+        textStylePresets: [duplicatedPreset, ...state.textStylePresets].slice(0, 12),
+      }
+    }),
+  deleteTextStylePreset: (presetId) =>
+    set((state) => ({
+      textStylePresets: state.textStylePresets.filter((preset) => preset.id !== presetId),
+    })),
   addMessageWindowLayer: () =>
     set((state) => {
       if (!state.activePageId) {
@@ -3119,6 +3640,33 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  renameMessageWindowPreset: (presetId, name) =>
+    set((state) => ({
+      messageWindowPresets: state.messageWindowPresets.map((preset) =>
+        preset.id === presetId ? { ...preset, label: name } : preset,
+      ),
+    })),
+  duplicateMessageWindowPreset: (presetId) =>
+    set((state) => {
+      const preset = state.messageWindowPresets.find((entry) => entry.id === presetId)
+      if (!preset) {
+        return state
+      }
+
+      const duplicatedPreset: MessageWindowPreset = {
+        ...preset,
+        id: createMessagePresetId(),
+        label: `${preset.label} copy`,
+      }
+
+      return {
+        messageWindowPresets: [duplicatedPreset, ...state.messageWindowPresets].slice(0, 8),
+      }
+    }),
+  deleteMessageWindowPreset: (presetId) =>
+    set((state) => ({
+      messageWindowPresets: state.messageWindowPresets.filter((preset) => preset.id !== presetId),
+    })),
   addBubbleLayer: () =>
     set((state) => {
       if (!state.activePageId) {
@@ -3266,6 +3814,119 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  setSelectedBubbleShape: (shape) =>
+    set((state) => {
+      const activeBubbleLayer = selectActiveBubbleLayer(state)
+      if (!activeBubbleLayer || !state.activePageId || activeBubbleLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          bubbleLayers: page.bubbleLayers.map((layer) =>
+            layer.id === activeBubbleLayer.id ? { ...layer, bubbleShape: shape } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  randomizeSelectedBubbleShape: () =>
+    set((state) => {
+      const activeBubbleLayer = selectActiveBubbleLayer(state)
+      if (!activeBubbleLayer || !state.activePageId || activeBubbleLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          bubbleLayers: page.bubbleLayers.map((layer) =>
+            layer.id === activeBubbleLayer.id ? { ...layer, shapeSeed: (layer.shapeSeed ?? 0) + 1 } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  saveSelectedBubbleStylePreset: () =>
+    set((state) => {
+      const activeBubbleLayer = selectActiveBubbleLayer(state)
+      if (!activeBubbleLayer) {
+        return state
+      }
+
+      const preset: BubbleStylePreset = {
+        id: createBubblePresetId(),
+        label: activeBubbleLayer.name?.trim() || activeBubbleLayer.text || 'Bubble preset',
+        text: activeBubbleLayer.text,
+        tailDirection: activeBubbleLayer.tailDirection,
+        stylePreset: activeBubbleLayer.stylePreset,
+        bubbleShape: activeBubbleLayer.bubbleShape ?? 'round',
+        shapeSeed: activeBubbleLayer.shapeSeed ?? 0,
+        fillColor: activeBubbleLayer.fillColor,
+        borderColor: activeBubbleLayer.borderColor,
+      }
+
+      return {
+        bubbleStylePresets: [preset, ...state.bubbleStylePresets.filter((entry) => entry.label !== preset.label)].slice(0, 12),
+      }
+    }),
+  applyBubbleStylePreset: (presetId) =>
+    set((state) => {
+      const activeBubbleLayer = selectActiveBubbleLayer(state)
+      const preset = state.bubbleStylePresets.find((entry) => entry.id === presetId)
+      if (!activeBubbleLayer || !preset || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          bubbleLayers: page.bubbleLayers.map((layer) =>
+            layer.id === activeBubbleLayer.id
+              ? {
+                  ...layer,
+                  text: preset.text,
+                  tailDirection: preset.tailDirection,
+                  stylePreset: preset.stylePreset,
+                  bubbleShape: preset.bubbleShape,
+                  shapeSeed: preset.shapeSeed,
+                  fillColor: preset.fillColor,
+                  borderColor: preset.borderColor,
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  renameBubbleStylePreset: (presetId, name) =>
+    set((state) => ({
+      bubbleStylePresets: state.bubbleStylePresets.map((preset) =>
+        preset.id === presetId ? { ...preset, label: name } : preset,
+      ),
+    })),
+  duplicateBubbleStylePreset: (presetId) =>
+    set((state) => {
+      const preset = state.bubbleStylePresets.find((entry) => entry.id === presetId)
+      if (!preset) {
+        return state
+      }
+
+      const duplicatedPreset: BubbleStylePreset = {
+        ...preset,
+        id: createBubblePresetId(),
+        label: `${preset.label} copy`,
+      }
+
+      return {
+        bubbleStylePresets: [duplicatedPreset, ...state.bubbleStylePresets].slice(0, 12),
+      }
+    }),
+  deleteBubbleStylePreset: (presetId) =>
+    set((state) => ({
+      bubbleStylePresets: state.bubbleStylePresets.filter((preset) => preset.id !== presetId),
+    })),
   duplicateSelectedBubbleLayer: () =>
     set((state) => {
       const activeBubbleLayer = selectActiveBubbleLayer(state)
@@ -3531,6 +4192,79 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  saveSelectedMosaicStylePreset: () =>
+    set((state) => {
+      const activeMosaicLayer = selectActiveMosaicLayer(state)
+      if (!activeMosaicLayer) {
+        return state
+      }
+
+      const preset: MosaicStylePreset = {
+        id: createMosaicPresetId(),
+        label: activeMosaicLayer.name?.trim() || `${activeMosaicLayer.style} ${activeMosaicLayer.intensity}`,
+        intensity: activeMosaicLayer.intensity,
+        style: activeMosaicLayer.style,
+        width: activeMosaicLayer.width,
+        height: activeMosaicLayer.height,
+      }
+
+      return {
+        mosaicStylePresets: [preset, ...state.mosaicStylePresets.filter((entry) => entry.label !== preset.label)].slice(0, 12),
+      }
+    }),
+  applyMosaicStylePreset: (presetId) =>
+    set((state) => {
+      const activeMosaicLayer = selectActiveMosaicLayer(state)
+      const preset = state.mosaicStylePresets.find((entry) => entry.id === presetId)
+      if (!activeMosaicLayer || !preset || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          mosaicLayers: page.mosaicLayers.map((layer) =>
+            layer.id === activeMosaicLayer.id
+              ? {
+                  ...layer,
+                  intensity: preset.intensity,
+                  style: preset.style,
+                  width: preset.width,
+                  height: preset.height,
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  renameMosaicStylePreset: (presetId, name) =>
+    set((state) => ({
+      mosaicStylePresets: state.mosaicStylePresets.map((preset) =>
+        preset.id === presetId ? { ...preset, label: name } : preset,
+      ),
+    })),
+  duplicateMosaicStylePreset: (presetId) =>
+    set((state) => {
+      const preset = state.mosaicStylePresets.find((entry) => entry.id === presetId)
+      if (!preset) {
+        return state
+      }
+
+      const duplicatedPreset: MosaicStylePreset = {
+        ...preset,
+        id: createMosaicPresetId(),
+        label: `${preset.label} copy`,
+      }
+
+      return {
+        mosaicStylePresets: [duplicatedPreset, ...state.mosaicStylePresets].slice(0, 12),
+      }
+    }),
+  deleteMosaicStylePreset: (presetId) =>
+    set((state) => ({
+      mosaicStylePresets: state.mosaicStylePresets.filter((preset) => preset.id !== presetId),
+    })),
   duplicateSelectedMosaicLayer: () =>
     set((state) => {
       const activeMosaicLayer = selectActiveMosaicLayer(state)
@@ -3872,6 +4606,97 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  saveSelectedOverlayStylePreset: () =>
+    set((state) => {
+      const activeOverlayLayer = selectActiveOverlayLayer(state)
+      if (!activeOverlayLayer) {
+        return state
+      }
+
+      const preset: OverlayStylePreset = {
+        id: createOverlayPresetId(),
+        label: activeOverlayLayer.name?.trim() || `Overlay ${activeOverlayLayer.areaPreset}`,
+        areaPreset: activeOverlayLayer.areaPreset,
+        color: activeOverlayLayer.color,
+        fillMode: activeOverlayLayer.fillMode,
+        gradientFrom: activeOverlayLayer.gradientFrom,
+        gradientTo: activeOverlayLayer.gradientTo,
+        gradientDirection: activeOverlayLayer.gradientDirection,
+        opacity: activeOverlayLayer.opacity,
+      }
+
+      return {
+        overlayStylePresets: [preset, ...state.overlayStylePresets.filter((entry) => entry.label !== preset.label)].slice(0, 12),
+      }
+    }),
+  applyOverlayStylePreset: (presetId) =>
+    set((state) => {
+      const activeOverlayLayer = selectActiveOverlayLayer(state)
+      const preset = state.overlayStylePresets.find((entry) => entry.id === presetId)
+      if (!activeOverlayLayer || !preset || !state.activePageId) {
+        return state
+      }
+
+      const nextBounds =
+        preset.areaPreset === 'full'
+          ? { x: 960, y: 540, width: 1920, height: 1080 }
+          : preset.areaPreset === 'top-half'
+            ? { x: 960, y: 270, width: 1920, height: 540 }
+            : preset.areaPreset === 'bottom-half'
+              ? { x: 960, y: 810, width: 1920, height: 540 }
+              : preset.areaPreset === 'center-band'
+                ? { x: 960, y: 540, width: 1920, height: 320 }
+                : { x: activeOverlayLayer.x, y: activeOverlayLayer.y, width: activeOverlayLayer.width, height: activeOverlayLayer.height }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          overlayLayers: page.overlayLayers.map((layer) =>
+            layer.id === activeOverlayLayer.id
+              ? {
+                  ...layer,
+                  ...nextBounds,
+                  areaPreset: preset.areaPreset,
+                  color: preset.color,
+                  fillMode: preset.fillMode,
+                  gradientFrom: preset.gradientFrom,
+                  gradientTo: preset.gradientTo,
+                  gradientDirection: preset.gradientDirection,
+                  opacity: preset.opacity,
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  renameOverlayStylePreset: (presetId, name) =>
+    set((state) => ({
+      overlayStylePresets: state.overlayStylePresets.map((preset) =>
+        preset.id === presetId ? { ...preset, label: name } : preset,
+      ),
+    })),
+  duplicateOverlayStylePreset: (presetId) =>
+    set((state) => {
+      const preset = state.overlayStylePresets.find((entry) => entry.id === presetId)
+      if (!preset) {
+        return state
+      }
+
+      const duplicatedPreset: OverlayStylePreset = {
+        ...preset,
+        id: createOverlayPresetId(),
+        label: `${preset.label} copy`,
+      }
+
+      return {
+        overlayStylePresets: [duplicatedPreset, ...state.overlayStylePresets].slice(0, 12),
+      }
+    }),
+  deleteOverlayStylePreset: (presetId) =>
+    set((state) => ({
+      overlayStylePresets: state.overlayStylePresets.filter((preset) => preset.id !== presetId),
+    })),
   duplicateSelectedOverlayLayer: () =>
     set((state) => {
       const activeOverlayLayer = selectActiveOverlayLayer(state)
@@ -3957,6 +4782,67 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           overlayLayers: page.overlayLayers.filter((layer) => layer.id !== activeOverlayLayer.id),
         })),
         selectedLayerId: null,
+        loadError: null,
+      })
+    }),
+  addBackendMosaicLayers: (layers) =>
+    set((state) => {
+      if (!state.activePageId || layers.length === 0) {
+        return state
+      }
+
+      const nextLayers = layers.map((layer, index) => ({
+        ...createMosaicLayer(),
+        x: layer.x,
+        y: layer.y,
+        width: layer.width,
+        height: layer.height,
+        intensity: layer.intensity,
+        style: layer.style,
+        name: layer.name ?? `Backend mosaic ${index + 1}`,
+      }))
+      const lastLayer = nextLayers[nextLayers.length - 1] ?? null
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          mosaicLayers: [...page.mosaicLayers, ...nextLayers],
+        })),
+        selectedLayerId: lastLayer?.id ?? state.selectedLayerId,
+        selectedLayerIds: lastLayer ? [lastLayer.id] : state.selectedLayerIds,
+        loadError: null,
+      })
+    }),
+  addBackendOverlayLayers: (layers) =>
+    set((state) => {
+      if (!state.activePageId || layers.length === 0) {
+        return state
+      }
+
+      const nextLayers = layers.map((layer, index) => ({
+        ...createOverlayLayer(),
+        x: layer.x,
+        y: layer.y,
+        width: layer.width,
+        height: layer.height,
+        areaPreset: 'custom' as const,
+        color: sanitizeTextColor(layer.color),
+        fillMode: layer.fillMode ?? 'solid',
+        gradientFrom: sanitizeTextColor(layer.gradientFrom ?? layer.color),
+        gradientTo: sanitizeTextColor(layer.gradientTo ?? layer.color),
+        gradientDirection: layer.gradientDirection ?? 'diagonal',
+        opacity: Math.max(0.1, Math.min(1, layer.opacity)),
+        name: layer.name ?? `Backend overlay ${index + 1}`,
+      }))
+      const lastLayer = nextLayers[nextLayers.length - 1] ?? null
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          overlayLayers: [...page.overlayLayers, ...nextLayers],
+        })),
+        selectedLayerId: lastLayer?.id ?? state.selectedLayerId,
+        selectedLayerIds: lastLayer ? [lastLayer.id] : state.selectedLayerIds,
         loadError: null,
       })
     }),

@@ -26,6 +26,19 @@ button {
   font: inherit;
 }
 
+.template-preview {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(243, 239, 230, 0.04);
+  border: 1px solid rgba(243, 239, 230, 0.08);
+}
+
+.template-preview small {
+  color: rgba(243, 239, 230, 0.72);
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
@@ -464,6 +477,58 @@ button {
 .overlay-layer-chip.selected {
   border-color: rgba(191, 143, 82, 0.9);
   box-shadow: 0 0 0 3px rgba(191, 143, 82, 0.16);
+}
+
+.backend-review-preview {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 18px;
+  border: 2px dashed rgba(36, 27, 21, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 8px 10px;
+  pointer-events: auto;
+  z-index: 2;
+  background-clip: padding-box;
+}
+
+.backend-review-preview span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(249, 245, 236, 0.88);
+  color: #241b15;
+}
+
+.backend-review-preview.sam3 {
+  background: rgba(255, 208, 146, 0.16);
+  border-color: rgba(191, 143, 82, 0.58);
+}
+
+.backend-review-preview.nsfw {
+  background: rgba(255, 77, 109, 0.14);
+  border-color: rgba(255, 77, 109, 0.58);
+}
+
+.backend-review-preview.selected {
+  box-shadow: 0 0 0 3px rgba(191, 143, 82, 0.14);
+}
+
+.backend-review-preview.focused {
+  z-index: 3;
+  border-style: solid;
+  box-shadow: 0 0 0 4px rgba(36, 27, 21, 0.16), 0 0 0 8px rgba(191, 143, 82, 0.14);
+}
+
+.backend-review-preview:not(.selected) {
+  opacity: 0.38;
 }
 
 .message-window-chip {

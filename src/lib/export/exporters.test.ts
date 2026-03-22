@@ -422,6 +422,107 @@ describe('exporters', () => {
     expect(entry).toContain('watermark1=[patreon-stamp.png],opacity:0.4,angle:-16,density:2,mode:image,scale:1.2,tiled:on')
   })
 
+  it('includes bubble shape variants in PNG, PDF, and ZIP exports', async () => {
+    const fillText = vi.fn()
+    let pdfBlob: Blob | null = null
+    let zipBlob: Blob | null = null
+    const canvasContext = {
+      fillStyle: '',
+      strokeStyle: '',
+      globalAlpha: 1,
+      font: '',
+      textAlign: 'left',
+      lineWidth: 0,
+      lineJoin: 'round',
+      shadowColor: '',
+      shadowBlur: 0,
+      shadowOffsetX: 0,
+      shadowOffsetY: 0,
+      fillRect: vi.fn(),
+      strokeRect: vi.fn(),
+      fillText,
+      strokeText: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      beginPath: vi.fn(),
+      roundRect: vi.fn(),
+      fill: vi.fn(),
+      stroke: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      closePath: vi.fn(),
+    }
+    const bubblePage: CanvasImage = {
+      ...sampleImage,
+      bubbleLayers: [
+        {
+          id: 'bubble-1',
+          text: 'Alert',
+          x: 420,
+          y: 300,
+          width: 260,
+          height: 150,
+          tailDirection: 'right',
+          stylePreset: 'speech',
+          bubbleShape: 'spiky',
+          shapeSeed: 1,
+          fillColor: '#ffffff',
+          borderColor: '#241b15',
+          visible: true,
+          locked: false,
+        },
+      ],
+    }
+    const originalCreateElement = document.createElement.bind(document)
+
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'canvas') {
+        const canvas = originalCreateElement('canvas') as HTMLCanvasElement
+        canvas.getContext = vi.fn(() => canvasContext) as typeof canvas.getContext
+        canvas.toBlob = vi.fn((callback: BlobCallback) => callback(new Blob(['png-binary'], { type: 'image/png' })))
+        return canvas
+      }
+
+      if (tagName === 'a') {
+        const link = originalCreateElement('a')
+        link.click = vi.fn()
+        return link
+      }
+
+      return originalCreateElement(tagName)
+    })
+
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn((blob: Blob) => {
+        if (blob.type === 'application/pdf') {
+          pdfBlob = blob
+          return 'blob:pdf-export'
+        }
+        if (blob.type === 'application/zip') {
+          zipBlob = blob
+          return 'blob:zip-export'
+        }
+        return 'blob:png-export'
+      }),
+      revokeObjectURL: vi.fn(),
+    })
+
+    await exportPageAsPng(bubblePage, null, outputSettings)
+    await exportPageAsPdf(bubblePage, null, outputSettings)
+    await exportPagesAsZip([bubblePage], outputSettings)
+
+    expect(fillText).toHaveBeenCalledWith('Spiky v2', 420, 365)
+
+    const pdfText = await pdfBlob?.text()
+    expect(pdfText).toContain('shape spiky / variant 2')
+
+    const zip = await JSZip.loadAsync(zipBlob as Blob)
+    const entry = await zip.file('01-creators-coco-01.txt')?.async('string')
+    expect(entry).toContain('shape:spiky,variant:2')
+  })
+
   it('renders wrapped gradient text settings in PNG export', async () => {
     const addColorStop = vi.fn()
     const createLinearGradient = vi.fn(() => ({

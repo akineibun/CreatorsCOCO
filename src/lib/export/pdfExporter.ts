@@ -1,4 +1,5 @@
 import type { CanvasImage, CanvasTransform, OutputSettings } from '../../stores/workspaceStore'
+import { getBubbleShapeVariantNumber } from '../bubbleShapes'
 import { createPdfExportName } from './fileNames'
 import { createMetadataRemovalSummary, sanitizeRenderedExportBlob } from './metadata'
 
@@ -58,7 +59,7 @@ export const exportPageAsPdf = async (
   image.bubbleLayers.filter((layer) => layer.visible).forEach((layer) => {
     lines.push('0 -28 Td')
     lines.push(
-      `(${escapePdfText(`Bubble ${layer.text} @ ${layer.x}, ${layer.y} / ${layer.width}x${layer.height} / tail ${layer.tailDirection} / style ${layer.stylePreset} / fill ${layer.fillColor} / border ${layer.borderColor}`)}) Tj`,
+      `(${escapePdfText(`Bubble ${layer.text} @ ${layer.x}, ${layer.y} / ${layer.width}x${layer.height} / tail ${layer.tailDirection} / style ${layer.stylePreset} / shape ${layer.bubbleShape ?? 'round'} / variant ${getBubbleShapeVariantNumber(layer.shapeSeed ?? 0)} / fill ${layer.fillColor} / border ${layer.borderColor}`)}) Tj`,
     )
   })
 
