@@ -8,6 +8,7 @@ import {
   PROJECT_STORAGE_KEY,
   RECENT_PROJECTS_STORAGE_KEY,
   resetWorkspaceStore,
+  useWorkspaceStore,
 } from './stores/workspaceStore'
 
 describe('App shell', () => {
@@ -1485,6 +1486,21 @@ describe('App shell', () => {
     expect(screen.getAllByText('drop-01.jpg')).toHaveLength(2)
   })
 
+  it('adds an image pasted from the clipboard', async () => {
+    render(<App />)
+
+    const file = new File(['paste'], 'clipboard-scene.png', { type: 'image/png' })
+
+    fireEvent.paste(window, {
+      clipboardData: {
+        files: [file],
+      },
+    })
+
+    expect(screen.getByText('1 page loaded')).toBeInTheDocument()
+    expect(screen.getAllByText('clipboard-scene.png')).toHaveLength(2)
+  })
+
   it('deletes the active page and falls back to the previous page', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -1782,10 +1798,10 @@ describe('App shell', () => {
     await user.upload(input, new File(['one'], 'scene-01.png', { type: 'image/png' }))
     await user.click(screen.getByRole('button', { name: 'Export PNG' }))
 
+    expect(await screen.findByText('Exported scene-01.png as PNG')).toBeInTheDocument()
     expect(createObjectURL).toHaveBeenCalled()
     expect(anchorClick).toHaveBeenCalled()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:exported-page')
-    expect(screen.getByText('Exported scene-01.png as PNG')).toBeInTheDocument()
 
     appendChildSpy.mockRestore()
     removeChildSpy.mockRestore()
@@ -1801,6 +1817,36 @@ describe('App shell', () => {
 
     expect(screen.getByText('1080 x 1080 PNG')).toBeInTheDocument()
     expect(screen.getByText('Output preset Square 1080')).toBeInTheDocument()
+  })
+
+  it('updates the resize background mode from export settings', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Resize background Black' }))
+
+    expect(screen.getByText('Resize background Black')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resize background Black' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('updates the resize fit mode from export settings', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Resize fit Cover' }))
+
+    expect(screen.getByText('Resize fit Cover')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resize fit Cover' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('updates the export quality mode from export settings', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Export quality Platform' }))
+
+    expect(screen.getByText('Export quality Platform preset')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export quality Platform' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('exports all pages as a zip and the active page as a pdf', async () => {
@@ -1865,6 +1911,9 @@ describe('App shell', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: 'Preset Story 1080x1920' }))
+    await user.click(screen.getByRole('button', { name: 'Export quality Medium' }))
+    await user.click(screen.getByRole('button', { name: 'Resize fit Stretch' }))
+    await user.click(screen.getByRole('button', { name: 'Resize background Blurred art' }))
     await user.click(screen.getByRole('button', { name: 'Load sample image' }))
     await user.click(screen.getByRole('button', { name: 'Save now' }))
 
@@ -1872,6 +1921,9 @@ describe('App shell', () => {
     expect(savedProject).toContain('"presetId":"story-1080x1920"')
     expect(savedProject).toContain('"width":1080')
     expect(savedProject).toContain('"height":1920')
+    expect(savedProject).toContain('"qualityMode":"medium"')
+    expect(savedProject).toContain('"resizeFitMode":"stretch"')
+    expect(savedProject).toContain('"resizeBackgroundMode":"blurred-art"')
   })
 
   it('restores the saved output preset on app mount', () => {
@@ -1897,6 +1949,9 @@ describe('App shell', () => {
           width: 1080,
           height: 1920,
           format: 'png',
+          qualityMode: 'platform',
+          resizeFitMode: 'cover',
+          resizeBackgroundMode: 'black',
         },
         lastSavedAt: '2026-03-22T03:00:00.000Z',
       }),
@@ -1906,10 +1961,16 @@ describe('App shell', () => {
 
     expect(screen.getByText('1080 x 1920 PNG')).toBeInTheDocument()
     expect(screen.getByText('Output preset Story 1080x1920')).toBeInTheDocument()
+    expect(screen.getByText('Export quality Platform preset')).toBeInTheDocument()
+    expect(screen.getByText('Resize fit Cover')).toBeInTheDocument()
+    expect(screen.getByText('Resize background Black')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Preset Story 1080x1920' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
+    expect(screen.getByRole('button', { name: 'Export quality Platform' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Resize fit Cover' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Resize background Black' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('updates output size from custom width and height inputs', async () => {
@@ -2166,6 +2227,24 @@ describe('App shell', () => {
     expect(screen.getByText('PNG preview-013.png')).toBeInTheDocument()
     expect(screen.getByText('PDF preview-013.pdf')).toBeInTheDocument()
     expect(screen.getByText('ZIP preview-export-012-013.zip')).toBeInTheDocument()
+    expect(screen.getByLabelText('Resize preview frame')).toBeInTheDocument()
+    expect(screen.getByText('Contained with margins')).toBeInTheDocument()
+    expect(screen.getByText('EXIF and metadata removed')).toBeInTheDocument()
+    expect(screen.getByText('Export quality High')).toBeInTheDocument()
+  })
+
+  it('updates the resize preview when fit mode changes', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    expect(screen.getByText('Contained with margins')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Resize fit Cover' }))
+    expect(screen.getByText('Center cropped to fill')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Resize fit Stretch' }))
+    expect(screen.getByText('Stretched to fill')).toBeInTheDocument()
   })
 
   it('shows zip entry previews for every page with numbering applied', async () => {
@@ -2345,6 +2424,34 @@ describe('App shell', () => {
     expect(screen.getAllByText('Patreon batch 01').length).toBeGreaterThan(0)
   })
 
+  it('persists loaded image source data for blurred resize backgrounds after saving', async () => {
+    class MockFileReader {
+      result: string | ArrayBuffer | null = null
+      onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => void) | null = null
+      onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => void) | null = null
+
+      readAsDataURL(file: Blob) {
+        this.result = `data:${file.type};base64,ZmFrZS1pbWFnZQ==`
+        this.onload?.call(this as unknown as FileReader, {} as ProgressEvent<FileReader>)
+      }
+    }
+
+    vi.stubGlobal('FileReader', MockFileReader as unknown as typeof FileReader)
+    const user = userEvent.setup()
+    render(<App />)
+
+    const input = screen.getByLabelText('Open image file')
+    await user.upload(input, new File(['one'], 'scene-01.png', { type: 'image/png' }))
+    await user.click(screen.getByRole('button', { name: 'Resize background Blurred art' }))
+    await user.click(screen.getByRole('button', { name: 'Save now' }))
+
+    const savedProject = window.localStorage.getItem(PROJECT_STORAGE_KEY)
+    expect(savedProject).toContain('"resizeBackgroundMode":"blurred-art"')
+    expect(savedProject).toContain('"sourceUrl":"data:image/png;base64,ZmFrZS1pbWFnZQ=="')
+
+    vi.unstubAllGlobals()
+  })
+
   it('adds a text layer to the active page and selects it', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -2471,6 +2578,29 @@ describe('App shell', () => {
     await user.click(screen.getByRole('button', { name: 'Toggle text shadow' }))
 
     expect(screen.getByText('Shadow On')).toBeInTheDocument()
+  })
+
+  it('updates text layout and gradient fill settings', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add text layer' }))
+    await user.clear(screen.getByLabelText('Selected text content'))
+    await user.type(screen.getByLabelText('Selected text content'), 'Wrapped gradient text sample')
+    await user.click(screen.getByRole('button', { name: 'Increase line height' }))
+    await user.click(screen.getByRole('button', { name: 'Increase letter spacing' }))
+    await user.click(screen.getByRole('button', { name: 'Narrow text wrap' }))
+    await user.click(screen.getByRole('button', { name: 'Toggle gradient fill' }))
+    fireEvent.change(screen.getByLabelText('Selected text gradient from'), {
+      target: { value: '#ff3366' },
+    })
+    fireEvent.change(screen.getByLabelText('Selected text gradient to'), {
+      target: { value: '#ffd166' },
+    })
+
+    expect(screen.getByText('Fill Gradient #ff3366 to #ffd166')).toBeInTheDocument()
+    expect(screen.getByText('Line height 1.3 / Letter spacing 1px / Wrap 320px')).toBeInTheDocument()
   })
 
   it('adds a bubble layer to the active page and selects it', async () => {
@@ -2640,6 +2770,40 @@ describe('App shell', () => {
     expect(screen.getByText('Mosaic intensity 16')).toBeInTheDocument()
   })
 
+  it('cycles the selected mosaic style', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add mosaic layer' }))
+    await user.click(screen.getByRole('button', { name: 'Cycle mosaic style' }))
+
+    expect(screen.getByText('Mosaic style blur')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Cycle mosaic style' }))
+
+    expect(screen.getByText('Mosaic style noise')).toBeInTheDocument()
+  })
+
+  it('applies mosaic style and intensity presets from one-tap buttons', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add mosaic layer' }))
+    await user.click(screen.getByRole('button', { name: 'Mosaic blur' }))
+    await user.click(screen.getByRole('button', { name: 'Mosaic intensity Large' }))
+
+    expect(screen.getByText('Mosaic style blur')).toBeInTheDocument()
+    expect(screen.getByText('Mosaic intensity 24')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Mosaic noise' }))
+    await user.click(screen.getByRole('button', { name: 'Mosaic intensity Small' }))
+
+    expect(screen.getByText('Mosaic style noise')).toBeInTheDocument()
+    expect(screen.getByText('Mosaic intensity 8')).toBeInTheDocument()
+  })
+
   it('duplicates and reorders the selected mosaic layer', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -2650,7 +2814,7 @@ describe('App shell', () => {
     await user.click(screen.getByRole('button', { name: 'Send mosaic backward' }))
 
     expect(screen.getByText('Order 1 of 2')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Mosaic layer 12 (1)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Mosaic layer pixelate 12 (1)' })).toBeInTheDocument()
   })
 
   it('deletes the selected mosaic layer', async () => {
@@ -2702,6 +2866,81 @@ describe('App shell', () => {
     })
 
     expect(screen.getByText('Tint #44ccff')).toBeInTheDocument()
+  })
+
+  it('toggles the selected overlay to a gradient fill and updates gradient colors', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add overlay layer' }))
+    await user.click(screen.getByRole('button', { name: 'Toggle overlay gradient' }))
+    fireEvent.change(screen.getByLabelText('Selected overlay gradient from'), {
+      target: {
+        value: '#44ccff',
+      },
+    })
+    fireEvent.change(screen.getByLabelText('Selected overlay gradient to'), {
+      target: {
+        value: '#112233',
+      },
+    })
+
+    expect(screen.getByText('Overlay fill Gradient #44ccff to #112233')).toBeInTheDocument()
+  })
+
+  it('cycles overlay area presets', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add overlay layer' }))
+    await user.click(screen.getByRole('button', { name: 'Cycle overlay area' }))
+
+    expect(screen.getByText('Overlay area full')).toBeInTheDocument()
+    expect(screen.getByText('Position 960, 540')).toBeInTheDocument()
+    expect(screen.getByText('Size 1920 x 1080')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Cycle overlay area' }))
+
+    expect(screen.getByText('Overlay area top-half')).toBeInTheDocument()
+    expect(screen.getByText('Position 960, 270')).toBeInTheDocument()
+    expect(screen.getByText('Size 1920 x 540')).toBeInTheDocument()
+  })
+
+  it('applies overlay area presets from one-tap buttons', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add overlay layer' }))
+    await user.click(screen.getByRole('button', { name: 'Overlay center band' }))
+
+    expect(screen.getByText('Overlay area center-band')).toBeInTheDocument()
+    expect(screen.getByText('Position 960, 540')).toBeInTheDocument()
+    expect(screen.getByText('Size 1920 x 320')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Overlay bottom half' }))
+
+    expect(screen.getByText('Overlay area bottom-half')).toBeInTheDocument()
+    expect(screen.getByText('Position 960, 810')).toBeInTheDocument()
+    expect(screen.getByText('Size 1920 x 540')).toBeInTheDocument()
+  })
+
+  it('cycles overlay gradient direction', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add overlay layer' }))
+    await user.click(screen.getByRole('button', { name: 'Toggle overlay gradient' }))
+    await user.click(screen.getByRole('button', { name: 'Cycle overlay gradient direction' }))
+
+    expect(screen.getByText('Gradient direction vertical')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Cycle overlay gradient direction' }))
+
+    expect(screen.getByText('Gradient direction horizontal')).toBeInTheDocument()
   })
 
   it('duplicates and reorders the selected overlay layer', async () => {
@@ -3731,6 +3970,219 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: 'Overlay layer 0.4 grouped (2)' })).toBeInTheDocument()
   })
 
+  it('toggles visibility and lock for message window and watermark layers', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add message window layer' }))
+    act(() => {
+      const page = useWorkspaceStore.getState().pages[0]
+      useWorkspaceStore.getState().selectMessageWindowLayer(page.messageWindowLayers[0]!.id)
+      useWorkspaceStore.getState().toggleSelectedLayerVisibility()
+      useWorkspaceStore.getState().toggleSelectedLayerLock()
+    })
+
+    let page = useWorkspaceStore.getState().pages[0]
+    expect(page.messageWindowLayers[0]?.visible).toBe(false)
+    expect(page.messageWindowLayers[0]?.locked).toBe(true)
+
+    await user.click(screen.getByRole('button', { name: 'Add watermark layer' }))
+    act(() => {
+      const currentPage = useWorkspaceStore.getState().pages[0]
+      useWorkspaceStore.getState().selectWatermarkLayer(currentPage.watermarkLayers[0]!.id)
+      useWorkspaceStore.getState().toggleSelectedLayerVisibility()
+      useWorkspaceStore.getState().toggleSelectedLayerLock()
+    })
+
+    page = useWorkspaceStore.getState().pages[0]
+    expect(page.watermarkLayers[0]?.visible).toBe(false)
+    expect(page.watermarkLayers[0]?.locked).toBe(true)
+  })
+
+  it('duplicates message window and watermark layers with the shared duplicate action', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add message window layer' }))
+    act(() => {
+      const page = useWorkspaceStore.getState().pages[0]
+      useWorkspaceStore.getState().selectMessageWindowLayer(page.messageWindowLayers[0]!.id)
+      useWorkspaceStore.getState().duplicateSelectedLayer()
+    })
+    await user.click(screen.getByRole('button', { name: 'Add watermark layer' }))
+    act(() => {
+      const currentPage = useWorkspaceStore.getState().pages[0]
+      useWorkspaceStore.getState().selectWatermarkLayer(currentPage.watermarkLayers[0]!.id)
+      useWorkspaceStore.getState().duplicateSelectedLayer()
+    })
+
+    const page = useWorkspaceStore.getState().pages[0]
+
+    expect(page.messageWindowLayers).toHaveLength(2)
+    expect(page.watermarkLayers).toHaveLength(2)
+    expect(page.messageWindowLayers[1]?.speaker).toContain('copy')
+  })
+
+  it('applies common alignment and size matching actions to message window layers', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    act(() => {
+      let store = useWorkspaceStore.getState()
+      store.addMessageWindowLayer()
+      let page = useWorkspaceStore.getState().pages[0]
+      const firstId = page.messageWindowLayers[0]!.id
+      store.selectMessageWindowLayer(firstId)
+      store.resizeSelectedMessageWindowLayer(160, 80)
+      store.duplicateSelectedLayer()
+      page = useWorkspaceStore.getState().pages[0]
+      const secondId = page.messageWindowLayers[1]!.id
+      store = useWorkspaceStore.getState()
+      store.selectMessageWindowLayer(secondId)
+      store.moveSelectedMessageWindowLayer(320, 120)
+      store.resizeSelectedMessageWindowLayer(-80, -40)
+      store.setSelectedLayerIds([firstId, secondId])
+      store.alignSelectedLayersCenter('horizontal')
+      store.matchSelectedLayerSize('width')
+    })
+
+    const page = useWorkspaceStore.getState().pages[0]
+    expect(page.messageWindowLayers[0]?.x).toBe(960)
+    expect(page.messageWindowLayers[1]?.x).toBe(960)
+    expect(page.messageWindowLayers[0]?.width).toBe(page.messageWindowLayers[1]?.width)
+  })
+
+  it('applies common center and z-order actions to watermark layers', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    act(() => {
+      let store = useWorkspaceStore.getState()
+      store.addWatermarkLayer()
+      let page = useWorkspaceStore.getState().pages[0]
+      const firstId = page.watermarkLayers[0]!.id
+      store.selectWatermarkLayer(firstId)
+      store.changeSelectedWatermarkScale(0.2)
+      store.centerSelectedLayer()
+      store.duplicateSelectedLayer()
+      page = useWorkspaceStore.getState().pages[0]
+      const secondId = page.watermarkLayers[1]!.id
+      store = useWorkspaceStore.getState()
+      store.selectWatermarkLayer(firstId)
+      store.moveSelectedLayerForward()
+      store.selectWatermarkLayer(secondId)
+      store.moveSelectedLayerBackward()
+    })
+
+    const page = useWorkspaceStore.getState().pages[0]
+    expect(page.watermarkLayers).toHaveLength(2)
+    expect(page.watermarkLayers[0]?.x).toBe(984)
+    expect(page.watermarkLayers[0]?.y).toBe(564)
+    expect(page.watermarkLayers[1]?.x).toBe(960)
+    expect(page.watermarkLayers[1]?.y).toBe(540)
+  })
+
+  it('duplicates grouped message window and watermark layers together through the shared action', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    act(() => {
+      let store = useWorkspaceStore.getState()
+      store.addMessageWindowLayer()
+      store.addWatermarkLayer()
+      let page = useWorkspaceStore.getState().pages[0]
+      const messageId = page.messageWindowLayers[0]!.id
+      const watermarkId = page.watermarkLayers[0]!.id
+      store.setSelectedLayerIds([messageId, watermarkId])
+      store.groupSelectedLayers()
+      store.selectMessageWindowLayer(messageId)
+      store.duplicateSelectedLayer()
+      page = useWorkspaceStore.getState().pages[0]
+      expect(page.messageWindowLayers).toHaveLength(2)
+      expect(page.watermarkLayers).toHaveLength(2)
+      expect(page.messageWindowLayers[1]?.groupId).toBeTruthy()
+      expect(page.watermarkLayers[1]?.groupId).toBe(page.messageWindowLayers[1]?.groupId)
+    })
+  })
+
+  it('shows order details for message window and watermark layers in the inspector', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    act(() => {
+      let store = useWorkspaceStore.getState()
+      store.addMessageWindowLayer()
+      let page = useWorkspaceStore.getState().pages[0]
+      store.selectMessageWindowLayer(page.messageWindowLayers[0]!.id)
+      store.duplicateSelectedLayer()
+      page = useWorkspaceStore.getState().pages[0]
+      store = useWorkspaceStore.getState()
+      store.selectMessageWindowLayer(page.messageWindowLayers[1]!.id)
+    })
+    expect(screen.getByText('Order 2 of 2')).toBeInTheDocument()
+
+    act(() => {
+      let store = useWorkspaceStore.getState()
+      store.addWatermarkLayer()
+      let page = useWorkspaceStore.getState().pages[0]
+      store.selectWatermarkLayer(page.watermarkLayers[0]!.id)
+      store.duplicateSelectedLayer()
+      page = useWorkspaceStore.getState().pages[0]
+      store = useWorkspaceStore.getState()
+      store.selectWatermarkLayer(page.watermarkLayers[1]!.id)
+    })
+    expect(screen.getByText('Order 2 of 2')).toBeInTheDocument()
+  })
+
+  it('selects visible message window layers from the active page', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add message window layer' }))
+    await user.click(screen.getByRole('button', { name: 'Add message window layer' }))
+    await user.click(screen.getByRole('button', { name: 'Select message window layers' }))
+
+    expect(screen.getByText('2 layers selected')).toBeInTheDocument()
+    expect(screen.getByText('Window 2')).toBeInTheDocument()
+  })
+
+  it('selects visible watermark layers from the active page', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add watermark layer' }))
+    await user.click(screen.getByRole('button', { name: 'Add watermark layer' }))
+    await user.click(screen.getByRole('button', { name: 'Select watermark layers' }))
+
+    expect(screen.getByText('2 layers selected')).toBeInTheDocument()
+    expect(screen.getByText('Watermark 2')).toBeInTheDocument()
+  })
+
+  it('shows a mixed multi-selection summary in the inspector', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add text layer' }))
+    await user.click(screen.getByRole('button', { name: 'Add message window layer' }))
+    act(() => {
+      const page = useWorkspaceStore.getState().pages[0]
+      useWorkspaceStore.getState().setSelectedLayerIds([page.textLayers[0]!.id, page.messageWindowLayers[0]!.id])
+    })
+
+    expect(screen.getByText('2 layers selected')).toBeInTheDocument()
+    expect(screen.getByText('Text 1 / Window 1')).toBeInTheDocument()
+    expect(screen.getByText('Shared actions Move / Align / Group / Visibility / Lock / Order')).toBeInTheDocument()
+  })
+
   it('moves the whole active text group forward from a single grouped layer selection', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -3801,6 +4253,39 @@ describe('App shell', () => {
     expect(screen.getByText('Size 640 x 220')).toBeInTheDocument()
   })
 
+  it('cycles a message window frame style and loads a window asset', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add message window layer' }))
+    await user.click(screen.getByRole('button', { name: 'Cycle message window frame' }))
+    const input = screen.getByLabelText('Open message window asset')
+    await user.upload(input, new File(['frame'], 'vn-window.png', { type: 'image/png' }))
+
+    expect(screen.getByText('Frame soft / Asset vn-window.png')).toBeInTheDocument()
+    expect(screen.getByText('Render 9-slice asset')).toBeInTheDocument()
+    expect(screen.getByText('9-slice asset')).toBeInTheDocument()
+  })
+
+  it('restores message window frame style and asset after saving and reopening', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add message window layer' }))
+    await user.click(screen.getByRole('button', { name: 'Cycle message window frame' }))
+    const input = screen.getByLabelText('Open message window asset')
+    await user.upload(input, new File(['frame'], 'story-box.png', { type: 'image/png' }))
+    await user.click(screen.getByRole('button', { name: 'Save now' }))
+
+    unmount()
+    render(<App />)
+
+    expect(screen.getByText('Frame soft / Asset story-box.png')).toBeInTheDocument()
+    expect(screen.getByText('Render 9-slice asset')).toBeInTheDocument()
+  })
+
   it('saves the current page as a template and lists it in the sidebar', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -3852,6 +4337,43 @@ describe('App shell', () => {
     expect(screen.getByText('2 pages loaded')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open page 02: sample-page-01-copy.webp' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Layer text: Duplicate me (1)' })).toBeInTheDocument()
+  })
+
+  it('duplicates the active page into multiple batch variants', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add text layer' }))
+    await user.clear(screen.getByLabelText('Duplicate page variant batch'))
+    await user.type(screen.getByLabelText('Duplicate page variant batch'), 'Alpha{enter}Beta{enter}Gamma')
+    await user.click(screen.getByRole('button', { name: 'Duplicate page as batch variants' }))
+
+    expect(screen.getByText('4 pages loaded')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open page 02: sample-page-01-variant-1.webp' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open page 04: sample-page-01-variant-3.webp' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Layer text: Gamma (1)' })).toBeInTheDocument()
+  })
+
+  it('assigns variant labels to duplicated text swap and batch variant pages', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add text layer' }))
+    await user.clear(screen.getByLabelText('Duplicate page text swap'))
+    await user.type(screen.getByLabelText('Duplicate page text swap'), 'Variant line')
+    await user.click(screen.getByRole('button', { name: 'Duplicate page with text swap' }))
+
+    expect(screen.getAllByText('Variant Variant line').length).toBeGreaterThan(0)
+    expect(screen.getByText(/^Source page-sample$/)).toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Duplicate page variant batch'))
+    await user.type(screen.getByLabelText('Duplicate page variant batch'), 'Alpha{enter}Beta')
+    await user.click(screen.getByRole('button', { name: 'Duplicate page as batch variants' }))
+
+    expect(screen.getByRole('button', { name: 'Open page 04: sample-page-01-copy-variant-2.webp' })).toBeInTheDocument()
+    expect(screen.getAllByText('Variant Beta').length).toBeGreaterThan(0)
   })
 
   it('restores saved templates and message presets after reopening the app', async () => {
@@ -3908,6 +4430,21 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: 'Layer text: Variant line (1)' })).toBeInTheDocument()
   })
 
+  it('edits the active page variant label and shows it in the page list and inspector', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Duplicate active page' }))
+    const variantInput = screen.getByLabelText('Active page variant label')
+    await user.clear(variantInput)
+    await user.type(variantInput, 'Promo alt')
+
+    expect(variantInput).toHaveValue('Promo alt')
+    expect(screen.getAllByText((content) => content.includes('Promo alt')).length).toBeGreaterThan(0)
+    expect(screen.getByText(/^Source page-sample$/)).toBeInTheDocument()
+  })
+
   it('renames duplicates and deletes a saved template', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -3924,6 +4461,18 @@ describe('App shell', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete template: Story layout' }))
     expect(screen.queryByRole('button', { name: 'Apply template: Story layout' })).not.toBeInTheDocument()
+  })
+
+  it('renames the selected layer and reflects it in the inspector and layer panel', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Add overlay layer' }))
+    await user.clear(screen.getByLabelText('Selected layer name'))
+    await user.type(screen.getByLabelText('Selected layer name'), 'HeroShade')
+
+    expect(screen.getByRole('button', { name: 'Overlay layer HeroShade (1)' })).toBeInTheDocument()
   })
 
   it('adds and edits a watermark layer', async () => {

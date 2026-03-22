@@ -563,6 +563,84 @@ button {
   border-top: 1px solid rgba(243, 239, 230, 0.08);
 }
 
+.resize-preview-frame {
+  position: relative;
+  overflow: hidden;
+  min-height: 188px;
+  margin-top: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(243, 239, 230, 0.12);
+  background: linear-gradient(180deg, #f7f1e8 0%, #ece0d0 100%);
+}
+
+.resize-preview-white {
+  background: linear-gradient(180deg, #f8f8f8 0%, #ececec 100%);
+}
+
+.resize-preview-black {
+  background: linear-gradient(180deg, #1f1f22 0%, #09090b 100%);
+}
+
+.resize-preview-blurred-art {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 190, 120, 0.28), transparent 30%),
+    radial-gradient(circle at 80% 30%, rgba(255, 120, 120, 0.22), transparent 34%),
+    radial-gradient(circle at 50% 75%, rgba(120, 180, 255, 0.18), transparent 38%),
+    linear-gradient(135deg, #3a2822 0%, #221717 55%, #141417 100%);
+}
+
+.resize-preview-art {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 241, 220, 0.92), rgba(214, 182, 142, 0.82)),
+    repeating-linear-gradient(
+      45deg,
+      rgba(36, 27, 21, 0.04),
+      rgba(36, 27, 21, 0.04) 10px,
+      rgba(255, 255, 255, 0.04) 10px,
+      rgba(255, 255, 255, 0.04) 20px
+    );
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
+  color: #241b15;
+  text-align: center;
+}
+
+.resize-preview-art-label {
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.resize-preview-caption,
+.resize-preview-empty {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(20, 16, 14, 0.68);
+  backdrop-filter: blur(10px);
+  color: #f3efe6;
+}
+
+.resize-preview-empty {
+  top: 12px;
+  bottom: 12px;
+  place-content: center;
+  text-align: center;
+}
+
 .export-dimensions label {
   display: grid;
   gap: 6px;

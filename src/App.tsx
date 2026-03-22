@@ -16,6 +16,7 @@ import {
   createZipEntryName,
   createZipExportName,
 } from './lib/export/fileNames'
+import { EXPORT_METADATA_POLICY_LABEL } from './lib/export/metadata'
 import { exportPageAsPdf } from './lib/export/pdfExporter'
 import { exportPageAsPng } from './lib/export/pngExporter'
 import { exportPagesAsZip } from './lib/export/zipExporter'
@@ -90,10 +91,52 @@ type BackendManualPointDragState = {
   currentY: number
 }
 
+type ExportPreviewLayout = {
+  xPercent: number
+  yPercent: number
+  widthPercent: number
+  heightPercent: number
+  cropLabel: string
+}
+
 const DEFAULT_SAM3_MANUAL_SEGMENT_POINTS: Sam3SegmentPoint[] = [
   { x: 640, y: 360, label: 1 },
   { x: 1280, y: 720, label: 1 },
 ]
+
+const getExportPreviewLayout = (
+  image: { width: number; height: number } | null,
+  outputSettings: { width: number; height: number; resizeFitMode: 'contain' | 'cover' | 'stretch' },
+): ExportPreviewLayout | null => {
+  if (!image) {
+    return null
+  }
+
+  if (outputSettings.resizeFitMode === 'stretch') {
+    return {
+      xPercent: 0,
+      yPercent: 0,
+      widthPercent: 100,
+      heightPercent: 100,
+      cropLabel: 'Stretched to fill',
+    }
+  }
+
+  const scale =
+    outputSettings.resizeFitMode === 'cover'
+      ? Math.max(outputSettings.width / image.width, outputSettings.height / image.height)
+      : Math.min(outputSettings.width / image.width, outputSettings.height / image.height)
+  const width = image.width * scale
+  const height = image.height * scale
+
+  return {
+    xPercent: ((outputSettings.width - width) / 2 / outputSettings.width) * 100,
+    yPercent: ((outputSettings.height - height) / 2 / outputSettings.height) * 100,
+    widthPercent: (width / outputSettings.width) * 100,
+    heightPercent: (height / outputSettings.height) * 100,
+    cropLabel: outputSettings.resizeFitMode === 'cover' ? 'Center cropped to fill' : 'Contained with margins',
+  }
+}
 
 function App() {
   const [exportMessage, setExportMessage] = useState('Export idle')
@@ -139,6 +182,7 @@ function App() {
   const [startNumberDraft, setStartNumberDraft] = useState('1')
   const [numberPaddingDraft, setNumberPaddingDraft] = useState('2')
   const [duplicatePageTextDraft, setDuplicatePageTextDraft] = useState('Variant line')
+  const [variantBatchDraft, setVariantBatchDraft] = useState('Variant A\nVariant B')
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null)
   const [layerDragState, setLayerDragState] = useState<LayerDragState | null>(null)
   const [layerResizeState, setLayerResizeState] = useState<LayerResizeState | null>(null)
@@ -173,6 +217,9 @@ function App() {
     setOutputPreset,
     setCustomOutputWidth,
     setCustomOutputHeight,
+    setResizeBackgroundMode,
+    setResizeFitMode,
+    setExportQualityMode,
     setFileNamePrefix,
     setStartNumber,
     setNumberPadding,
@@ -182,6 +229,8 @@ function App() {
     selectPage,
     duplicateActivePage,
     duplicateActivePageWithTextSwap,
+    duplicateActivePageWithTextVariants,
+    setActivePageVariantLabel,
     saveCurrentPageAsTemplate,
     applyTemplateToActivePage,
     applyTemplateToAllPages,
@@ -195,6 +244,12 @@ function App() {
     moveSelectedTextLayer,
     changeSelectedTextLayerFontSize,
     setSelectedTextLayerColor,
+    changeSelectedTextLayerLineHeight,
+    changeSelectedTextLayerLetterSpacing,
+    changeSelectedTextLayerMaxWidth,
+    toggleSelectedTextLayerFillMode,
+    setSelectedTextLayerGradientFrom,
+    setSelectedTextLayerGradientTo,
     deleteSelectedTextLayer,
     moveSelectedTextLayerBackward,
     moveSelectedTextLayerForward,
@@ -208,6 +263,8 @@ function App() {
     updateSelectedMessageWindowBody,
     moveSelectedMessageWindowLayer,
     resizeSelectedMessageWindowLayer,
+    cycleSelectedMessageWindowFrameStyle,
+    loadSelectedMessageWindowAsset,
     saveSelectedMessageWindowPreset,
     applyMessageWindowPreset,
     selectWatermarkLayer,
@@ -236,6 +293,9 @@ function App() {
     moveSelectedMosaicLayer,
     resizeSelectedMosaicLayer,
     changeSelectedMosaicIntensity,
+    setSelectedMosaicIntensity,
+    setSelectedMosaicStyle,
+    cycleSelectedMosaicStyle,
     duplicateSelectedMosaicLayer,
     moveSelectedMosaicLayerBackward,
     moveSelectedMosaicLayerForward,
@@ -245,6 +305,12 @@ function App() {
     moveSelectedOverlayLayer,
     changeSelectedOverlayOpacity,
     setSelectedOverlayColor,
+    setSelectedOverlayAreaPreset,
+    cycleSelectedOverlayAreaPreset,
+    toggleSelectedOverlayFillMode,
+    setSelectedOverlayGradientFrom,
+    setSelectedOverlayGradientTo,
+    cycleSelectedOverlayGradientDirection,
     duplicateSelectedOverlayLayer,
     moveSelectedOverlayLayerBackward,
     moveSelectedOverlayLayerForward,
@@ -262,6 +328,7 @@ function App() {
     moveSelectedLayersByDelta,
     resizeSelectedLayersByDelta,
     deleteSelectedLayer,
+    renameSelectedLayer,
     moveSelectedLayerBackward,
     moveSelectedLayerForward,
     nudgeSelectedLayer,
@@ -304,6 +371,14 @@ function App() {
     image && selectedLayerId && selectedLayerId !== 'base-image'
       ? image.watermarkLayers.find((layer) => layer.id === selectedLayerId) ?? null
       : null
+  const activeNamedLayer =
+    activeTextLayer ?? activeMessageWindowLayer ?? activeBubbleLayer ?? activeMosaicLayer ?? activeOverlayLayer ?? activeWatermarkLayer
+  const getTextLayerLabel = (layer: any) => layer.name?.trim() || layer.text
+  const getBubbleLayerLabel = (layer: any) => layer.name?.trim() || layer.text
+  const getMessageWindowLayerLabel = (layer: any) => layer.name?.trim() || layer.speaker
+  const getMosaicLayerLabel = (layer: any) => layer.name?.trim() || `${layer.style} ${layer.intensity}`
+  const getOverlayLayerLabel = (layer: any) => layer.name?.trim() || layer.opacity.toFixed(1)
+  const getWatermarkLayerLabel = (layer: any) => layer.name?.trim() || layer.assetName || layer.text
   const selectedBackendManualSegmentPoint =
     backendManualSegmentPoints[selectedBackendManualSegmentPointIndex] ??
     backendManualSegmentPoints[backendManualSegmentPoints.length - 1] ??
@@ -319,30 +394,65 @@ function App() {
   )
   const activeLayerGroupId =
     activeTextLayer?.groupId ??
+    activeMessageWindowLayer?.groupId ??
     activeBubbleLayer?.groupId ??
     activeMosaicLayer?.groupId ??
     activeOverlayLayer?.groupId ??
+    activeWatermarkLayer?.groupId ??
     null
   const activeLayerGroupCount =
     image && activeLayerGroupId
       ? [
           ...image.textLayers.filter((layer) => layer.groupId === activeLayerGroupId),
+          ...image.messageWindowLayers.filter((layer) => layer.groupId === activeLayerGroupId),
           ...image.bubbleLayers.filter((layer) => layer.groupId === activeLayerGroupId),
           ...image.mosaicLayers.filter((layer) => layer.groupId === activeLayerGroupId),
           ...image.overlayLayers.filter((layer) => layer.groupId === activeLayerGroupId),
+          ...image.watermarkLayers.filter((layer) => layer.groupId === activeLayerGroupId),
         ].length
       : 0
   const pageCount = pages.length
   const activePageIndex = activePageId ? Math.max(0, pages.findIndex((page) => page.id === activePageId)) : 0
+  const activePageVariantLabel = image?.variantLabel?.trim() ?? ''
+  const activePageVariantSourceLabel =
+    image?.variantSourcePageId && image.variantSourcePageId !== image.id ? image.variantSourcePageId : null
   const pngPreviewName = image ? createPngExportName(image.name, outputSettings, activePageIndex) : 'No active page'
   const pdfPreviewName = image ? createPdfExportName(image.name, outputSettings, activePageIndex) : 'No active page'
   const zipPreviewName = pageCount > 0 ? createZipExportName(outputSettings, pageCount) : 'No pages loaded'
   const zipEntryPreviewNames = pages.map((page, index) => createZipEntryName(page.name, outputSettings, index))
+  const exportPreviewLayout = getExportPreviewLayout(image, outputSettings)
   const activeTextLayerOrder =
     image && activeTextLayer
       ? image.textLayers.findIndex((layer) => layer.id === activeTextLayer.id) + 1
       : 0
   const selectedLayerCount = selectedLayerIds.filter((id) => id !== 'base-image').length
+  const selectedLayerSummary = image
+    ? {
+        text: image.textLayers.filter((layer) => selectedLayerIds.includes(layer.id)).length,
+        messageWindow: image.messageWindowLayers.filter((layer) => selectedLayerIds.includes(layer.id)).length,
+        bubble: image.bubbleLayers.filter((layer) => selectedLayerIds.includes(layer.id)).length,
+        mosaic: image.mosaicLayers.filter((layer) => selectedLayerIds.includes(layer.id)).length,
+        overlay: image.overlayLayers.filter((layer) => selectedLayerIds.includes(layer.id)).length,
+        watermark: image.watermarkLayers.filter((layer) => selectedLayerIds.includes(layer.id)).length,
+      }
+    : null
+  const selectedLayerTypeLabel =
+    selectedLayerSummary && selectedLayerCount > 1
+      ? [
+          selectedLayerSummary.text ? `Text ${selectedLayerSummary.text}` : null,
+          selectedLayerSummary.messageWindow ? `Window ${selectedLayerSummary.messageWindow}` : null,
+          selectedLayerSummary.bubble ? `Bubble ${selectedLayerSummary.bubble}` : null,
+          selectedLayerSummary.mosaic ? `Mosaic ${selectedLayerSummary.mosaic}` : null,
+          selectedLayerSummary.overlay ? `Overlay ${selectedLayerSummary.overlay}` : null,
+          selectedLayerSummary.watermark ? `Watermark ${selectedLayerSummary.watermark}` : null,
+        ]
+          .filter(Boolean)
+          .join(' / ')
+      : null
+  const multiSelectionActionLabel =
+    selectedLayerCount > 1
+      ? 'Shared actions Move / Align / Group / Visibility / Lock / Order'
+      : null
   const visibilityLabel =
     activeTextLayer
       ? `Visibility ${activeTextLayer.visible ? 'Visible' : 'Hidden'}`
@@ -1448,6 +1558,16 @@ function App() {
     event.target.value = ''
   }
 
+  const handleMessageWindowAssetChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    loadSelectedMessageWindowAsset(file)
+    event.target.value = ''
+  }
+
   const handleCanvasDrop = (event: DragEvent<HTMLButtonElement>) => {
     event.preventDefault()
     const files = Array.from(event.dataTransfer.files ?? [])
@@ -1455,6 +1575,32 @@ function App() {
       loadImageFiles(files)
     }
   }
+
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      const clipboardFiles = Array.from(event.clipboardData?.files ?? [])
+      const itemFiles =
+        clipboardFiles.length > 0
+          ? []
+          : Array.from(event.clipboardData?.items ?? [])
+              .filter((item) => item.kind === 'file')
+              .map((item) => item.getAsFile())
+              .filter((file): file is File => file !== null)
+      const files = clipboardFiles.length > 0 ? clipboardFiles : itemFiles
+
+      if (files.length === 0) {
+        return
+      }
+
+      event.preventDefault()
+      loadImageFiles(files)
+    }
+
+    window.addEventListener('paste', handlePaste)
+    return () => {
+      window.removeEventListener('paste', handlePaste)
+    }
+  }, [loadImageFiles])
 
   useEffect(() => {
     restoreSavedProject()
@@ -1603,6 +1749,9 @@ function App() {
               <button type="button" onClick={() => selectVisibleLayersByType('text')} disabled={!image}>
                 Select text layers
               </button>
+              <button type="button" onClick={() => selectVisibleLayersByType('message-window')} disabled={!image}>
+                Select message window layers
+              </button>
               <button type="button" onClick={() => selectVisibleLayersByType('bubble')} disabled={!image}>
                 Select bubble layers
               </button>
@@ -1611,6 +1760,9 @@ function App() {
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('overlay')} disabled={!image}>
                 Select overlay layers
+              </button>
+              <button type="button" onClick={() => selectVisibleLayersByType('watermark')} disabled={!image}>
+                Select watermark layers
               </button>
               <button type="button" onClick={invertLayerSelection} disabled={!image}>
                 Invert layer selection
@@ -1696,6 +1848,36 @@ function App() {
               >
                 Duplicate page with text swap
               </button>
+              <label className="text-layer-field">
+                <span>Variant batch</span>
+                <textarea
+                  aria-label="Duplicate page variant batch"
+                  value={variantBatchDraft}
+                  onChange={(event) => {
+                    setVariantBatchDraft(event.target.value)
+                  }}
+                  rows={3}
+                />
+              </label>
+              <label className="text-layer-field">
+                <span>Variant label</span>
+                <input
+                  aria-label="Active page variant label"
+                  type="text"
+                  value={image?.variantLabel ?? ''}
+                  onChange={(event) => {
+                    setActivePageVariantLabel(event.target.value)
+                  }}
+                  disabled={!image}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => duplicateActivePageWithTextVariants(variantBatchDraft.split('\n'))}
+                disabled={!image}
+              >
+                Duplicate page as batch variants
+              </button>
               <button type="button" onClick={moveActivePageUp} disabled={!image}>
                 Move active page up
               </button>
@@ -1738,8 +1920,19 @@ function App() {
                         left: `${layer.x / 10}%`,
                         top: `${layer.y / 10}%`,
                         fontSize: `${Math.max(14, Math.round(layer.fontSize * 0.65))}px`,
-                        color: layer.color,
+                        color: layer.fillMode === 'gradient' ? 'transparent' : layer.color,
+                        backgroundImage:
+                          layer.fillMode === 'gradient'
+                            ? `linear-gradient(135deg, ${layer.gradientFrom}, ${layer.gradientTo})`
+                            : undefined,
+                        backgroundClip: layer.fillMode === 'gradient' ? 'text' : undefined,
+                        WebkitBackgroundClip: layer.fillMode === 'gradient' ? 'text' : undefined,
                         writingMode: layer.isVertical ? 'vertical-rl' : 'horizontal-tb',
+                        lineHeight: String(layer.lineHeight),
+                        letterSpacing: `${layer.letterSpacing}px`,
+                        maxWidth: `${Math.max(80, Math.round(layer.maxWidth * 0.24))}px`,
+                        whiteSpace: 'pre-wrap',
+                        overflowWrap: 'anywhere',
                         WebkitTextStroke: layer.strokeWidth > 0 ? `${layer.strokeWidth}px ${layer.strokeColor}` : undefined,
                         textShadow: layer.shadowEnabled ? '3px 3px 10px rgba(0, 0, 0, 0.35)' : undefined,
                       }}
@@ -1761,12 +1954,34 @@ function App() {
                         width: `${Math.max(140, Math.round(layer.width * 0.24))}px`,
                         minHeight: `${Math.max(80, Math.round(layer.height * 0.2))}px`,
                         opacity: layer.opacity,
+                        border:
+                          layer.frameStyle === 'neon'
+                            ? '2px solid rgba(118, 255, 244, 0.95)'
+                            : layer.frameStyle === 'soft'
+                              ? '2px solid rgba(255, 244, 214, 0.7)'
+                              : '2px solid rgba(243, 239, 230, 0.9)',
+                        background:
+                          layer.assetName
+                            ? 'linear-gradient(90deg, rgba(255,255,255,0.16) 0 12%, transparent 12% 88%, rgba(255,255,255,0.16) 88% 100%), linear-gradient(180deg, rgba(255,255,255,0.14) 0 18%, transparent 18% 82%, rgba(255,255,255,0.14) 82% 100%), linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.06)), linear-gradient(180deg, rgba(28,22,18,0.96), rgba(45,31,26,0.9))'
+                            : layer.frameStyle === 'neon'
+                              ? 'linear-gradient(135deg, rgba(5, 51, 64, 0.96), rgba(18, 22, 54, 0.92))'
+                              : layer.frameStyle === 'soft'
+                                ? 'linear-gradient(180deg, rgba(73, 55, 44, 0.92), rgba(43, 31, 27, 0.86))'
+                                : 'linear-gradient(180deg, rgba(28, 22, 18, 0.94), rgba(20, 16, 13, 0.88))',
+                        boxShadow:
+                          layer.frameStyle === 'neon'
+                            ? '0 0 0 1px rgba(118,255,244,0.5), 0 0 22px rgba(118,255,244,0.28)'
+                            : layer.assetName
+                              ? 'inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 0 0 10px rgba(255,244,214,0.06), 0 18px 30px rgba(0,0,0,0.24)'
+                              : undefined,
                       }}
                       onClick={() => selectMessageWindowLayer(layer.id)}
                       aria-label={`Select message window layer: ${layer.speaker}`}
                     >
                       <strong>{layer.speaker}</strong>
                       <span>{layer.body}</span>
+                      {layer.assetName ? <small>9-slice asset</small> : null}
+                      {layer.assetName ? <small>{`Asset ${layer.assetName}`}</small> : null}
                     </button>
                   ))}
                   {image.bubbleLayers.filter((layer) => layer.visible).map((layer) => (
@@ -1800,13 +2015,23 @@ function App() {
                         top: `${layer.y / 10}%`,
                         width: `${Math.max(64, Math.round(layer.width * 0.3))}px`,
                         minHeight: `${Math.max(64, Math.round(layer.height * 0.3))}px`,
-                        backgroundSize: `${Math.max(6, layer.intensity)}px ${Math.max(6, layer.intensity)}px`,
+                        background:
+                          layer.style === 'blur'
+                            ? 'rgba(255, 215, 177, 0.72)'
+                            : layer.style === 'noise'
+                              ? 'repeating-linear-gradient(45deg, rgba(255, 215, 177, 0.84), rgba(255, 215, 177, 0.84) 6px, rgba(36, 27, 21, 0.1) 6px, rgba(36, 27, 21, 0.1) 12px)'
+                              : 'repeating-linear-gradient(90deg, rgba(255, 215, 177, 0.82), rgba(255, 215, 177, 0.82) 8px, rgba(36, 27, 21, 0.12) 8px, rgba(36, 27, 21, 0.12) 16px)',
+                        backgroundSize:
+                          layer.style === 'blur'
+                            ? '100% 100%'
+                            : `${Math.max(6, layer.intensity)}px ${Math.max(6, layer.intensity)}px`,
+                        filter: layer.style === 'blur' ? 'blur(5px)' : undefined,
                       }}
                       onClick={(event) => selectMosaicLayer(layer.id, isAdditiveSelection(event))}
                       onMouseDown={(event) => handleLayerMouseDown(event, layer.id)}
                       aria-label={`Select mosaic layer ${layer.intensity}`}
                     >
-                      Mosaic
+                      {layer.style === 'pixelate' ? 'Mosaic' : layer.style === 'blur' ? 'Blur' : 'Noise'}
                     </button>
                   ))}
                   {image.overlayLayers.filter((layer) => layer.visible).map((layer) => (
@@ -1819,7 +2044,10 @@ function App() {
                         top: `${layer.y / 10}%`,
                         width: `${Math.max(96, Math.round(layer.width * 0.3))}px`,
                         minHeight: `${Math.max(64, Math.round(layer.height * 0.3))}px`,
-                        background: layer.color,
+                        background:
+                          layer.fillMode === 'gradient'
+                            ? `linear-gradient(${layer.gradientDirection === 'vertical' ? '180deg' : layer.gradientDirection === 'horizontal' ? '90deg' : '135deg'}, ${layer.gradientFrom}, ${layer.gradientTo})`
+                            : layer.color,
                         opacity: layer.opacity,
                       }}
                       onClick={(event) => selectOverlayLayer(layer.id, isAdditiveSelection(event))}
@@ -1967,7 +2195,14 @@ function App() {
                   <button
                     type="button"
                     onClick={toggleSelectedLayerLock}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
+                    disabled={
+                      !activeTextLayer &&
+                      !activeMessageWindowLayer &&
+                      !activeBubbleLayer &&
+                      !activeMosaicLayer &&
+                      !activeOverlayLayer &&
+                      !activeWatermarkLayer
+                    }
                   >
                     Toggle selected layer lock
                   </button>
@@ -2111,6 +2346,17 @@ function App() {
                 {activeTextLayer ? (
                   <div className="selection-controls text-controls" role="group" aria-label="Text layer controls">
                     <label className="text-layer-field">
+                      <span>Layer name</span>
+                      <input
+                        aria-label="Selected layer name"
+                        type="text"
+                        value={activeNamedLayer?.name ?? ''}
+                        onChange={(event) => {
+                          renameSelectedLayer(event.target.value)
+                        }}
+                      />
+                    </label>
+                    <label className="text-layer-field">
                       <span>Text</span>
                       <input
                         aria-label="Selected text content"
@@ -2132,6 +2378,28 @@ function App() {
                         }}
                       />
                     </label>
+                    <label className="text-layer-field color-field">
+                      <span>Gradient from</span>
+                      <input
+                        aria-label="Selected text gradient from"
+                        type="color"
+                        value={activeTextLayer.gradientFrom}
+                        onChange={(event) => {
+                          setSelectedTextLayerGradientFrom(event.target.value)
+                        }}
+                      />
+                    </label>
+                    <label className="text-layer-field color-field">
+                      <span>Gradient to</span>
+                      <input
+                        aria-label="Selected text gradient to"
+                        type="color"
+                        value={activeTextLayer.gradientTo}
+                        onChange={(event) => {
+                          setSelectedTextLayerGradientTo(event.target.value)
+                        }}
+                      />
+                    </label>
                     <button type="button" onClick={() => moveSelectedTextLayer(32, 0)}>
                       Move text right
                     </button>
@@ -2140,6 +2408,18 @@ function App() {
                     </button>
                     <button type="button" onClick={() => changeSelectedTextLayerFontSize(2)}>
                       Increase text size
+                    </button>
+                    <button type="button" onClick={() => changeSelectedTextLayerLineHeight(0.1)}>
+                      Increase line height
+                    </button>
+                    <button type="button" onClick={() => changeSelectedTextLayerLetterSpacing(1)}>
+                      Increase letter spacing
+                    </button>
+                    <button type="button" onClick={() => changeSelectedTextLayerMaxWidth(-40)}>
+                      Narrow text wrap
+                    </button>
+                    <button type="button" onClick={toggleSelectedTextLayerFillMode}>
+                      Toggle gradient fill
                     </button>
                     <button type="button" onClick={toggleSelectedTextLayerVertical}>
                       Toggle vertical text
@@ -2163,6 +2443,17 @@ function App() {
                 ) : null}
                 {activeMessageWindowLayer ? (
                   <div className="selection-controls text-controls" role="group" aria-label="Message window controls">
+                    <label className="text-layer-field">
+                      <span>Layer name</span>
+                      <input
+                        aria-label="Selected layer name"
+                        type="text"
+                        value={activeNamedLayer?.name ?? ''}
+                        onChange={(event) => {
+                          renameSelectedLayer(event.target.value)
+                        }}
+                      />
+                    </label>
                     <label className="text-layer-field">
                       <span>Speaker</span>
                       <input
@@ -2197,6 +2488,18 @@ function App() {
                     <button type="button" onClick={() => resizeSelectedMessageWindowLayer(0, 32)}>
                       Increase message window height
                     </button>
+                    <button type="button" onClick={cycleSelectedMessageWindowFrameStyle}>
+                      Cycle message window frame
+                    </button>
+                    <label className="file-picker">
+                      <span>Load window asset</span>
+                      <input
+                        aria-label="Open message window asset"
+                        type="file"
+                        accept=".png,image/png"
+                        onChange={handleMessageWindowAssetChange}
+                      />
+                    </label>
                     <button type="button" onClick={saveSelectedMessageWindowPreset}>
                       Save message preset
                     </button>
@@ -2213,6 +2516,17 @@ function App() {
                 ) : null}
                 {activeWatermarkLayer ? (
                   <div className="selection-controls text-controls" role="group" aria-label="Watermark layer controls">
+                    <label className="text-layer-field">
+                      <span>Layer name</span>
+                      <input
+                        aria-label="Selected layer name"
+                        type="text"
+                        value={activeNamedLayer?.name ?? ''}
+                        onChange={(event) => {
+                          renameSelectedLayer(event.target.value)
+                        }}
+                      />
+                    </label>
                     <label className="text-layer-field">
                       <span>Watermark</span>
                       <input
@@ -2258,6 +2572,17 @@ function App() {
                 ) : null}
                 {activeBubbleLayer ? (
                   <div className="selection-controls text-controls" role="group" aria-label="Bubble layer controls">
+                    <label className="text-layer-field">
+                      <span>Layer name</span>
+                      <input
+                        aria-label="Selected layer name"
+                        type="text"
+                        value={activeNamedLayer?.name ?? ''}
+                        onChange={(event) => {
+                          renameSelectedLayer(event.target.value)
+                        }}
+                      />
+                    </label>
                     <label className="text-layer-field">
                       <span>Bubble</span>
                       <input
@@ -2334,6 +2659,17 @@ function App() {
                 ) : null}
                 {activeMosaicLayer ? (
                   <div className="selection-controls text-controls" role="group" aria-label="Mosaic layer controls">
+                    <label className="text-layer-field">
+                      <span>Layer name</span>
+                      <input
+                        aria-label="Selected layer name"
+                        type="text"
+                        value={activeNamedLayer?.name ?? ''}
+                        onChange={(event) => {
+                          renameSelectedLayer(event.target.value)
+                        }}
+                      />
+                    </label>
                     <button type="button" onClick={() => moveSelectedMosaicLayer(32, 0)}>
                       Move mosaic right
                     </button>
@@ -2348,6 +2684,27 @@ function App() {
                     </button>
                     <button type="button" onClick={() => changeSelectedMosaicIntensity(4)}>
                       Increase mosaic intensity
+                    </button>
+                    <button type="button" onClick={() => setSelectedMosaicIntensity(8)}>
+                      Mosaic intensity Small
+                    </button>
+                    <button type="button" onClick={() => setSelectedMosaicIntensity(16)}>
+                      Mosaic intensity Medium
+                    </button>
+                    <button type="button" onClick={() => setSelectedMosaicIntensity(24)}>
+                      Mosaic intensity Large
+                    </button>
+                    <button type="button" onClick={cycleSelectedMosaicStyle}>
+                      Cycle mosaic style
+                    </button>
+                    <button type="button" onClick={() => setSelectedMosaicStyle('pixelate')}>
+                      Mosaic pixelate
+                    </button>
+                    <button type="button" onClick={() => setSelectedMosaicStyle('blur')}>
+                      Mosaic blur
+                    </button>
+                    <button type="button" onClick={() => setSelectedMosaicStyle('noise')}>
+                      Mosaic noise
                     </button>
                     <button type="button" onClick={moveSelectedMosaicLayerBackward}>
                       Send mosaic backward
@@ -2365,6 +2722,17 @@ function App() {
                 ) : null}
                 {activeOverlayLayer ? (
                   <div className="selection-controls text-controls" role="group" aria-label="Overlay layer controls">
+                    <label className="text-layer-field">
+                      <span>Layer name</span>
+                      <input
+                        aria-label="Selected layer name"
+                        type="text"
+                        value={activeNamedLayer?.name ?? ''}
+                        onChange={(event) => {
+                          renameSelectedLayer(event.target.value)
+                        }}
+                      />
+                    </label>
                     <label className="text-layer-field color-field">
                       <span>Tint</span>
                       <input
@@ -2376,6 +2744,49 @@ function App() {
                         }}
                       />
                     </label>
+                    <button type="button" onClick={cycleSelectedOverlayAreaPreset}>
+                      Cycle overlay area
+                    </button>
+                    <button type="button" onClick={() => setSelectedOverlayAreaPreset('full')}>
+                      Overlay full
+                    </button>
+                    <button type="button" onClick={() => setSelectedOverlayAreaPreset('top-half')}>
+                      Overlay top half
+                    </button>
+                    <button type="button" onClick={() => setSelectedOverlayAreaPreset('bottom-half')}>
+                      Overlay bottom half
+                    </button>
+                    <button type="button" onClick={() => setSelectedOverlayAreaPreset('center-band')}>
+                      Overlay center band
+                    </button>
+                    <button type="button" onClick={toggleSelectedOverlayFillMode}>
+                      Toggle overlay gradient
+                    </button>
+                    <label className="text-layer-field color-field">
+                      <span>Gradient from</span>
+                      <input
+                        aria-label="Selected overlay gradient from"
+                        type="color"
+                        value={activeOverlayLayer.gradientFrom}
+                        onChange={(event) => {
+                          setSelectedOverlayGradientFrom(event.target.value)
+                        }}
+                      />
+                    </label>
+                    <label className="text-layer-field color-field">
+                      <span>Gradient to</span>
+                      <input
+                        aria-label="Selected overlay gradient to"
+                        type="color"
+                        value={activeOverlayLayer.gradientTo}
+                        onChange={(event) => {
+                          setSelectedOverlayGradientTo(event.target.value)
+                        }}
+                      />
+                    </label>
+                    <button type="button" onClick={cycleSelectedOverlayGradientDirection}>
+                      Cycle overlay gradient direction
+                    </button>
                     <button type="button" onClick={() => moveSelectedOverlayLayer(32, 0)}>
                       Move overlay right
                     </button>
@@ -2438,6 +2849,7 @@ function App() {
                     >
                       <span>{pageNumber}</span>
                       <strong>{page.name}</strong>
+                      {page.variantLabel ? <small>{`Variant ${page.variantLabel}`}</small> : null}
                     </button>
                   )
                 })
@@ -2464,6 +2876,18 @@ function App() {
                 <dt>Output</dt>
                 <dd>{`${outputSettings.width} x ${outputSettings.height} ${outputSettings.format.toUpperCase()}`}</dd>
               </div>
+              {activePageVariantLabel ? (
+                <div>
+                  <dt>Variant</dt>
+                  <dd>{`Variant ${activePageVariantLabel}`}</dd>
+                </div>
+              ) : null}
+              {activePageVariantSourceLabel ? (
+                <div>
+                  <dt>Variant source</dt>
+                  <dd>{`Source ${activePageVariantSourceLabel}`}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Transform</dt>
                 <dd>{positionLabel}</dd>
@@ -2476,6 +2900,18 @@ function App() {
                 <div>
                   <dt>Selection box</dt>
                   <dd>{selectionBoundsLabel}</dd>
+                </div>
+              ) : null}
+              {selectedLayerTypeLabel ? (
+                <div>
+                  <dt>Selection mix</dt>
+                  <dd>{selectedLayerTypeLabel}</dd>
+                </div>
+              ) : null}
+              {multiSelectionActionLabel ? (
+                <div>
+                  <dt>Shared actions</dt>
+                  <dd>{multiSelectionActionLabel}</dd>
                 </div>
               ) : null}
               {activeLayerGroupId ? (
@@ -2499,12 +2935,28 @@ function App() {
               {activeTextLayer ? (
                 <>
                   <div>
+                    <dt>Name</dt>
+                    <dd>{`Name ${getTextLayerLabel(activeTextLayer)}`}</dd>
+                  </div>
+                  <div>
                     <dt>Color</dt>
                     <dd>{`Color ${activeTextLayer.color}`}</dd>
                   </div>
                   <div>
+                    <dt>Fill</dt>
+                    <dd>
+                      {activeTextLayer.fillMode === 'gradient'
+                        ? `Fill Gradient ${activeTextLayer.gradientFrom} to ${activeTextLayer.gradientTo}`
+                        : 'Fill Solid'}
+                    </dd>
+                  </div>
+                  <div>
                     <dt>Direction</dt>
                     <dd>{`Direction ${activeTextLayer.isVertical ? 'Vertical' : 'Horizontal'}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Layout</dt>
+                    <dd>{`Line height ${activeTextLayer.lineHeight.toFixed(1)} / Letter spacing ${activeTextLayer.letterSpacing}px / Wrap ${activeTextLayer.maxWidth}px`}</dd>
                   </div>
                   <div>
                     <dt>Outline</dt>
@@ -2523,8 +2975,20 @@ function App() {
               {activeMessageWindowLayer ? (
                 <>
                   <div>
+                    <dt>Name</dt>
+                    <dd>{`Name ${getMessageWindowLayerLabel(activeMessageWindowLayer)}`}</dd>
+                  </div>
+                  <div>
                     <dt>Window</dt>
                     <dd>{`Window: ${activeMessageWindowLayer.speaker}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Frame</dt>
+                    <dd>{`Frame ${activeMessageWindowLayer.frameStyle}${activeMessageWindowLayer.assetName ? ` / Asset ${activeMessageWindowLayer.assetName}` : ''}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Render</dt>
+                    <dd>{activeMessageWindowLayer.assetName ? 'Render 9-slice asset' : 'Render Frame only'}</dd>
                   </div>
                   <div>
                     <dt>Body</dt>
@@ -2534,10 +2998,18 @@ function App() {
                     <dt>Opacity</dt>
                     <dd>{`Window opacity ${activeMessageWindowLayer.opacity.toFixed(1)}`}</dd>
                   </div>
+                  <div>
+                    <dt>Order</dt>
+                    <dd>{`Order ${(image?.messageWindowLayers.findIndex((layer) => layer.id === activeMessageWindowLayer.id) ?? -1) + 1} of ${image?.messageWindowLayers.length ?? 0}`}</dd>
+                  </div>
                 </>
               ) : null}
               {activeBubbleLayer ? (
                 <>
+                  <div>
+                    <dt>Name</dt>
+                    <dd>{`Name ${getBubbleLayerLabel(activeBubbleLayer)}`}</dd>
+                  </div>
                   <div>
                     <dt>Bubble</dt>
                     <dd>{`Bubble: ${activeBubbleLayer.text}`}</dd>
@@ -2567,8 +3039,16 @@ function App() {
               {activeMosaicLayer ? (
                 <>
                   <div>
+                    <dt>Name</dt>
+                    <dd>{`Name ${getMosaicLayerLabel(activeMosaicLayer)}`}</dd>
+                  </div>
+                  <div>
                     <dt>Mosaic</dt>
                     <dd>{`Mosaic intensity ${activeMosaicLayer.intensity}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Style</dt>
+                    <dd>{`Mosaic style ${activeMosaicLayer.style}`}</dd>
                   </div>
                   <div>
                     <dt>Order</dt>
@@ -2579,12 +3059,32 @@ function App() {
               {activeOverlayLayer ? (
                 <>
                   <div>
+                    <dt>Name</dt>
+                    <dd>{`Name ${getOverlayLayerLabel(activeOverlayLayer)}`}</dd>
+                  </div>
+                  <div>
                     <dt>Overlay</dt>
                     <dd>{`Overlay opacity ${activeOverlayLayer.opacity.toFixed(1)}`}</dd>
                   </div>
                   <div>
                     <dt>Tint</dt>
                     <dd>{`Tint ${activeOverlayLayer.color}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Area</dt>
+                    <dd>{`Overlay area ${activeOverlayLayer.areaPreset}`}</dd>
+                  </div>
+                  <div>
+                    <dt>Fill</dt>
+                    <dd>
+                      {activeOverlayLayer.fillMode === 'gradient'
+                        ? `Overlay fill Gradient ${activeOverlayLayer.gradientFrom} to ${activeOverlayLayer.gradientTo}`
+                        : 'Overlay fill Solid'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Direction</dt>
+                    <dd>{`Gradient direction ${activeOverlayLayer.gradientDirection}`}</dd>
                   </div>
                   <div>
                     <dt>Order</dt>
@@ -2594,6 +3094,10 @@ function App() {
               ) : null}
               {activeWatermarkLayer ? (
                 <>
+                  <div>
+                    <dt>Name</dt>
+                    <dd>{`Name ${getWatermarkLayerLabel(activeWatermarkLayer)}`}</dd>
+                  </div>
                   <div>
                     <dt>Watermark</dt>
                     <dd>{`Watermark: ${activeWatermarkLayer.assetName ?? activeWatermarkLayer.text}`}</dd>
@@ -2626,6 +3130,10 @@ function App() {
                     <dt>Layout</dt>
                     <dd>{`Layout ${activeWatermarkLayer.tiled ? 'Tiled' : 'Single'}`}</dd>
                   </div>
+                  <div>
+                    <dt>Order</dt>
+                    <dd>{`Order ${(image?.watermarkLayers.findIndex((layer) => layer.id === activeWatermarkLayer.id) ?? -1) + 1} of ${image?.watermarkLayers.length ?? 0}`}</dd>
+                  </div>
                 </>
               ) : null}
             </dl>
@@ -2650,9 +3158,9 @@ function App() {
                       type="button"
                       className="layer-select-button"
                       onClick={(event) => selectTextLayer(layer.id, isAdditiveSelection(event))}
-                      aria-label={`Layer text: ${layer.text}${layer.groupId ? ' grouped' : ''} (${image.textLayers.findIndex((entry) => entry.id === layer.id) + 1})`}
+                      aria-label={`Layer text: ${getTextLayerLabel(layer)}${layer.groupId ? ' grouped' : ''} (${image.textLayers.findIndex((entry) => entry.id === layer.id) + 1})`}
                     >
-                      Text: {layer.text}{layer.groupId ? ' [Group]' : ''}
+                      Text: {getTextLayerLabel(layer)}{layer.groupId ? ' [Group]' : ''}
                     </button>
                   </li>
                 ))
@@ -2667,15 +3175,15 @@ function App() {
               {image?.messageWindowLayers.map((layer) => (
                 <li key={layer.id} className={selectedLayerId === layer.id ? 'selected-layer' : undefined}>
                   <span className="layer-visibility" aria-hidden="true">
-                    eye
+                    {layer.visible ? 'eye' : 'off'}
                   </span>
                   <button
                     type="button"
                     className="layer-select-button"
-                    onClick={() => selectMessageWindowLayer(layer.id)}
-                    aria-label={`Message window layer: ${layer.speaker}`}
+                    onClick={(event) => selectMessageWindowLayer(layer.id, isAdditiveSelection(event))}
+                    aria-label={`Message window layer: ${getMessageWindowLayerLabel(layer)}${layer.groupId ? ' grouped' : ''}`}
                   >
-                    Message window: {layer.speaker}
+                    Message window: {getMessageWindowLayerLabel(layer)}{layer.groupId ? ' [Group]' : ''}
                   </button>
                 </li>
               ))}
@@ -2689,7 +3197,7 @@ function App() {
                     className="layer-select-button"
                     onClick={(event) => selectBubbleLayer(layer.id, isAdditiveSelection(event))}
                   >
-                    Bubble layer: {layer.text}{layer.groupId ? ' [Group]' : ''}
+                    Bubble layer: {getBubbleLayerLabel(layer)}{layer.groupId ? ' [Group]' : ''}
                   </button>
                 </li>
               ))}
@@ -2702,9 +3210,9 @@ function App() {
                       type="button"
                       className="layer-select-button"
                       onClick={(event) => selectMosaicLayer(layer.id, isAdditiveSelection(event))}
-                      aria-label={`Mosaic layer ${layer.intensity} (${image.mosaicLayers.findIndex((entry) => entry.id === layer.id) + 1})`}
+                      aria-label={`Mosaic layer ${getMosaicLayerLabel(layer)} (${image.mosaicLayers.findIndex((entry) => entry.id === layer.id) + 1})`}
                     >
-                      Mosaic: {layer.intensity}{layer.groupId ? ' [Group]' : ''}
+                      Mosaic: {getMosaicLayerLabel(layer)}{layer.groupId ? ' [Group]' : ''}
                     </button>
                 </li>
               ))}
@@ -2717,24 +3225,24 @@ function App() {
                       type="button"
                       className="layer-select-button"
                       onClick={(event) => selectOverlayLayer(layer.id, isAdditiveSelection(event))}
-                      aria-label={`Overlay layer ${layer.opacity.toFixed(1)}${layer.groupId ? ' grouped' : ''} (${image.overlayLayers.findIndex((entry) => entry.id === layer.id) + 1})`}
+                      aria-label={`Overlay layer ${getOverlayLayerLabel(layer)}${layer.groupId ? ' grouped' : ''} (${image.overlayLayers.findIndex((entry) => entry.id === layer.id) + 1})`}
                     >
-                      Overlay: {layer.opacity.toFixed(1)}{layer.groupId ? ' [Group]' : ''}
+                      Overlay: {getOverlayLayerLabel(layer)}{layer.groupId ? ' [Group]' : ''}
                     </button>
                 </li>
               ))}
               {image?.watermarkLayers.map((layer) => (
                 <li key={layer.id} className={selectedLayerId === layer.id ? 'selected-layer' : undefined}>
                   <span className="layer-visibility" aria-hidden="true">
-                    eye
+                    {layer.visible ? 'eye' : 'off'}
                   </span>
                   <button
                     type="button"
                     className="layer-select-button"
-                    onClick={() => selectWatermarkLayer(layer.id)}
-                    aria-label={`Watermark layer: ${layer.assetName ?? layer.text}`}
+                    onClick={(event) => selectWatermarkLayer(layer.id, isAdditiveSelection(event))}
+                    aria-label={`Watermark layer: ${getWatermarkLayerLabel(layer)}${layer.groupId ? ' grouped' : ''}`}
                   >
-                    Watermark: {layer.assetName ?? layer.text}
+                    Watermark: {getWatermarkLayerLabel(layer)}{layer.groupId ? ' [Group]' : ''}
                   </button>
                 </li>
               ))}
@@ -3247,16 +3755,190 @@ function App() {
                 />
               </label>
             </div>
+            <div className="selection-controls">
+              <button
+                type="button"
+                className={
+                  outputSettings.qualityMode === 'high' ? 'page-card current page-button' : 'page-card page-button'
+                }
+                onClick={() => setExportQualityMode('high')}
+                aria-label="Export quality High"
+                aria-pressed={outputSettings.qualityMode === 'high'}
+              >
+                High quality
+              </button>
+              <button
+                type="button"
+                className={
+                  outputSettings.qualityMode === 'medium' ? 'page-card current page-button' : 'page-card page-button'
+                }
+                onClick={() => setExportQualityMode('medium')}
+                aria-label="Export quality Medium"
+                aria-pressed={outputSettings.qualityMode === 'medium'}
+              >
+                Medium quality
+              </button>
+              <button
+                type="button"
+                className={
+                  outputSettings.qualityMode === 'low' ? 'page-card current page-button' : 'page-card page-button'
+                }
+                onClick={() => setExportQualityMode('low')}
+                aria-label="Export quality Low"
+                aria-pressed={outputSettings.qualityMode === 'low'}
+              >
+                Low quality
+              </button>
+              <button
+                type="button"
+                className={
+                  outputSettings.qualityMode === 'platform' ? 'page-card current page-button' : 'page-card page-button'
+                }
+                onClick={() => setExportQualityMode('platform')}
+                aria-label="Export quality Platform"
+                aria-pressed={outputSettings.qualityMode === 'platform'}
+              >
+                Platform preset
+              </button>
+            </div>
+            <div className="selection-controls">
+              <button
+                type="button"
+                className={
+                  outputSettings.resizeFitMode === 'contain' ? 'page-card current page-button' : 'page-card page-button'
+                }
+                onClick={() => setResizeFitMode('contain')}
+                aria-label="Resize fit Contain"
+                aria-pressed={outputSettings.resizeFitMode === 'contain'}
+              >
+                Contain
+              </button>
+              <button
+                type="button"
+                className={
+                  outputSettings.resizeFitMode === 'cover' ? 'page-card current page-button' : 'page-card page-button'
+                }
+                onClick={() => setResizeFitMode('cover')}
+                aria-label="Resize fit Cover"
+                aria-pressed={outputSettings.resizeFitMode === 'cover'}
+              >
+                Cover
+              </button>
+              <button
+                type="button"
+                className={
+                  outputSettings.resizeFitMode === 'stretch' ? 'page-card current page-button' : 'page-card page-button'
+                }
+                onClick={() => setResizeFitMode('stretch')}
+                aria-label="Resize fit Stretch"
+                aria-pressed={outputSettings.resizeFitMode === 'stretch'}
+              >
+                Stretch
+              </button>
+            </div>
+            <div className="selection-controls">
+              <button
+                type="button"
+                className={
+                  outputSettings.resizeBackgroundMode === 'white' ? 'page-card current page-button' : 'page-card page-button'
+                }
+                onClick={() => setResizeBackgroundMode('white')}
+                aria-label="Resize background White"
+                aria-pressed={outputSettings.resizeBackgroundMode === 'white'}
+              >
+                White margin
+              </button>
+              <button
+                type="button"
+                className={
+                  outputSettings.resizeBackgroundMode === 'black' ? 'page-card current page-button' : 'page-card page-button'
+                }
+                onClick={() => setResizeBackgroundMode('black')}
+                aria-label="Resize background Black"
+                aria-pressed={outputSettings.resizeBackgroundMode === 'black'}
+              >
+                Black margin
+              </button>
+              <button
+                type="button"
+                className={
+                  outputSettings.resizeBackgroundMode === 'blurred-art'
+                    ? 'page-card current page-button'
+                    : 'page-card page-button'
+                }
+                onClick={() => setResizeBackgroundMode('blurred-art')}
+                aria-label="Resize background Blurred art"
+                aria-pressed={outputSettings.resizeBackgroundMode === 'blurred-art'}
+              >
+                Blurred art
+              </button>
+            </div>
             <div className="page-meta">Output preset {outputSettings.label}</div>
+            <div className="page-meta">
+              Export quality{' '}
+              {outputSettings.qualityMode === 'platform'
+                ? 'Platform preset'
+                : outputSettings.qualityMode === 'medium'
+                  ? 'Medium'
+                  : outputSettings.qualityMode === 'low'
+                    ? 'Low'
+                    : 'High'}
+            </div>
+            <div className="page-meta">
+              Resize fit{' '}
+              {outputSettings.resizeFitMode === 'cover'
+                ? 'Cover'
+                : outputSettings.resizeFitMode === 'stretch'
+                  ? 'Stretch'
+                  : 'Contain'}
+            </div>
+            <div className="page-meta">
+              Resize background{' '}
+              {outputSettings.resizeBackgroundMode === 'blurred-art'
+                ? 'Blurred art'
+                : outputSettings.resizeBackgroundMode === 'black'
+                  ? 'Black'
+                  : 'White'}
+            </div>
             <div className="page-meta">Export prefix {outputSettings.fileNamePrefix}</div>
             <div className="page-meta">
               Export numbering {outputSettings.startNumber} / pad {outputSettings.numberPadding}
             </div>
+            <div className="page-meta">{EXPORT_METADATA_POLICY_LABEL}</div>
             <div className="export-preview">
               <div className="panel-title">Export preview</div>
               <div className="page-meta">PNG {pngPreviewName}</div>
               <div className="page-meta">PDF {pdfPreviewName}</div>
               <div className="page-meta">ZIP {zipPreviewName}</div>
+              <div
+                aria-label="Resize preview frame"
+                className={`resize-preview-frame resize-preview-${outputSettings.resizeBackgroundMode}`}
+              >
+                {exportPreviewLayout ? (
+                  <>
+                    <div
+                      className="resize-preview-art"
+                      style={{
+                        left: `${exportPreviewLayout.xPercent}%`,
+                        top: `${exportPreviewLayout.yPercent}%`,
+                        width: `${exportPreviewLayout.widthPercent}%`,
+                        height: `${exportPreviewLayout.heightPercent}%`,
+                      }}
+                    >
+                      <span className="resize-preview-art-label">{`Preview art: ${image?.name ?? 'Active image'}`}</span>
+                    </div>
+                    <div className="resize-preview-caption">
+                      <strong>{exportPreviewLayout.cropLabel}</strong>
+                      <span>{`${outputSettings.width} x ${outputSettings.height} / ${outputSettings.resizeFitMode}`}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="resize-preview-empty">
+                    <strong>No active page</strong>
+                    <span>Load an image to preview size unification.</span>
+                  </div>
+                )}
+              </div>
               <div className="page-list export-entry-list">
                 {zipEntryPreviewNames.length === 0 ? (
                   <div className="page-card empty">

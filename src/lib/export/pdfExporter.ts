@@ -1,5 +1,6 @@
 import type { CanvasImage, CanvasTransform, OutputSettings } from '../../stores/workspaceStore'
 import { createPdfExportName } from './fileNames'
+import { createMetadataRemovalSummary, sanitizeRenderedExportBlob } from './metadata'
 
 const escapePdfText = (text: string) => text.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
 
@@ -9,6 +10,7 @@ export const exportPageAsPdf = async (
   outputSettings: OutputSettings,
   pageIndex = 0,
 ): Promise<void> => {
+  const metadataPolicy = createMetadataRemovalSummary()
   const lines = [
     'BT',
     '/F1 24 Tf',
@@ -16,6 +18,16 @@ export const exportPageAsPdf = async (
     `(${escapePdfText(image.name)}) Tj`,
     '0 -28 Td',
     `(${escapePdfText(`Output ${outputSettings.width} x ${outputSettings.height}`)}) Tj`,
+    '0 -28 Td',
+    `(${escapePdfText(`Export quality ${outputSettings.qualityMode}`)}) Tj`,
+    '0 -28 Td',
+    `(${escapePdfText(`Resize fit ${outputSettings.resizeFitMode}`)}) Tj`,
+    '0 -28 Td',
+    `(${escapePdfText(`Resize background ${outputSettings.resizeBackgroundMode}`)}) Tj`,
+    '0 -28 Td',
+    `(${escapePdfText(`Export metadata ${metadataPolicy.metadata}`)}) Tj`,
+    '0 -28 Td',
+    `(${escapePdfText(`Export EXIF ${metadataPolicy.exif}`)}) Tj`,
     '0 -28 Td',
     `(${escapePdfText(`Source ${image.width} x ${image.height}`)}) Tj`,
   ]
@@ -39,7 +51,7 @@ export const exportPageAsPdf = async (
   image.messageWindowLayers.forEach((layer) => {
     lines.push('0 -28 Td')
     lines.push(
-      `(${escapePdfText(`Message window ${layer.speaker} / ${layer.body} @ ${layer.x}, ${layer.y} / ${layer.width}x${layer.height} / opacity ${layer.opacity.toFixed(1)}`)}) Tj`,
+      `(${escapePdfText(`Message window ${layer.speaker} / ${layer.body} @ ${layer.x}, ${layer.y} / ${layer.width}x${layer.height} / opacity ${layer.opacity.toFixed(1)} / frame ${layer.frameStyle}${layer.assetName ? ` / asset ${layer.assetName} / render 9-slice` : ' / render frame-only'}`)}) Tj`,
     )
   })
 
@@ -53,14 +65,14 @@ export const exportPageAsPdf = async (
   image.mosaicLayers.filter((layer) => layer.visible).forEach((layer) => {
     lines.push('0 -28 Td')
     lines.push(
-      `(${escapePdfText(`Mosaic @ ${layer.x}, ${layer.y} / ${layer.width}x${layer.height} / intensity ${layer.intensity}`)}) Tj`,
+      `(${escapePdfText(`Mosaic @ ${layer.x}, ${layer.y} / ${layer.width}x${layer.height} / intensity ${layer.intensity} / style ${layer.style}`)}) Tj`,
     )
   })
 
   image.overlayLayers.filter((layer) => layer.visible).forEach((layer) => {
     lines.push('0 -28 Td')
     lines.push(
-      `(${escapePdfText(`Overlay @ ${layer.x}, ${layer.y} / ${layer.width}x${layer.height} / opacity ${layer.opacity.toFixed(1)} / tint ${layer.color}`)}) Tj`,
+      `(${escapePdfText(`Overlay @ ${layer.x}, ${layer.y} / ${layer.width}x${layer.height} / opacity ${layer.opacity.toFixed(1)} / area ${layer.areaPreset} / tint ${layer.color} / fill ${layer.fillMode}${layer.fillMode === 'gradient' ? ` / gradient ${layer.gradientFrom} to ${layer.gradientTo} / direction ${layer.gradientDirection}` : ''}`)}) Tj`,
     )
   })
 
@@ -107,7 +119,7 @@ startxref
 ${320 + stream.length}
 %%EOF`
 
-  const blob = new Blob([pdf], { type: 'application/pdf' })
+  const blob = await sanitizeRenderedExportBlob(new Blob([pdf], { type: 'application/pdf' }), 'application/pdf')
   const objectUrl = window.URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = objectUrl

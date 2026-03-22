@@ -5,8 +5,11 @@ export type Tool = 'select' | 'text' | 'message-window' | 'bubble' | 'mosaic' | 
 export type CanvasImage = {
   id: string
   name: string
+  variantLabel?: string | null
+  variantSourcePageId?: string | null
   width: number
   height: number
+  sourceUrl?: string | null
   textLayers: CanvasTextLayer[]
   messageWindowLayers: CanvasMessageWindowLayer[]
   bubbleLayers: CanvasBubbleLayer[]
@@ -15,14 +18,25 @@ export type CanvasImage = {
   watermarkLayers: CanvasWatermarkLayer[]
 }
 
+export type ResizeBackgroundMode = 'white' | 'black' | 'blurred-art'
+export type ResizeFitMode = 'contain' | 'cover' | 'stretch'
+export type ExportQualityMode = 'high' | 'medium' | 'low' | 'platform'
+
 export type CanvasTextLayer = {
   id: string
+  name?: string | null
   groupId?: string | null
   text: string
   x: number
   y: number
   fontSize: number
   color: string
+  lineHeight: number
+  letterSpacing: number
+  maxWidth: number
+  fillMode: 'solid' | 'gradient'
+  gradientFrom: string
+  gradientTo: string
   isVertical: boolean
   strokeWidth: number
   strokeColor: string
@@ -33,6 +47,7 @@ export type CanvasTextLayer = {
 
 export type CanvasBubbleLayer = {
   id: string
+  name?: string | null
   groupId?: string | null
   text: string
   x: number
@@ -49,6 +64,8 @@ export type CanvasBubbleLayer = {
 
 export type CanvasMessageWindowLayer = {
   id: string
+  name?: string | null
+  groupId?: string | null
   speaker: string
   body: string
   x: number
@@ -56,10 +73,16 @@ export type CanvasMessageWindowLayer = {
   width: number
   height: number
   opacity: number
+  frameStyle: 'classic' | 'soft' | 'neon'
+  assetName: string | null
+  visible: boolean
+  locked: boolean
 }
 
 export type CanvasWatermarkLayer = {
   id: string
+  name?: string | null
+  groupId?: string | null
   text: string
   opacity: number
   color: string
@@ -73,28 +96,38 @@ export type CanvasWatermarkLayer = {
   y: number
   scale: number
   tiled: boolean
+  visible: boolean
+  locked: boolean
 }
 
 export type CanvasMosaicLayer = {
   id: string
+  name?: string | null
   groupId?: string | null
   x: number
   y: number
   width: number
   height: number
   intensity: number
+  style: 'pixelate' | 'blur' | 'noise'
   visible: boolean
   locked: boolean
 }
 
 export type CanvasOverlayLayer = {
   id: string
+  name?: string | null
   groupId?: string | null
   x: number
   y: number
   width: number
   height: number
+  areaPreset: 'custom' | 'full' | 'top-half' | 'bottom-half' | 'center-band'
   color: string
+  fillMode: 'solid' | 'gradient'
+  gradientFrom: string
+  gradientTo: string
+  gradientDirection: 'vertical' | 'horizontal' | 'diagonal'
   opacity: number
   visible: boolean
   locked: boolean
@@ -118,6 +151,9 @@ export type OutputSettings = {
   fileNamePrefix: string
   startNumber: number
   numberPadding: number
+  resizeBackgroundMode: ResizeBackgroundMode
+  resizeFitMode: ResizeFitMode
+  qualityMode: ExportQualityMode
 }
 
 export type MessageWindowPreset = {
@@ -128,6 +164,8 @@ export type MessageWindowPreset = {
   width: number
   height: number
   opacity: number
+  frameStyle: 'classic' | 'soft' | 'neon'
+  assetName: string | null
 }
 
 export type PageTemplate = {
@@ -141,7 +179,7 @@ export type PageTemplate = {
   watermarkLayers: CanvasWatermarkLayer[]
 }
 
-type LayerType = 'text' | 'bubble' | 'mosaic' | 'overlay'
+type LayerType = 'text' | 'message-window' | 'bubble' | 'mosaic' | 'overlay' | 'watermark'
 export type ResizeHandle =
   | 'top-left'
   | 'top'
@@ -216,6 +254,9 @@ type WorkspaceState = {
   setOutputPreset: (presetId: OutputPresetId) => void
   setCustomOutputWidth: (width: number) => void
   setCustomOutputHeight: (height: number) => void
+  setResizeBackgroundMode: (mode: ResizeBackgroundMode) => void
+  setResizeFitMode: (mode: ResizeFitMode) => void
+  setExportQualityMode: (mode: ExportQualityMode) => void
   setFileNamePrefix: (prefix: string) => void
   setStartNumber: (value: number) => void
   setNumberPadding: (value: number) => void
@@ -225,6 +266,8 @@ type WorkspaceState = {
   selectPage: (pageId: string) => void
   duplicateActivePage: () => void
   duplicateActivePageWithTextSwap: (text: string) => void
+  duplicateActivePageWithTextVariants: (texts: string[]) => void
+  setActivePageVariantLabel: (label: string) => void
   saveCurrentPageAsTemplate: () => void
   renameTemplate: (templateId: string, name: string) => void
   duplicateTemplate: (templateId: string) => void
@@ -237,6 +280,12 @@ type WorkspaceState = {
   moveSelectedTextLayer: (dx: number, dy: number) => void
   changeSelectedTextLayerFontSize: (delta: number) => void
   setSelectedTextLayerColor: (color: string) => void
+  changeSelectedTextLayerLineHeight: (delta: number) => void
+  changeSelectedTextLayerLetterSpacing: (delta: number) => void
+  changeSelectedTextLayerMaxWidth: (delta: number) => void
+  toggleSelectedTextLayerFillMode: () => void
+  setSelectedTextLayerGradientFrom: (color: string) => void
+  setSelectedTextLayerGradientTo: (color: string) => void
   deleteSelectedTextLayer: () => void
   moveSelectedTextLayerBackward: () => void
   moveSelectedTextLayerForward: () => void
@@ -244,16 +293,18 @@ type WorkspaceState = {
   changeSelectedTextLayerOutlineWidth: (delta: number) => void
   toggleSelectedTextLayerShadow: () => void
   addMessageWindowLayer: () => void
-  selectMessageWindowLayer: (layerId: string) => void
+  selectMessageWindowLayer: (layerId: string, additive?: boolean) => void
   updateSelectedMessageWindowSpeaker: (speaker: string) => void
   updateSelectedMessageWindowBody: (body: string) => void
   moveSelectedMessageWindowLayer: (dx: number, dy: number) => void
   resizeSelectedMessageWindowLayer: (widthDelta: number, heightDelta: number) => void
+  cycleSelectedMessageWindowFrameStyle: () => void
+  loadSelectedMessageWindowAsset: (file: File) => void
   saveSelectedMessageWindowPreset: () => void
   applyMessageWindowPreset: (presetId: string) => void
   addWatermarkLayer: () => void
   loadWatermarkImageFile: (file: File) => void
-  selectWatermarkLayer: (layerId: string) => void
+  selectWatermarkLayer: (layerId: string, additive?: boolean) => void
   updateSelectedWatermarkText: (text: string) => void
   changeSelectedWatermarkOpacity: (delta: number) => void
   toggleSelectedWatermarkPattern: () => void
@@ -281,6 +332,9 @@ type WorkspaceState = {
   moveSelectedMosaicLayer: (dx: number, dy: number) => void
   resizeSelectedMosaicLayer: (widthDelta: number, heightDelta: number) => void
   changeSelectedMosaicIntensity: (delta: number) => void
+  setSelectedMosaicIntensity: (intensity: number) => void
+  setSelectedMosaicStyle: (style: CanvasMosaicLayer['style']) => void
+  cycleSelectedMosaicStyle: () => void
   duplicateSelectedMosaicLayer: () => void
   moveSelectedMosaicLayerBackward: () => void
   moveSelectedMosaicLayerForward: () => void
@@ -290,6 +344,12 @@ type WorkspaceState = {
   moveSelectedOverlayLayer: (dx: number, dy: number) => void
   changeSelectedOverlayOpacity: (delta: number) => void
   setSelectedOverlayColor: (color: string) => void
+  setSelectedOverlayAreaPreset: (preset: CanvasOverlayLayer['areaPreset']) => void
+  cycleSelectedOverlayAreaPreset: () => void
+  toggleSelectedOverlayFillMode: () => void
+  setSelectedOverlayGradientFrom: (color: string) => void
+  setSelectedOverlayGradientTo: (color: string) => void
+  cycleSelectedOverlayGradientDirection: () => void
   duplicateSelectedOverlayLayer: () => void
   moveSelectedOverlayLayerBackward: () => void
   moveSelectedOverlayLayerForward: () => void
@@ -312,6 +372,7 @@ type WorkspaceState = {
     preserveAspectRatio?: boolean,
   ) => void
   deleteSelectedLayer: () => void
+  renameSelectedLayer: (name: string) => void
   moveSelectedLayerBackward: () => void
   moveSelectedLayerForward: () => void
   nudgeSelectedLayer: (dx: number, dy: number) => void
@@ -328,6 +389,9 @@ const SAMPLE_IMAGE: CanvasImage = {
   name: 'sample-page-01.webp',
   width: 3840,
   height: 2160,
+  sourceUrl: null,
+  variantLabel: null,
+  variantSourcePageId: null,
   textLayers: [],
   messageWindowLayers: [],
   bubbleLayers: [],
@@ -357,6 +421,9 @@ export const outputPresets: OutputSettings[] = [
     fileNamePrefix: 'creators-coco',
     startNumber: 1,
     numberPadding: 2,
+    resizeBackgroundMode: 'white',
+    resizeFitMode: 'contain',
+    qualityMode: 'high',
   },
   {
     presetId: 'square-1080',
@@ -367,6 +434,9 @@ export const outputPresets: OutputSettings[] = [
     fileNamePrefix: 'creators-coco',
     startNumber: 1,
     numberPadding: 2,
+    resizeBackgroundMode: 'white',
+    resizeFitMode: 'contain',
+    qualityMode: 'high',
   },
   {
     presetId: 'story-1080x1920',
@@ -377,6 +447,9 @@ export const outputPresets: OutputSettings[] = [
     fileNamePrefix: 'creators-coco',
     startNumber: 1,
     numberPadding: 2,
+    resizeBackgroundMode: 'white',
+    resizeFitMode: 'contain',
+    qualityMode: 'high',
   },
   {
     presetId: 'custom',
@@ -387,6 +460,9 @@ export const outputPresets: OutputSettings[] = [
     fileNamePrefix: 'creators-coco',
     startNumber: 1,
     numberPadding: 2,
+    resizeBackgroundMode: 'white',
+    resizeFitMode: 'contain',
+    qualityMode: 'high',
   },
 ]
 
@@ -405,6 +481,9 @@ const createCustomOutputSettings = (width: number, height: number): OutputSettin
     fileNamePrefix: 'creators-coco',
     startNumber: 1,
     numberPadding: 2,
+    resizeBackgroundMode: 'white',
+    resizeFitMode: 'contain',
+    qualityMode: 'high',
   }
 }
 
@@ -434,6 +513,24 @@ const withNumbering = (
   numberPadding: sanitizeNumberPadding(numberPadding),
 })
 
+const withResizeBackgroundMode = (
+  settings: OutputSettings,
+  resizeBackgroundMode: ResizeBackgroundMode,
+): OutputSettings => ({
+  ...settings,
+  resizeBackgroundMode,
+})
+
+const withResizeFitMode = (settings: OutputSettings, resizeFitMode: ResizeFitMode): OutputSettings => ({
+  ...settings,
+  resizeFitMode,
+})
+
+const withExportQualityMode = (settings: OutputSettings, qualityMode: ExportQualityMode): OutputSettings => ({
+  ...settings,
+  qualityMode,
+})
+
 const inferImageSize = (fileName: string): Pick<CanvasImage, 'width' | 'height'> => {
   const extension = fileName.split('.').pop()?.toLowerCase()
 
@@ -451,6 +548,9 @@ const createImageFromFile = (file: File): CanvasImage => ({
   id: createPageId(),
   name: file.name,
   ...inferImageSize(file.name),
+  sourceUrl: typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : null,
+  variantLabel: null,
+  variantSourcePageId: null,
   textLayers: [],
   messageWindowLayers: [],
   bubbleLayers: [],
@@ -487,12 +587,19 @@ const createGroupId = () =>
 
 const createTextLayer = (): CanvasTextLayer => ({
   id: createTextLayerId(),
+  name: null,
   groupId: null,
   text: 'New text',
   x: 120,
   y: 120,
   fontSize: 32,
   color: '#ffffff',
+  lineHeight: 1.2,
+  letterSpacing: 0,
+  maxWidth: 360,
+  fillMode: 'solid',
+  gradientFrom: '#ffffff',
+  gradientTo: '#ff9a6b',
   isVertical: false,
   strokeWidth: 0,
   strokeColor: '#241b15',
@@ -503,6 +610,7 @@ const createTextLayer = (): CanvasTextLayer => ({
 
 const createBubbleLayer = (): CanvasBubbleLayer => ({
   id: createBubbleLayerId(),
+  name: null,
   groupId: null,
   text: 'New bubble',
   x: 240,
@@ -519,6 +627,8 @@ const createBubbleLayer = (): CanvasBubbleLayer => ({
 
 const createMessageWindowLayer = (): CanvasMessageWindowLayer => ({
   id: createMessageWindowLayerId(),
+  name: null,
+  groupId: null,
   speaker: 'Speaker',
   body: 'New line',
   x: 688,
@@ -526,10 +636,16 @@ const createMessageWindowLayer = (): CanvasMessageWindowLayer => ({
   width: 608,
   height: 220,
   opacity: 0.9,
+  frameStyle: 'classic',
+  assetName: null,
+  visible: true,
+  locked: false,
 })
 
 const createWatermarkLayer = (): CanvasWatermarkLayer => ({
   id: createWatermarkLayerId(),
+  name: null,
+  groupId: null,
   text: 'Sample watermark',
   opacity: 0.3,
   color: '#fff4d6',
@@ -543,28 +659,38 @@ const createWatermarkLayer = (): CanvasWatermarkLayer => ({
   y: 540,
   scale: 1,
   tiled: false,
+  visible: true,
+  locked: false,
 })
 
 const createMosaicLayer = (): CanvasMosaicLayer => ({
   id: createMosaicLayerId(),
+  name: null,
   groupId: null,
   x: 320,
   y: 220,
   width: 180,
   height: 120,
   intensity: 12,
+  style: 'pixelate',
   visible: true,
   locked: false,
 })
 
 const createOverlayLayer = (): CanvasOverlayLayer => ({
   id: createOverlayLayerId(),
+  name: null,
   groupId: null,
   x: 180,
   y: 120,
   width: 320,
   height: 180,
+  areaPreset: 'custom',
   color: '#ffcc44',
+  fillMode: 'solid',
+  gradientFrom: '#ffcc44',
+  gradientTo: '#ff6b6b',
+  gradientDirection: 'diagonal',
   opacity: 0.4,
   visible: true,
   locked: false,
@@ -578,6 +704,19 @@ const getSupportedFileError = (file: File) => {
   return !extension || !supportedExtensions.includes(extension)
     ? `Unsupported file type: ${file.name}`
     : null
+}
+
+const readFileAsDataUrl = async (file: File): Promise<string | null> => {
+  if (typeof FileReader === 'undefined') {
+    return null
+  }
+
+  return await new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(file)
+  })
 }
 
 const createInitialState = () => ({
@@ -796,6 +935,13 @@ const readProjectFromStorage = (): PersistedProject | null => {
             parsedProject.outputSettings?.startNumber ?? 1,
             parsedProject.outputSettings?.numberPadding ?? 2,
           )
+    const normalizedOutputSettings = withResizeBackgroundMode(
+      withExportQualityMode(
+        withResizeFitMode(outputSettings, parsedProject.outputSettings?.resizeFitMode ?? 'contain'),
+        parsedProject.outputSettings?.qualityMode ?? 'high',
+      ),
+      parsedProject.outputSettings?.resizeBackgroundMode ?? 'white',
+    )
 
     return {
       id: parsedProject.id ?? 'project-default',
@@ -803,10 +949,20 @@ const readProjectFromStorage = (): PersistedProject | null => {
       pages: Array.isArray(parsedProject.pages)
         ? parsedProject.pages.map((page) => ({
             ...page,
+            sourceUrl: page.sourceUrl ?? null,
+            variantLabel: page.variantLabel ?? null,
+            variantSourcePageId: page.variantSourcePageId ?? null,
             textLayers: Array.isArray(page.textLayers)
               ? page.textLayers.map((layer) => ({
                   ...layer,
+                  name: layer.name ?? null,
                   groupId: layer.groupId ?? null,
+                  lineHeight: layer.lineHeight ?? 1.2,
+                  letterSpacing: layer.letterSpacing ?? 0,
+                  maxWidth: layer.maxWidth ?? 360,
+                  fillMode: layer.fillMode ?? 'solid',
+                  gradientFrom: layer.gradientFrom ?? layer.color ?? '#ffffff',
+                  gradientTo: layer.gradientTo ?? '#ff9a6b',
                   isVertical: layer.isVertical ?? false,
                   strokeWidth: layer.strokeWidth ?? 0,
                   strokeColor: layer.strokeColor ?? '#241b15',
@@ -816,14 +972,21 @@ const readProjectFromStorage = (): PersistedProject | null => {
                 }))
               : [],
             messageWindowLayers: Array.isArray(page.messageWindowLayers)
-              ? page.messageWindowLayers.map((layer) => ({
+                ? page.messageWindowLayers.map((layer) => ({
                   ...layer,
+                  name: layer.name ?? null,
+                  groupId: layer.groupId ?? null,
                   opacity: layer.opacity ?? 0.9,
+                  frameStyle: layer.frameStyle ?? 'classic',
+                  assetName: layer.assetName ?? null,
+                  visible: layer.visible ?? true,
+                  locked: layer.locked ?? false,
                 }))
               : [],
             bubbleLayers: Array.isArray(page.bubbleLayers)
               ? page.bubbleLayers.map((layer) => ({
                   ...layer,
+                  name: layer.name ?? null,
                   groupId: layer.groupId ?? null,
                   tailDirection: layer.tailDirection ?? 'left',
                   stylePreset: layer.stylePreset ?? 'speech',
@@ -836,6 +999,8 @@ const readProjectFromStorage = (): PersistedProject | null => {
             mosaicLayers: Array.isArray(page.mosaicLayers)
               ? page.mosaicLayers.map((layer) => ({
                   ...layer,
+                  name: layer.name ?? null,
+                  style: layer.style ?? 'pixelate',
                   groupId: layer.groupId ?? null,
                   visible: layer.visible ?? true,
                   locked: layer.locked ?? false,
@@ -844,14 +1009,22 @@ const readProjectFromStorage = (): PersistedProject | null => {
             overlayLayers: Array.isArray(page.overlayLayers)
               ? page.overlayLayers.map((layer) => ({
                   ...layer,
+                  name: layer.name ?? null,
+                  areaPreset: layer.areaPreset ?? 'custom',
+                  fillMode: layer.fillMode ?? 'solid',
+                  gradientFrom: layer.gradientFrom ?? layer.color ?? '#ffcc44',
+                  gradientTo: layer.gradientTo ?? '#ff6b6b',
+                  gradientDirection: layer.gradientDirection ?? 'diagonal',
                   groupId: layer.groupId ?? null,
                   visible: layer.visible ?? true,
                   locked: layer.locked ?? false,
                 }))
               : [],
             watermarkLayers: Array.isArray(page.watermarkLayers)
-              ? page.watermarkLayers.map((layer) => ({
+                ? page.watermarkLayers.map((layer) => ({
                   ...layer,
+                  name: layer.name ?? null,
+                  groupId: layer.groupId ?? null,
                   opacity: layer.opacity ?? 0.3,
                   color: layer.color ?? '#fff4d6',
                   repeated: layer.repeated ?? false,
@@ -864,6 +1037,8 @@ const readProjectFromStorage = (): PersistedProject | null => {
                   y: layer.y ?? 540,
                   scale: layer.scale ?? 1,
                   tiled: layer.tiled ?? false,
+                  visible: layer.visible ?? true,
+                  locked: layer.locked ?? false,
                 }))
               : [],
           }))
@@ -871,7 +1046,7 @@ const readProjectFromStorage = (): PersistedProject | null => {
       activePageId: parsedProject.activePageId ?? null,
       selectedLayerId: parsedProject.selectedLayerId ?? null,
       imageTransform: parsedProject.imageTransform ?? null,
-      outputSettings,
+      outputSettings: normalizedOutputSettings,
       lastSavedAt: parsedProject.lastSavedAt ?? null,
       messageWindowPresets: Array.isArray(parsedProject.messageWindowPresets)
         ? parsedProject.messageWindowPresets.map((preset) => ({ ...preset }))
@@ -976,6 +1151,10 @@ const getVisibleLayerIdsByType = (page: CanvasImage, type: LayerType) => {
     return page.textLayers.filter((layer) => layer.visible).map((layer) => layer.id)
   }
 
+  if (type === 'message-window') {
+    return page.messageWindowLayers.filter((layer) => layer.visible).map((layer) => layer.id)
+  }
+
   if (type === 'bubble') {
     return page.bubbleLayers.filter((layer) => layer.visible).map((layer) => layer.id)
   }
@@ -984,14 +1163,20 @@ const getVisibleLayerIdsByType = (page: CanvasImage, type: LayerType) => {
     return page.mosaicLayers.filter((layer) => layer.visible).map((layer) => layer.id)
   }
 
+  if (type === 'watermark') {
+    return page.watermarkLayers.filter((layer) => layer.visible).map((layer) => layer.id)
+  }
+
   return page.overlayLayers.filter((layer) => layer.visible).map((layer) => layer.id)
 }
 
 const getAllVisibleLayerIds = (page: CanvasImage) => [
   ...getVisibleLayerIdsByType(page, 'text'),
+  ...getVisibleLayerIdsByType(page, 'message-window'),
   ...getVisibleLayerIdsByType(page, 'bubble'),
   ...getVisibleLayerIdsByType(page, 'mosaic'),
   ...getVisibleLayerIdsByType(page, 'overlay'),
+  ...getVisibleLayerIdsByType(page, 'watermark'),
 ]
 
 const getEffectiveSelectedLayerIds = (
@@ -1005,7 +1190,15 @@ const getEffectiveSelectedLayerIds = (
 const toggleLayerSelectionState = (
   state: Pick<WorkspaceState, 'selectedLayerId' | 'selectedLayerIds'>,
   layerId: string,
+  additive = false,
 ) => {
+  if (!additive) {
+    return {
+      selectedLayerId: layerId,
+      selectedLayerIds: [layerId],
+    }
+  }
+
   const currentSelection = getEffectiveSelectedLayerIds(state)
   const hasLayer = currentSelection.includes(layerId)
 
@@ -1036,6 +1229,9 @@ const getSelectedPositions = (page: CanvasImage, selectedLayerIds: Set<string>):
   ...page.textLayers
     .filter((layer) => selectedLayerIds.has(layer.id))
     .map((layer) => ({ id: layer.id, type: 'text' as const, x: layer.x, y: layer.y, locked: layer.locked })),
+  ...page.messageWindowLayers
+    .filter((layer) => selectedLayerIds.has(layer.id))
+    .map((layer) => ({ id: layer.id, type: 'message-window' as const, x: layer.x, y: layer.y, locked: layer.locked })),
   ...page.bubbleLayers
     .filter((layer) => selectedLayerIds.has(layer.id))
     .map((layer) => ({ id: layer.id, type: 'bubble' as const, x: layer.x, y: layer.y, locked: layer.locked })),
@@ -1045,6 +1241,9 @@ const getSelectedPositions = (page: CanvasImage, selectedLayerIds: Set<string>):
   ...page.overlayLayers
     .filter((layer) => selectedLayerIds.has(layer.id))
     .map((layer) => ({ id: layer.id, type: 'overlay' as const, x: layer.x, y: layer.y, locked: layer.locked })),
+  ...page.watermarkLayers
+    .filter((layer) => selectedLayerIds.has(layer.id))
+    .map((layer) => ({ id: layer.id, type: 'watermark' as const, x: layer.x, y: layer.y, locked: layer.locked })),
 ]
 
 const applyPositionMap = (
@@ -1054,6 +1253,11 @@ const applyPositionMap = (
 ) => ({
   ...page,
   textLayers: page.textLayers.map((layer) =>
+    positionMap.has(layer.id)
+      ? { ...layer, x: axis === 'horizontal' ? positionMap.get(layer.id) ?? layer.x : layer.x, y: axis === 'vertical' ? positionMap.get(layer.id) ?? layer.y : layer.y }
+      : layer,
+  ),
+  messageWindowLayers: page.messageWindowLayers.map((layer) =>
     positionMap.has(layer.id)
       ? { ...layer, x: axis === 'horizontal' ? positionMap.get(layer.id) ?? layer.x : layer.x, y: axis === 'vertical' ? positionMap.get(layer.id) ?? layer.y : layer.y }
       : layer,
@@ -1073,9 +1277,17 @@ const applyPositionMap = (
       ? { ...layer, x: axis === 'horizontal' ? positionMap.get(layer.id) ?? layer.x : layer.x, y: axis === 'vertical' ? positionMap.get(layer.id) ?? layer.y : layer.y }
       : layer,
   ),
+  watermarkLayers: page.watermarkLayers.map((layer) =>
+    positionMap.has(layer.id)
+      ? { ...layer, x: axis === 'horizontal' ? positionMap.get(layer.id) ?? layer.x : layer.x, y: axis === 'vertical' ? positionMap.get(layer.id) ?? layer.y : layer.y }
+      : layer,
+  ),
 })
 
 const getSelectedResizableLayers = (page: CanvasImage, selectedLayerIds: Set<string>) => [
+  ...page.messageWindowLayers
+    .filter((layer) => selectedLayerIds.has(layer.id))
+    .map((layer) => ({ id: layer.id, width: layer.width, height: layer.height, locked: layer.locked })),
   ...page.bubbleLayers
     .filter((layer) => selectedLayerIds.has(layer.id))
     .map((layer) => ({ id: layer.id, width: layer.width, height: layer.height, locked: layer.locked })),
@@ -1089,16 +1301,20 @@ const getSelectedResizableLayers = (page: CanvasImage, selectedLayerIds: Set<str
 
 const getLayerGroupId = (page: CanvasImage, layerId: string) =>
   page.textLayers.find((layer) => layer.id === layerId)?.groupId ??
+  page.messageWindowLayers.find((layer) => layer.id === layerId)?.groupId ??
   page.bubbleLayers.find((layer) => layer.id === layerId)?.groupId ??
   page.mosaicLayers.find((layer) => layer.id === layerId)?.groupId ??
   page.overlayLayers.find((layer) => layer.id === layerId)?.groupId ??
+  page.watermarkLayers.find((layer) => layer.id === layerId)?.groupId ??
   null
 
 const getGroupedLayerIds = (page: CanvasImage, groupId: string) => [
   ...page.textLayers.filter((layer) => layer.groupId === groupId).map((layer) => layer.id),
+  ...page.messageWindowLayers.filter((layer) => layer.groupId === groupId).map((layer) => layer.id),
   ...page.bubbleLayers.filter((layer) => layer.groupId === groupId).map((layer) => layer.id),
   ...page.mosaicLayers.filter((layer) => layer.groupId === groupId).map((layer) => layer.id),
   ...page.overlayLayers.filter((layer) => layer.groupId === groupId).map((layer) => layer.id),
+  ...page.watermarkLayers.filter((layer) => layer.groupId === groupId).map((layer) => layer.id),
 ]
 
 const getActionableLayerIds = (state: Pick<WorkspaceState, 'activePageId' | 'selectedLayerId' | 'selectedLayerIds' | 'pages'>) => {
@@ -1408,7 +1624,7 @@ const resizeSelectedLayers = (
   return state
 }
 
-export const useWorkspaceStore = create<WorkspaceState>((set) => ({
+export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   ...createInitialState(),
   zoomIn: () => set((state) => ({ zoomPercent: clampZoom(state.zoomPercent + 25) })),
   zoomOut: () => set((state) => ({ zoomPercent: clampZoom(state.zoomPercent - 25) })),
@@ -1639,6 +1855,27 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         state.outputSettings.numberPadding,
       ),
     })),
+  setResizeBackgroundMode: (mode) =>
+    set((state) => ({
+      outputSettings: {
+        ...state.outputSettings,
+        resizeBackgroundMode: mode,
+      },
+    })),
+  setResizeFitMode: (mode) =>
+    set((state) => ({
+      outputSettings: {
+        ...state.outputSettings,
+        resizeFitMode: mode,
+      },
+    })),
+  setExportQualityMode: (mode) =>
+    set((state) => ({
+      outputSettings: {
+        ...state.outputSettings,
+        qualityMode: mode,
+      },
+    })),
   setFileNamePrefix: (prefix) =>
     set((state) => ({
       outputSettings: {
@@ -1718,6 +1955,51 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
       const image = createImageFromFile(file)
 
+      void readFileAsDataUrl(file).then((dataUrl) => {
+        if (!dataUrl) {
+          return
+        }
+
+        set((current) => {
+          if (!current.pages.some((page) => page.id === image.id)) {
+            return current
+          }
+
+          const pages = current.pages.map((page) =>
+            page.id === image.id
+              ? {
+                  ...page,
+                  sourceUrl: dataUrl,
+                }
+              : page,
+          )
+
+          const nextState = {
+            ...current,
+            pages,
+          }
+
+          if (canUseStorage() && window.localStorage.getItem(PROJECT_STORAGE_KEY)) {
+            writeProjectToStorage(
+              serializeProject({
+                pages,
+                activePageId: current.activePageId,
+                selectedLayerId: current.selectedLayerId,
+                imageTransform: current.imageTransform,
+                outputSettings: current.outputSettings,
+                lastSavedAt: current.lastSavedAt,
+                projectId: current.projectId,
+                projectName: current.projectName,
+                messageWindowPresets: current.messageWindowPresets,
+                templates: current.templates,
+              }),
+            )
+          }
+
+          return nextState
+        })
+      })
+
       return withHistory(state, {
         pages: [...state.pages, image],
         activePageId: image.id,
@@ -1753,6 +2035,56 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       const images = supportedFiles.map(createImageFromFile)
       const activeImage = images[images.length - 1]
 
+      supportedFiles.forEach((file, index) => {
+        const image = images[index]
+        if (!image) {
+          return
+        }
+
+        void readFileAsDataUrl(file).then((dataUrl) => {
+          if (!dataUrl) {
+            return
+          }
+
+          set((current) => {
+            if (!current.pages.some((page) => page.id === image.id)) {
+              return current
+            }
+
+            const pages = current.pages.map((page) =>
+              page.id === image.id
+                ? {
+                    ...page,
+                    sourceUrl: dataUrl,
+                  }
+                : page,
+            )
+
+            if (canUseStorage() && window.localStorage.getItem(PROJECT_STORAGE_KEY)) {
+              writeProjectToStorage(
+                serializeProject({
+                  pages,
+                  activePageId: current.activePageId,
+                  selectedLayerId: current.selectedLayerId,
+                  imageTransform: current.imageTransform,
+                  outputSettings: current.outputSettings,
+                  lastSavedAt: current.lastSavedAt,
+                  projectId: current.projectId,
+                  projectName: current.projectName,
+                  messageWindowPresets: current.messageWindowPresets,
+                  templates: current.templates,
+                }),
+              )
+            }
+
+            return {
+              ...current,
+              pages,
+            }
+          })
+        })
+      })
+
       return withHistory(state, {
         pages: [...state.pages, ...images],
         activePageId: activeImage.id,
@@ -1772,6 +2104,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         ...page,
         id: createPageId(),
         name: page.name.replace(/(\.[^.]+)$/, '-copy$1'),
+        variantLabel: 'Copy',
+        variantSourcePageId: page.variantSourcePageId ?? page.id,
         textLayers: page.textLayers.map(cloneTextLayer),
         messageWindowLayers: page.messageWindowLayers.map(cloneMessageWindowLayer),
         bubbleLayers: page.bubbleLayers.map(cloneBubbleLayer),
@@ -1800,6 +2134,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         ...page,
         id: createPageId(),
         name: page.name.replace(/(\.[^.]+)$/, '-copy$1'),
+        variantLabel: text,
+        variantSourcePageId: page.variantSourcePageId ?? page.id,
         textLayers: page.textLayers.map((layer, index) => ({
           ...cloneTextLayer(layer),
           text: index === 0 ? text : layer.text,
@@ -1817,6 +2153,67 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         selectedLayerId: duplicatedPage.textLayers[0]?.id ?? null,
         selectedLayerIds: duplicatedPage.textLayers[0]?.id ? [duplicatedPage.textLayers[0].id] : [],
         imageTransform: state.imageTransform ? { ...state.imageTransform } : { ...INITIAL_IMAGE_TRANSFORM },
+        loadError: null,
+      })
+    }),
+  duplicateActivePageWithTextVariants: (texts) =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      if (!page) {
+        return state
+      }
+
+      const normalizedTexts = texts.map((text) => text.trim()).filter(Boolean)
+      if (normalizedTexts.length === 0) {
+        return state
+      }
+
+      const duplicatedPages: CanvasImage[] = normalizedTexts.map((text, pageIndex) => ({
+        ...page,
+        id: createPageId(),
+        name: page.name.replace(/(\.[^.]+)$/, `-variant-${pageIndex + 1}$1`),
+        variantLabel: text,
+        variantSourcePageId: page.variantSourcePageId ?? page.id,
+        textLayers: page.textLayers.map((layer, index) => ({
+          ...cloneTextLayer(layer),
+          text: index === 0 ? text : layer.text,
+        })),
+        messageWindowLayers: page.messageWindowLayers.map(cloneMessageWindowLayer),
+        bubbleLayers: page.bubbleLayers.map(cloneBubbleLayer),
+        mosaicLayers: page.mosaicLayers.map(cloneMosaicLayer),
+        overlayLayers: page.overlayLayers.map(cloneOverlayLayer),
+        watermarkLayers: page.watermarkLayers.map(cloneWatermarkLayer),
+      }))
+
+      const activeDuplicatedPage = duplicatedPages[duplicatedPages.length - 1]
+      return withHistory(state, {
+        pages: [...state.pages, ...duplicatedPages],
+        activePageId: activeDuplicatedPage?.id ?? state.activePageId,
+        selectedLayerId: activeDuplicatedPage?.textLayers[0]?.id ?? null,
+        selectedLayerIds: activeDuplicatedPage?.textLayers[0]?.id ? [activeDuplicatedPage.textLayers[0].id] : [],
+        imageTransform: state.imageTransform ? { ...state.imageTransform } : { ...INITIAL_IMAGE_TRANSFORM },
+        loadError: null,
+      })
+    }),
+  setActivePageVariantLabel: (label) =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      if (!page) {
+        return state
+      }
+
+      const hasLabel = label.trim().length > 0
+      const pages = state.pages.map((entry) =>
+        entry.id === page.id
+          ? {
+              ...entry,
+              variantLabel: hasLabel ? label : null,
+            }
+          : entry,
+      )
+
+      return withHistory(state, {
+        pages,
         loadError: null,
       })
     }),
@@ -1980,16 +2377,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         loadError: null,
       })
     }),
-  selectWatermarkLayer: (layerId) =>
+  selectWatermarkLayer: (layerId, additive) =>
     set((state) => {
       const page = selectActiveImage(state)
       if (!page || !page.watermarkLayers.some((layer) => layer.id === layerId)) {
         return state
       }
 
+      const nextSelection = toggleLayerSelectionState(state, layerId, additive)
+
       return {
-        selectedLayerId: layerId,
-        selectedLayerIds: [layerId],
+        selectedLayerId: nextSelection.selectedLayerId,
+        selectedLayerIds: nextSelection.selectedLayerIds,
         loadError: null,
       }
     }),
@@ -2194,7 +2593,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
       if (additive) {
         return {
-          ...toggleLayerSelectionState(state, layerId),
+          ...toggleLayerSelectionState(state, layerId, true),
           loadError: null,
         }
       }
@@ -2274,6 +2673,116 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             layer.id === activeTextLayer.id
               ? { ...layer, color: sanitizeTextColor(color) }
               : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  changeSelectedTextLayerLineHeight: (delta) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id
+              ? { ...layer, lineHeight: Math.max(0.8, Math.min(2.4, Number((layer.lineHeight + delta).toFixed(1)))) }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  changeSelectedTextLayerLetterSpacing: (delta) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id
+              ? { ...layer, letterSpacing: Math.max(0, Math.min(16, layer.letterSpacing + delta)) }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  changeSelectedTextLayerMaxWidth: (delta) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id
+              ? { ...layer, maxWidth: Math.max(120, Math.min(960, layer.maxWidth + delta)) }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  toggleSelectedTextLayerFillMode: () =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id
+              ? { ...layer, fillMode: layer.fillMode === 'solid' ? 'gradient' : 'solid' }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedTextLayerGradientFrom: (color) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id ? { ...layer, gradientFrom: sanitizeTextColor(color) } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedTextLayerGradientTo: (color) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id ? { ...layer, gradientTo: sanitizeTextColor(color) } : layer,
           ),
         })),
         loadError: null,
@@ -2416,16 +2925,18 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         loadError: null,
       })
     }),
-  selectMessageWindowLayer: (layerId) =>
+  selectMessageWindowLayer: (layerId, additive) =>
     set((state) => {
       const page = selectActiveImage(state)
       if (!page || !page.messageWindowLayers.some((layer) => layer.id === layerId)) {
         return state
       }
 
+      const nextSelection = toggleLayerSelectionState(state, layerId, additive)
+
       return {
-        selectedLayerId: layerId,
-        selectedLayerIds: [layerId],
+        selectedLayerId: nextSelection.selectedLayerId,
+        selectedLayerIds: nextSelection.selectedLayerIds,
         loadError: null,
       }
     }),
@@ -2505,6 +3016,57 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         loadError: null,
       })
     }),
+  cycleSelectedMessageWindowFrameStyle: () =>
+    set((state) => {
+      const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (!activeMessageWindowLayer || !state.activePageId) {
+        return state
+      }
+
+      const nextFrameStyle =
+        activeMessageWindowLayer.frameStyle === 'classic'
+          ? 'soft'
+          : activeMessageWindowLayer.frameStyle === 'soft'
+            ? 'neon'
+            : 'classic'
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          messageWindowLayers: page.messageWindowLayers.map((layer) =>
+            layer.id === activeMessageWindowLayer.id
+              ? {
+                  ...layer,
+                  frameStyle: nextFrameStyle,
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  loadSelectedMessageWindowAsset: (file) =>
+    set((state) => {
+      const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (!activeMessageWindowLayer || !state.activePageId) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          messageWindowLayers: page.messageWindowLayers.map((layer) =>
+            layer.id === activeMessageWindowLayer.id
+              ? {
+                  ...layer,
+                  assetName: file.name,
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
   saveSelectedMessageWindowPreset: () =>
     set((state) => {
       const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
@@ -2520,6 +3082,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         width: activeMessageWindowLayer.width,
         height: activeMessageWindowLayer.height,
         opacity: activeMessageWindowLayer.opacity,
+        frameStyle: activeMessageWindowLayer.frameStyle,
+        assetName: activeMessageWindowLayer.assetName,
       }
 
       return {
@@ -2546,6 +3110,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
                   width: preset.width,
                   height: preset.height,
                   opacity: preset.opacity,
+                  frameStyle: preset.frameStyle,
+                  assetName: preset.assetName,
                 }
               : layer,
           ),
@@ -2580,7 +3146,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
       if (additive) {
         return {
-          ...toggleLayerSelectionState(state, layerId),
+          ...toggleLayerSelectionState(state, layerId, true),
           loadError: null,
         }
       }
@@ -2833,7 +3399,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
       if (additive) {
         return {
-          ...toggleLayerSelectionState(state, layerId),
+          ...toggleLayerSelectionState(state, layerId, true),
           loadError: null,
         }
       }
@@ -2900,6 +3466,66 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             layer.id === activeMosaicLayer.id
               ? { ...layer, intensity: Math.max(4, Math.min(64, layer.intensity + delta)) }
               : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedMosaicIntensity: (intensity) =>
+    set((state) => {
+      const activeMosaicLayer = selectActiveMosaicLayer(state)
+      if (!activeMosaicLayer || !state.activePageId || activeMosaicLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          mosaicLayers: page.mosaicLayers.map((layer) =>
+            layer.id === activeMosaicLayer.id
+              ? { ...layer, intensity: Math.max(4, Math.min(48, Math.round(intensity))) }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedMosaicStyle: (style) =>
+    set((state) => {
+      const activeMosaicLayer = selectActiveMosaicLayer(state)
+      if (!activeMosaicLayer || !state.activePageId || activeMosaicLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          mosaicLayers: page.mosaicLayers.map((layer) =>
+            layer.id === activeMosaicLayer.id ? { ...layer, style } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  cycleSelectedMosaicStyle: () =>
+    set((state) => {
+      const activeMosaicLayer = selectActiveMosaicLayer(state)
+      if (!activeMosaicLayer || !state.activePageId || activeMosaicLayer.locked) {
+        return state
+      }
+
+      const nextStyle =
+        activeMosaicLayer.style === 'pixelate'
+          ? 'blur'
+          : activeMosaicLayer.style === 'blur'
+            ? 'noise'
+            : 'pixelate'
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          mosaicLayers: page.mosaicLayers.map((layer) =>
+            layer.id === activeMosaicLayer.id ? { ...layer, style: nextStyle } : layer,
           ),
         })),
         loadError: null,
@@ -3019,7 +3645,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
       if (additive) {
         return {
-          ...toggleLayerSelectionState(state, layerId),
+          ...toggleLayerSelectionState(state, layerId, true),
           loadError: null,
         }
       }
@@ -3080,6 +3706,167 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           ...page,
           overlayLayers: page.overlayLayers.map((layer) =>
             layer.id === activeOverlayLayer.id ? { ...layer, color: sanitizeTextColor(color) } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedOverlayAreaPreset: (preset) =>
+    set((state) => {
+      const activeOverlayLayer = selectActiveOverlayLayer(state)
+      if (!activeOverlayLayer || !state.activePageId || activeOverlayLayer.locked) {
+        return state
+      }
+
+      const nextBounds =
+        preset === 'full'
+          ? { x: 960, y: 540, width: 1920, height: 1080 }
+          : preset === 'top-half'
+            ? { x: 960, y: 270, width: 1920, height: 540 }
+            : preset === 'bottom-half'
+              ? { x: 960, y: 810, width: 1920, height: 540 }
+              : preset === 'center-band'
+                ? { x: 960, y: 540, width: 1920, height: 320 }
+                : { x: 180, y: 120, width: 320, height: 180 }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          overlayLayers: page.overlayLayers.map((layer) =>
+            layer.id === activeOverlayLayer.id
+              ? {
+                  ...layer,
+                  ...nextBounds,
+                  areaPreset: preset,
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  cycleSelectedOverlayAreaPreset: () =>
+    set((state) => {
+      const activeOverlayLayer = selectActiveOverlayLayer(state)
+      if (!activeOverlayLayer || !state.activePageId || activeOverlayLayer.locked) {
+        return state
+      }
+
+      const nextPreset =
+        activeOverlayLayer.areaPreset === 'custom'
+          ? 'full'
+          : activeOverlayLayer.areaPreset === 'full'
+            ? 'top-half'
+            : activeOverlayLayer.areaPreset === 'top-half'
+              ? 'bottom-half'
+              : activeOverlayLayer.areaPreset === 'bottom-half'
+                ? 'center-band'
+                : 'custom'
+
+      const nextBounds =
+        nextPreset === 'full'
+          ? { x: 960, y: 540, width: 1920, height: 1080 }
+          : nextPreset === 'top-half'
+            ? { x: 960, y: 270, width: 1920, height: 540 }
+            : nextPreset === 'bottom-half'
+              ? { x: 960, y: 810, width: 1920, height: 540 }
+              : nextPreset === 'center-band'
+                ? { x: 960, y: 540, width: 1920, height: 320 }
+                : { x: 180, y: 120, width: 320, height: 180 }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          overlayLayers: page.overlayLayers.map((layer) =>
+            layer.id === activeOverlayLayer.id
+              ? {
+                  ...layer,
+                  ...nextBounds,
+                  areaPreset: nextPreset,
+                }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  toggleSelectedOverlayFillMode: () =>
+    set((state) => {
+      const activeOverlayLayer = selectActiveOverlayLayer(state)
+      if (!activeOverlayLayer || !state.activePageId || activeOverlayLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          overlayLayers: page.overlayLayers.map((layer) =>
+            layer.id === activeOverlayLayer.id
+              ? { ...layer, fillMode: layer.fillMode === 'solid' ? 'gradient' : 'solid' }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedOverlayGradientFrom: (color) =>
+    set((state) => {
+      const activeOverlayLayer = selectActiveOverlayLayer(state)
+      if (!activeOverlayLayer || !state.activePageId || activeOverlayLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          overlayLayers: page.overlayLayers.map((layer) =>
+            layer.id === activeOverlayLayer.id ? { ...layer, gradientFrom: sanitizeTextColor(color) } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedOverlayGradientTo: (color) =>
+    set((state) => {
+      const activeOverlayLayer = selectActiveOverlayLayer(state)
+      if (!activeOverlayLayer || !state.activePageId || activeOverlayLayer.locked) {
+        return state
+      }
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          overlayLayers: page.overlayLayers.map((layer) =>
+            layer.id === activeOverlayLayer.id ? { ...layer, gradientTo: sanitizeTextColor(color) } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  cycleSelectedOverlayGradientDirection: () =>
+    set((state) => {
+      const activeOverlayLayer = selectActiveOverlayLayer(state)
+      if (!activeOverlayLayer || !state.activePageId || activeOverlayLayer.locked) {
+        return state
+      }
+
+      const nextDirection =
+        activeOverlayLayer.gradientDirection === 'diagonal'
+          ? 'vertical'
+          : activeOverlayLayer.gradientDirection === 'vertical'
+            ? 'horizontal'
+            : 'diagonal'
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          overlayLayers: page.overlayLayers.map((layer) =>
+            layer.id === activeOverlayLayer.id
+              ? {
+                  ...layer,
+                  gradientDirection: nextDirection,
+                }
+              : layer,
           ),
         })),
         loadError: null,
@@ -3187,6 +3974,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             textLayers: page.textLayers.map((layer) =>
               selectedLayerIds.has(layer.id) ? { ...layer, visible: !layer.visible } : layer,
             ),
+            messageWindowLayers: page.messageWindowLayers.map((layer) =>
+              selectedLayerIds.has(layer.id) ? { ...layer, visible: !layer.visible } : layer,
+            ),
             bubbleLayers: page.bubbleLayers.map((layer) =>
               selectedLayerIds.has(layer.id) ? { ...layer, visible: !layer.visible } : layer,
             ),
@@ -3194,6 +3984,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
               selectedLayerIds.has(layer.id) ? { ...layer, visible: !layer.visible } : layer,
             ),
             overlayLayers: page.overlayLayers.map((layer) =>
+              selectedLayerIds.has(layer.id) ? { ...layer, visible: !layer.visible } : layer,
+            ),
+            watermarkLayers: page.watermarkLayers.map((layer) =>
               selectedLayerIds.has(layer.id) ? { ...layer, visible: !layer.visible } : layer,
             ),
           })),
@@ -3227,6 +4020,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const messageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (messageWindowLayer) {
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+            ...page,
+            messageWindowLayers: page.messageWindowLayers.map((layer) =>
+              layer.id === messageWindowLayer.id ? { ...layer, visible: !layer.visible } : layer,
+            ),
+          })),
+          loadError: null,
+        })
+      }
+
       const mosaicLayer = selectActiveMosaicLayer(state)
       if (mosaicLayer) {
         return withHistory(state, {
@@ -3253,6 +4059,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const watermarkLayer = selectActiveWatermarkLayer(state)
+      if (watermarkLayer) {
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+            ...page,
+            watermarkLayers: page.watermarkLayers.map((layer) =>
+              layer.id === watermarkLayer.id ? { ...layer, visible: !layer.visible } : layer,
+            ),
+          })),
+          loadError: null,
+        })
+      }
+
       return state
     }),
   toggleSelectedLayerLock: () =>
@@ -3269,6 +4088,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             textLayers: page.textLayers.map((layer) =>
               selectedLayerIds.has(layer.id) ? { ...layer, locked: !layer.locked } : layer,
             ),
+            messageWindowLayers: page.messageWindowLayers.map((layer) =>
+              selectedLayerIds.has(layer.id) ? { ...layer, locked: !layer.locked } : layer,
+            ),
             bubbleLayers: page.bubbleLayers.map((layer) =>
               selectedLayerIds.has(layer.id) ? { ...layer, locked: !layer.locked } : layer,
             ),
@@ -3276,6 +4098,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
               selectedLayerIds.has(layer.id) ? { ...layer, locked: !layer.locked } : layer,
             ),
             overlayLayers: page.overlayLayers.map((layer) =>
+              selectedLayerIds.has(layer.id) ? { ...layer, locked: !layer.locked } : layer,
+            ),
+            watermarkLayers: page.watermarkLayers.map((layer) =>
               selectedLayerIds.has(layer.id) ? { ...layer, locked: !layer.locked } : layer,
             ),
           })),
@@ -3309,6 +4134,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const messageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (messageWindowLayer) {
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+            ...page,
+            messageWindowLayers: page.messageWindowLayers.map((layer) =>
+              layer.id === messageWindowLayer.id ? { ...layer, locked: !layer.locked } : layer,
+            ),
+          })),
+          loadError: null,
+        })
+      }
+
       const mosaicLayer = selectActiveMosaicLayer(state)
       if (mosaicLayer) {
         return withHistory(state, {
@@ -3335,6 +4173,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const watermarkLayer = selectActiveWatermarkLayer(state)
+      if (watermarkLayer) {
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+            ...page,
+            watermarkLayers: page.watermarkLayers.map((layer) =>
+              layer.id === watermarkLayer.id ? { ...layer, locked: !layer.locked } : layer,
+            ),
+          })),
+          loadError: null,
+        })
+      }
+
       return state
     }),
   groupSelectedLayers: () =>
@@ -3355,6 +4206,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           textLayers: entry.textLayers.map((layer) =>
             selectedLayerIds.includes(layer.id) ? { ...layer, groupId } : layer,
           ),
+          messageWindowLayers: entry.messageWindowLayers.map((layer) =>
+            selectedLayerIds.includes(layer.id) ? { ...layer, groupId } : layer,
+          ),
           bubbleLayers: entry.bubbleLayers.map((layer) =>
             selectedLayerIds.includes(layer.id) ? { ...layer, groupId } : layer,
           ),
@@ -3362,6 +4216,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             selectedLayerIds.includes(layer.id) ? { ...layer, groupId } : layer,
           ),
           overlayLayers: entry.overlayLayers.map((layer) =>
+            selectedLayerIds.includes(layer.id) ? { ...layer, groupId } : layer,
+          ),
+          watermarkLayers: entry.watermarkLayers.map((layer) =>
             selectedLayerIds.includes(layer.id) ? { ...layer, groupId } : layer,
           ),
         })),
@@ -3385,6 +4242,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           textLayers: entry.textLayers.map((layer) =>
             selectedLayerIds.has(layer.id) ? { ...layer, groupId: null } : layer,
           ),
+          messageWindowLayers: entry.messageWindowLayers.map((layer) =>
+            selectedLayerIds.has(layer.id) ? { ...layer, groupId: null } : layer,
+          ),
           bubbleLayers: entry.bubbleLayers.map((layer) =>
             selectedLayerIds.has(layer.id) ? { ...layer, groupId: null } : layer,
           ),
@@ -3392,6 +4252,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             selectedLayerIds.has(layer.id) ? { ...layer, groupId: null } : layer,
           ),
           overlayLayers: entry.overlayLayers.map((layer) =>
+            selectedLayerIds.has(layer.id) ? { ...layer, groupId: null } : layer,
+          ),
+          watermarkLayers: entry.watermarkLayers.map((layer) =>
             selectedLayerIds.has(layer.id) ? { ...layer, groupId: null } : layer,
           ),
         })),
@@ -3419,6 +4282,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             id: createTextLayerId(),
             groupId: duplicatedGroupId,
             text: `${layer.text} copy`,
+            x: layer.x + 24,
+            y: layer.y + 24,
+          }))
+        const duplicatedMessageWindowLayers = page.messageWindowLayers
+          .filter((layer) => selectedLayerIds.has(layer.id) && !layer.locked)
+          .map((layer) => ({
+            ...layer,
+            id: createMessageWindowLayerId(),
+            groupId: duplicatedGroupId,
+            speaker: `${layer.speaker} copy`,
             x: layer.x + 24,
             y: layer.y + 24,
           }))
@@ -3450,22 +4323,35 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             x: layer.x + 24,
             y: layer.y + 24,
           }))
+        const duplicatedWatermarkLayers = page.watermarkLayers
+          .filter((layer) => selectedLayerIds.has(layer.id) && !layer.locked)
+          .map((layer) => ({
+            ...layer,
+            id: createWatermarkLayerId(),
+            groupId: duplicatedGroupId,
+            x: layer.x + 24,
+            y: layer.y + 24,
+          }))
 
         const nextSelectedLayerIds = [
           ...selectedLayerIds,
           ...duplicatedTextLayers.map((layer) => layer.id),
+          ...duplicatedMessageWindowLayers.map((layer) => layer.id),
           ...duplicatedBubbleLayers.map((layer) => layer.id),
           ...duplicatedMosaicLayers.map((layer) => layer.id),
           ...duplicatedOverlayLayers.map((layer) => layer.id),
+          ...duplicatedWatermarkLayers.map((layer) => layer.id),
         ]
 
         return withHistory(state, {
           pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
             ...entry,
             textLayers: [...entry.textLayers, ...duplicatedTextLayers],
+            messageWindowLayers: [...entry.messageWindowLayers, ...duplicatedMessageWindowLayers],
             bubbleLayers: [...entry.bubbleLayers, ...duplicatedBubbleLayers],
             mosaicLayers: [...entry.mosaicLayers, ...duplicatedMosaicLayers],
             overlayLayers: [...entry.overlayLayers, ...duplicatedOverlayLayers],
+            watermarkLayers: [...entry.watermarkLayers, ...duplicatedWatermarkLayers],
           })),
           selectedLayerId: nextSelectedLayerIds[0] ?? null,
           selectedLayerIds: nextSelectedLayerIds,
@@ -3515,6 +4401,27 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const messageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (messageWindowLayer && !messageWindowLayer.locked) {
+        const duplicatedLayer: CanvasMessageWindowLayer = {
+          ...messageWindowLayer,
+          id: createMessageWindowLayerId(),
+          speaker: `${messageWindowLayer.speaker} copy`,
+          x: messageWindowLayer.x + 24,
+          y: messageWindowLayer.y + 24,
+        }
+
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+            ...entry,
+            messageWindowLayers: [...page.messageWindowLayers, duplicatedLayer],
+          })),
+          selectedLayerId: duplicatedLayer.id,
+          selectedLayerIds: [duplicatedLayer.id],
+          loadError: null,
+        })
+      }
+
       const mosaicLayer = selectActiveMosaicLayer(state)
       if (mosaicLayer && !mosaicLayer.locked) {
         const duplicatedLayer: CanvasMosaicLayer = {
@@ -3555,6 +4462,26 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const watermarkLayer = selectActiveWatermarkLayer(state)
+      if (watermarkLayer && !watermarkLayer.locked) {
+        const duplicatedLayer: CanvasWatermarkLayer = {
+          ...watermarkLayer,
+          id: createWatermarkLayerId(),
+          x: watermarkLayer.x + 24,
+          y: watermarkLayer.y + 24,
+        }
+
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+            ...entry,
+            watermarkLayers: [...page.watermarkLayers, duplicatedLayer],
+          })),
+          selectedLayerId: duplicatedLayer.id,
+          selectedLayerIds: [duplicatedLayer.id],
+          loadError: null,
+        })
+      }
+
       return state
     }),
   centerSelectedLayer: () =>
@@ -3574,6 +4501,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             textLayers: entry.textLayers.map((layer) =>
               selectedLayerIds.has(layer.id) && !layer.locked ? { ...layer, x: centerX, y: centerY } : layer,
             ),
+            messageWindowLayers: entry.messageWindowLayers.map((layer) =>
+              selectedLayerIds.has(layer.id) && !layer.locked ? { ...layer, x: centerX, y: centerY } : layer,
+            ),
             bubbleLayers: entry.bubbleLayers.map((layer) =>
               selectedLayerIds.has(layer.id) && !layer.locked ? { ...layer, x: centerX, y: centerY } : layer,
             ),
@@ -3581,6 +4511,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
               selectedLayerIds.has(layer.id) && !layer.locked ? { ...layer, x: centerX, y: centerY } : layer,
             ),
             overlayLayers: entry.overlayLayers.map((layer) =>
+              selectedLayerIds.has(layer.id) && !layer.locked ? { ...layer, x: centerX, y: centerY } : layer,
+            ),
+            watermarkLayers: entry.watermarkLayers.map((layer) =>
               selectedLayerIds.has(layer.id) && !layer.locked ? { ...layer, x: centerX, y: centerY } : layer,
             ),
           })),
@@ -3614,6 +4547,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const messageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (messageWindowLayer && !messageWindowLayer.locked) {
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+            ...entry,
+            messageWindowLayers: entry.messageWindowLayers.map((layer) =>
+              layer.id === messageWindowLayer.id ? { ...layer, x: centerX, y: centerY } : layer,
+            ),
+          })),
+          loadError: null,
+        })
+      }
+
       const mosaicLayer = selectActiveMosaicLayer(state)
       if (mosaicLayer && !mosaicLayer.locked) {
         return withHistory(state, {
@@ -3634,6 +4580,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             ...entry,
             overlayLayers: entry.overlayLayers.map((layer) =>
               layer.id === overlayLayer.id ? { ...layer, x: centerX, y: centerY } : layer,
+            ),
+          })),
+          loadError: null,
+        })
+      }
+
+      const watermarkLayer = selectActiveWatermarkLayer(state)
+      if (watermarkLayer && !watermarkLayer.locked) {
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+            ...entry,
+            watermarkLayers: entry.watermarkLayers.map((layer) =>
+              layer.id === watermarkLayer.id ? { ...layer, x: centerX, y: centerY } : layer,
             ),
           })),
           loadError: null,
@@ -3661,6 +4620,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
                 ? { ...layer, x: nextX ?? layer.x, y: nextY ?? layer.y }
                 : layer,
             ),
+            messageWindowLayers: entry.messageWindowLayers.map((layer) =>
+              selectedLayerIds.has(layer.id) && !layer.locked
+                ? { ...layer, x: nextX ?? layer.x, y: nextY ?? layer.y }
+                : layer,
+            ),
             bubbleLayers: entry.bubbleLayers.map((layer) =>
               selectedLayerIds.has(layer.id) && !layer.locked
                 ? { ...layer, x: nextX ?? layer.x, y: nextY ?? layer.y }
@@ -3672,6 +4636,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
                 : layer,
             ),
             overlayLayers: entry.overlayLayers.map((layer) =>
+              selectedLayerIds.has(layer.id) && !layer.locked
+                ? { ...layer, x: nextX ?? layer.x, y: nextY ?? layer.y }
+                : layer,
+            ),
+            watermarkLayers: entry.watermarkLayers.map((layer) =>
               selectedLayerIds.has(layer.id) && !layer.locked
                 ? { ...layer, x: nextX ?? layer.x, y: nextY ?? layer.y }
                 : layer,
@@ -3711,6 +4680,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const messageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (messageWindowLayer && !messageWindowLayer.locked) {
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+            ...entry,
+            messageWindowLayers: entry.messageWindowLayers.map((layer) =>
+              layer.id === messageWindowLayer.id
+                ? { ...layer, x: nextX ?? layer.x, y: nextY ?? layer.y }
+                : layer,
+            ),
+          })),
+          loadError: null,
+        })
+      }
+
       const mosaicLayer = selectActiveMosaicLayer(state)
       if (mosaicLayer && !mosaicLayer.locked) {
         return withHistory(state, {
@@ -3741,6 +4725,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const watermarkLayer = selectActiveWatermarkLayer(state)
+      if (watermarkLayer && !watermarkLayer.locked) {
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+            ...entry,
+            watermarkLayers: entry.watermarkLayers.map((layer) =>
+              layer.id === watermarkLayer.id
+                ? { ...layer, x: nextX ?? layer.x, y: nextY ?? layer.y }
+                : layer,
+            ),
+          })),
+          loadError: null,
+        })
+      }
+
       return state
     }),
   alignSelectedLayersCenter: (axis) =>
@@ -3763,6 +4762,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
               ? { ...layer, x: axis === 'horizontal' ? nextValue : layer.x, y: axis === 'vertical' ? nextValue : layer.y }
               : layer,
           ),
+          messageWindowLayers: entry.messageWindowLayers.map((layer) =>
+            selectedLayerIds.has(layer.id) && !layer.locked
+              ? { ...layer, x: axis === 'horizontal' ? nextValue : layer.x, y: axis === 'vertical' ? nextValue : layer.y }
+              : layer,
+          ),
           bubbleLayers: entry.bubbleLayers.map((layer) =>
             selectedLayerIds.has(layer.id) && !layer.locked
               ? { ...layer, x: axis === 'horizontal' ? nextValue : layer.x, y: axis === 'vertical' ? nextValue : layer.y }
@@ -3774,6 +4778,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
               : layer,
           ),
           overlayLayers: entry.overlayLayers.map((layer) =>
+            selectedLayerIds.has(layer.id) && !layer.locked
+              ? { ...layer, x: axis === 'horizontal' ? nextValue : layer.x, y: axis === 'vertical' ? nextValue : layer.y }
+              : layer,
+          ),
+          watermarkLayers: entry.watermarkLayers.map((layer) =>
             selectedLayerIds.has(layer.id) && !layer.locked
               ? { ...layer, x: axis === 'horizontal' ? nextValue : layer.x, y: axis === 'vertical' ? nextValue : layer.y }
               : layer,
@@ -3850,6 +4859,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       return withHistory(state, {
         pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
           ...entry,
+          messageWindowLayers: entry.messageWindowLayers.map((layer) =>
+            selectedLayerIds.has(layer.id) && layer.id !== sourceLayer.id && !layer.locked
+              ? {
+                  ...layer,
+                  width: dimension === 'width' ? nextSize : layer.width,
+                  height: dimension === 'height' ? nextSize : layer.height,
+                }
+              : layer,
+          ),
           bubbleLayers: entry.bubbleLayers.map((layer) =>
             selectedLayerIds.has(layer.id) && layer.id !== sourceLayer.id && !layer.locked
               ? {
@@ -3973,6 +4991,38 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
       return state
     }),
+  renameSelectedLayer: (name) =>
+    set((state) => {
+      if (!state.activePageId || !state.selectedLayerId || state.selectedLayerId === 'base-image') {
+        return state
+      }
+
+      const nextName = name.trim() || null
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === state.selectedLayerId ? { ...layer, name: nextName } : layer,
+          ),
+          messageWindowLayers: page.messageWindowLayers.map((layer) =>
+            layer.id === state.selectedLayerId ? { ...layer, name: nextName } : layer,
+          ),
+          bubbleLayers: page.bubbleLayers.map((layer) =>
+            layer.id === state.selectedLayerId ? { ...layer, name: nextName } : layer,
+          ),
+          mosaicLayers: page.mosaicLayers.map((layer) =>
+            layer.id === state.selectedLayerId ? { ...layer, name: nextName } : layer,
+          ),
+          overlayLayers: page.overlayLayers.map((layer) =>
+            layer.id === state.selectedLayerId ? { ...layer, name: nextName } : layer,
+          ),
+          watermarkLayers: page.watermarkLayers.map((layer) =>
+            layer.id === state.selectedLayerId ? { ...layer, name: nextName } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
   moveSelectedLayerBackward: () =>
     set((state) => {
       if (!state.activePageId || !state.selectedLayerId || state.selectedLayerId === 'base-image') {
@@ -3992,6 +5042,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             textLayers: [...entry.textLayers].sort((a, b) =>
               selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? -1 : 1,
             ),
+            messageWindowLayers: [...entry.messageWindowLayers].sort((a, b) =>
+              selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? -1 : 1,
+            ),
             bubbleLayers: [...entry.bubbleLayers].sort((a, b) =>
               selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? -1 : 1,
             ),
@@ -3999,6 +5052,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
               selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? -1 : 1,
             ),
             overlayLayers: [...entry.overlayLayers].sort((a, b) =>
+              selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? -1 : 1,
+            ),
+            watermarkLayers: [...entry.watermarkLayers].sort((a, b) =>
               selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? -1 : 1,
             ),
           })),
@@ -4040,6 +5096,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const messageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (messageWindowLayer && !messageWindowLayer.locked) {
+        const index = page.messageWindowLayers.findIndex((layer) => layer.id === messageWindowLayer.id)
+        if (index <= 0) {
+          return state
+        }
+        const nextLayers = [...page.messageWindowLayers]
+        ;[nextLayers[index - 1], nextLayers[index]] = [nextLayers[index], nextLayers[index - 1]]
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+            ...entry,
+            messageWindowLayers: nextLayers,
+          })),
+          loadError: null,
+        })
+      }
+
       const mosaicLayer = selectActiveMosaicLayer(state)
       if (mosaicLayer && !mosaicLayer.locked) {
         const index = page.mosaicLayers.findIndex((layer) => layer.id === mosaicLayer.id)
@@ -4074,6 +5147,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const watermarkLayer = selectActiveWatermarkLayer(state)
+      if (watermarkLayer && !watermarkLayer.locked) {
+        const index = page.watermarkLayers.findIndex((layer) => layer.id === watermarkLayer.id)
+        if (index <= 0) {
+          return state
+        }
+        const nextLayers = [...page.watermarkLayers]
+        ;[nextLayers[index - 1], nextLayers[index]] = [nextLayers[index], nextLayers[index - 1]]
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+            ...entry,
+            watermarkLayers: nextLayers,
+          })),
+          loadError: null,
+        })
+      }
+
       return state
     }),
   moveSelectedLayerForward: () =>
@@ -4095,6 +5185,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
             textLayers: [...entry.textLayers].sort((a, b) =>
               selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? 1 : -1,
             ),
+            messageWindowLayers: [...entry.messageWindowLayers].sort((a, b) =>
+              selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? 1 : -1,
+            ),
             bubbleLayers: [...entry.bubbleLayers].sort((a, b) =>
               selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? 1 : -1,
             ),
@@ -4102,6 +5195,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
               selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? 1 : -1,
             ),
             overlayLayers: [...entry.overlayLayers].sort((a, b) =>
+              selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? 1 : -1,
+            ),
+            watermarkLayers: [...entry.watermarkLayers].sort((a, b) =>
               selectedLayerIds.has(a.id) === selectedLayerIds.has(b.id) ? 0 : selectedLayerIds.has(a.id) ? 1 : -1,
             ),
           })),
@@ -4143,6 +5239,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         })
       }
 
+      const messageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (messageWindowLayer && !messageWindowLayer.locked) {
+        const index = page.messageWindowLayers.findIndex((layer) => layer.id === messageWindowLayer.id)
+        if (index === -1 || index >= page.messageWindowLayers.length - 1) {
+          return state
+        }
+        const nextLayers = [...page.messageWindowLayers]
+        ;[nextLayers[index], nextLayers[index + 1]] = [nextLayers[index + 1], nextLayers[index]]
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+            ...entry,
+            messageWindowLayers: nextLayers,
+          })),
+          loadError: null,
+        })
+      }
+
       const mosaicLayer = selectActiveMosaicLayer(state)
       if (mosaicLayer && !mosaicLayer.locked) {
         const index = page.mosaicLayers.findIndex((layer) => layer.id === mosaicLayer.id)
@@ -4172,6 +5285,23 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
             ...entry,
             overlayLayers: nextLayers,
+          })),
+          loadError: null,
+        })
+      }
+
+      const watermarkLayer = selectActiveWatermarkLayer(state)
+      if (watermarkLayer && !watermarkLayer.locked) {
+        const index = page.watermarkLayers.findIndex((layer) => layer.id === watermarkLayer.id)
+        if (index === -1 || index >= page.watermarkLayers.length - 1) {
+          return state
+        }
+        const nextLayers = [...page.watermarkLayers]
+        ;[nextLayers[index], nextLayers[index + 1]] = [nextLayers[index + 1], nextLayers[index]]
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+            ...entry,
+            watermarkLayers: nextLayers,
           })),
           loadError: null,
         })

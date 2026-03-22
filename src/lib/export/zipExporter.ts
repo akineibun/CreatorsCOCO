@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 import type { CanvasImage, OutputSettings } from '../../stores/workspaceStore'
 import { createZipEntryName, createZipExportName } from './fileNames'
+import { createMetadataRemovalSummary } from './metadata'
 
 const downloadBlob = (blob: Blob, filename: string) => {
   const objectUrl = window.URL.createObjectURL(blob)
@@ -18,6 +19,7 @@ export const exportPagesAsZip = async (
   outputSettings: OutputSettings,
 ): Promise<void> => {
   const zip = new JSZip()
+  const metadataPolicy = createMetadataRemovalSummary()
 
   pages.forEach((page, index) => {
     const fileName = createZipEntryName(page.name, outputSettings, index)
@@ -27,6 +29,11 @@ export const exportPagesAsZip = async (
         `name=${page.name}`,
         `source=${page.width}x${page.height}`,
         `output=${outputSettings.width}x${outputSettings.height}`,
+        `quality=${outputSettings.qualityMode}`,
+        `resizeFit=${outputSettings.resizeFitMode}`,
+        `resizeBackground=${outputSettings.resizeBackgroundMode}`,
+        `metadata=${metadataPolicy.metadata}`,
+        `exif=${metadataPolicy.exif}`,
         `format=${outputSettings.format}`,
         `textLayers=${page.textLayers.filter((layer) => layer.visible).length}`,
         `messageWindowLayers=${page.messageWindowLayers.length}`,
@@ -40,7 +47,7 @@ export const exportPagesAsZip = async (
         ),
         ...page.messageWindowLayers.map(
           (layer, layerIndex) =>
-            `messageWindow${layerIndex + 1}=${layer.speaker}|${layer.body}|${layer.x},${layer.y},${layer.width},${layer.height},opacity:${layer.opacity.toFixed(1)}`,
+            `messageWindow${layerIndex + 1}=${layer.speaker}|${layer.body}|${layer.x},${layer.y},${layer.width},${layer.height},opacity:${layer.opacity.toFixed(1)},frame:${layer.frameStyle},asset:${layer.assetName ?? 'none'},render:${layer.assetName ? '9-slice' : 'frame-only'}`,
         ),
         ...page.bubbleLayers.filter((layer) => layer.visible).map(
           (layer, layerIndex) =>
@@ -48,11 +55,11 @@ export const exportPagesAsZip = async (
         ),
         ...page.mosaicLayers.filter((layer) => layer.visible).map(
           (layer, layerIndex) =>
-            `mosaic${layerIndex + 1}=${layer.x},${layer.y},${layer.width},${layer.height},intensity:${layer.intensity}`,
+            `mosaic${layerIndex + 1}=${layer.x},${layer.y},${layer.width},${layer.height},intensity:${layer.intensity},style:${layer.style}`,
         ),
         ...page.overlayLayers.filter((layer) => layer.visible).map(
           (layer, layerIndex) =>
-            `overlay${layerIndex + 1}=${layer.x},${layer.y},${layer.width},${layer.height},opacity:${layer.opacity.toFixed(1)},color:${layer.color}`,
+            `overlay${layerIndex + 1}=${layer.x},${layer.y},${layer.width},${layer.height},opacity:${layer.opacity.toFixed(1)},area:${layer.areaPreset},color:${layer.color},fill:${layer.fillMode},gradient:${layer.gradientFrom}->${layer.gradientTo},direction:${layer.gradientDirection}`,
         ),
         ...page.watermarkLayers.map(
           (layer, layerIndex) =>
