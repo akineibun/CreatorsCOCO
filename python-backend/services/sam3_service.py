@@ -9,6 +9,7 @@ from image_utils import (
     mask_candidate,
 )
 from model_manager import model_manager
+from native_backends import sam3_native_adapter
 from schemas import AutoMosaicRequest, AutoMosaicResponse, MaskCandidate, SegmentRequest, SegmentResponse
 from services.nsfw_service import nsfw_service
 
@@ -17,11 +18,30 @@ class Sam3Service:
     def segment(self, request: SegmentRequest) -> SegmentResponse:
         model_manager.ensure_ready("sam3")
         image = decode_image(request.image_base64)
-        mask = build_prompt_mask(image, request.points, request.model_size)
+        backend = model_manager.get_effective_backend("sam3")
+        mask = None
+
+        if backend == "native":
+            try:
+                mask = sam3_native_adapter.segment_mask(
+                    image,
+                    [{"x": point.x, "y": point.y, "label": point.label} for point in request.points],
+                )
+                if mask is not None:
+                    model_manager.set_active_backend("sam3", "native")
+            except Exception as exc:
+                model_manager.set_active_backend("sam3", "heuristic", f"SAM3 native fallback: {exc}")
+
+        if mask is None:
+            backend = "heuristic"
+            mask = build_prompt_mask(image, request.points, request.model_size)
+            if model_manager.get_effective_backend("sam3") != "native":
+                model_manager.set_active_backend("sam3", "heuristic")
+
         candidate = mask_candidate(
             mask,
             label="manual-segment",
-            source=f"sam3-{request.model_size}-heuristic",
+            source=f"sam3-{request.model_size}-{backend}",
             confidence=0.86,
         )
         return SegmentResponse(
@@ -33,6 +53,7 @@ class Sam3Service:
 
     def auto_mosaic(self, request: AutoMosaicRequest) -> AutoMosaicResponse:
         model_manager.ensure_ready("sam3")
+        backend = model_manager.get_effective_backend("sam3")
         image = decode_image(request.image_base64)
         masks: list[MaskCandidate] = []
 
@@ -53,7 +74,7 @@ class Sam3Service:
                     mask_candidate(
                         mask,
                         label=f"auto-mosaic-{index + 1}",
-                        source=f"sam3-{request.model_size}-from-detections",
+                        source=f"sam3-{request.model_size}-{backend}-from-detections",
                         confidence=0.82,
                     )
                 )
@@ -65,10 +86,30 @@ class Sam3Service:
                     mask_candidate(
                         mask,
                         label=detection.label,
-                        source=f"sam3-{request.model_size}-auto",
+                        source=f"sam3-{request.model_size}-{backend}-auto",
                         confidence=max(0.72, detection.confidence),
                     )
                 )
+
+        if backend == "native" and len(masks) == 0:
+            try:
+                native_mask = sam3_native_adapter.segment_mask(
+                    image,
+                    [{"x": image.width / 2, "y": image.height / 2, "label": 1}],
+                )
+                if native_mask is not None:
+                    masks.append(
+                        mask_candidate(
+                            native_mask,
+                            label="native-mask",
+                            source=f"sam3-{request.model_size}-native-auto",
+                            confidence=0.88,
+                        )
+                    )
+                    model_manager.set_active_backend("sam3", "native")
+            except Exception as exc:
+                backend = "heuristic"
+                model_manager.set_active_backend("sam3", "heuristic", f"SAM3 native fallback: {exc}")
 
         result_image = apply_masked_effect(image, masks, request.mosaic_type, request.mosaic_strength)
         return AutoMosaicResponse(result_image_base64=encode_png_base64(result_image), masks=masks, status="ok")

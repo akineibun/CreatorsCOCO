@@ -6,6 +6,39 @@ export type BackendStatus = {
   sam3_progress?: number
   nudenet_status?: string
   nudenet_progress?: number
+  packaged_runtime?: boolean
+  python_version?: string
+  sam3_backend?: string
+  nudenet_backend?: string
+  sam3_native_available?: boolean
+  nudenet_native_available?: boolean
+  sam3_checkpoint_path?: string | null
+  sam3_config_path?: string | null
+  sam3_checkpoint_ready?: boolean
+  sam3_native_reason?: string | null
+  nudenet_native_reason?: string | null
+  sam3_backend_preference?: 'auto' | 'native' | 'heuristic'
+  nudenet_backend_preference?: 'auto' | 'native' | 'heuristic'
+  sam3_recommendation?: string
+  nudenet_recommendation?: string
+  sam3_error_message?: string | null
+  nudenet_error_message?: string | null
+}
+
+export type BackendRuntimeConfig = {
+  sam3_backend_preference: 'auto' | 'native' | 'heuristic'
+  nudenet_backend_preference: 'auto' | 'native' | 'heuristic'
+  sam3_native_available: boolean
+  nudenet_native_available: boolean
+  sam3_checkpoint_path?: string | null
+  sam3_config_path?: string | null
+  sam3_checkpoint_ready?: boolean
+  sam3_native_reason?: string | null
+  nudenet_native_reason?: string | null
+  sam3_effective_backend: string
+  nudenet_effective_backend: string
+  sam3_recommendation: string
+  nudenet_recommendation: string
 }
 
 export type ModelDownloadResponse = {
@@ -83,6 +116,41 @@ export const getBackendModelProgress = async (
   }
 
   return (await response.json()) as ModelDownloadResponse
+}
+
+export const getBackendRuntimeConfig = async (): Promise<BackendRuntimeConfig> => {
+  const response = await fetch(`${getBackendBaseUrl()}/api/model/runtime-config`)
+  if (!response.ok) {
+    throw new Error(`Backend runtime config request failed: ${response.status}`)
+  }
+
+  return (await response.json()) as BackendRuntimeConfig
+}
+
+export const updateBackendRuntimeConfig = async (
+  sam3BackendPreference: 'auto' | 'native' | 'heuristic',
+  nudenetBackendPreference: 'auto' | 'native' | 'heuristic',
+  sam3CheckpointPath?: string | null,
+  sam3ConfigPath?: string | null,
+): Promise<BackendRuntimeConfig> => {
+  const response = await fetch(`${getBackendBaseUrl()}/api/model/runtime-config`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sam3_backend_preference: sam3BackendPreference,
+      nudenet_backend_preference: nudenetBackendPreference,
+      sam3_checkpoint_path: sam3CheckpointPath ?? null,
+      sam3_config_path: sam3ConfigPath ?? null,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Backend runtime config update failed: ${response.status}`)
+  }
+
+  return (await response.json()) as BackendRuntimeConfig
 }
 
 export const subscribeToBackendModelProgress = (

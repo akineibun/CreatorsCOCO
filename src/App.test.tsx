@@ -2,10 +2,12 @@ import { act } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import JSZip from 'jszip'
 import { vi } from 'vitest'
 import App from './App'
 import {
   CURRENT_PROJECT_SCHEMA_VERSION,
+  PERFORMANCE_METRICS_STORAGE_KEY,
   PROJECT_STORAGE_KEY,
   RECENT_PROJECTS_STORAGE_KEY,
   resetWorkspaceStore,
@@ -1175,6 +1177,8 @@ describe('App shell', () => {
         sam3ModelSize: 'large',
         autoMosaicStrength: 'strong',
         nsfwThreshold: '0.82',
+        sam3BackendPreference: 'native',
+        nudenetBackendPreference: 'heuristic',
         manualSegmentPoints: [
           { x: 640, y: 360, label: 1 },
           { x: 1280, y: 720, label: 1 },
@@ -1182,7 +1186,174 @@ describe('App shell', () => {
         ],
       }),
     )
+    window.localStorage.setItem(
+      'creators-coco.performance-thresholds',
+      JSON.stringify({
+        backendStatus: 2100,
+        nsfwDetection: 4200,
+      }),
+    )
 
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        sam3_loaded: true,
+        nudenet_loaded: true,
+        gpu_available: true,
+        sam3_backend_preference: 'native',
+        nudenet_backend_preference: 'heuristic',
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect((await screen.findAllByText('SAM3 model size: large')).length).toBeGreaterThan(0)
+    expect(screen.getByText('Auto mosaic strength: strong')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('0.82')).toBeInTheDocument()
+    expect(screen.getByText('Manual segment points: 3')).toBeInTheDocument()
+    expect(screen.getByText('Last manual point label: negative')).toBeInTheDocument()
+    expect(screen.getByText('Last manual point: 960, 540')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Help' }))
+    expect(screen.getAllByText('SAM3 strategy native').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('NudeNet strategy heuristic').length).toBeGreaterThan(0)
+    expect(screen.getByDisplayValue('2100')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('4200')).toBeInTheDocument()
+  })
+
+  it('applies backend strategy preferences from the Help dialog', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+            sam3_backend_preference: 'auto',
+            nudenet_backend_preference: 'auto',
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/model/runtime-config')) {
+        if ((init?.method ?? 'GET') === 'POST') {
+          expect(init?.body).toContain('"sam3_backend_preference":"native"')
+          expect(init?.body).toContain('"nudenet_backend_preference":"heuristic"')
+          expect(init?.body).toContain('"sam3_checkpoint_path":"D:\\\\models\\\\sam3.pt"')
+          expect(init?.body).toContain('"sam3_config_path":"D:\\\\models\\\\sam3.yaml"')
+        }
+
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_backend_preference: 'native',
+            nudenet_backend_preference: 'heuristic',
+            sam3_native_available: false,
+            nudenet_native_available: true,
+            sam3_checkpoint_path: 'D:\\models\\sam3.pt',
+            sam3_config_path: 'D:\\models\\sam3.yaml',
+            sam3_checkpoint_ready: false,
+            sam3_native_reason: 'SAM3 checkpoint not found: D:\\models\\sam3.pt',
+            nudenet_native_reason: null,
+            sam3_effective_backend: 'heuristic',
+            nudenet_effective_backend: 'heuristic',
+            sam3_recommendation: 'SAM3 checkpoint path is invalid. Update it from Help or fix the file path: D:\\models\\sam3.pt',
+            nudenet_recommendation: 'Native backend is available for this model.',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'SAM3 backend strategy' }), 'native')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'NudeNet backend strategy' }), 'heuristic')
+    await user.clear(screen.getByRole('textbox', { name: 'SAM3 checkpoint path' }))
+    await user.type(screen.getByRole('textbox', { name: 'SAM3 checkpoint path' }), 'D:\\models\\sam3.pt')
+    await user.clear(screen.getByRole('textbox', { name: 'SAM3 config path' }))
+    await user.type(screen.getByRole('textbox', { name: 'SAM3 config path' }), 'D:\\models\\sam3.yaml')
+    await user.click(screen.getAllByRole('button', { name: 'Apply backend strategy' })[0]!)
+
+    expect(
+      (await screen.findAllByText('Runtime strategy synced: SAM3 heuristic, NudeNet heuristic')).length,
+    ).toBeGreaterThan(0)
+    expect(screen.getAllByText('SAM3 checkpoint missing').length).toBeGreaterThan(0)
+  })
+
+  it('exports a backend runtime profile from the Help dialog', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        sam3_loaded: true,
+        nudenet_loaded: true,
+        gpu_available: true,
+        sam3_backend: 'heuristic',
+        nudenet_backend: 'native',
+        sam3_native_available: false,
+        nudenet_native_available: true,
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const user = userEvent.setup()
+    let exportedBlob: Blob | null = null
+    const createObjectURL = vi.fn((blob: Blob) => {
+      exportedBlob = blob
+      return 'blob:runtime-profile'
+    })
+    const revokeObjectURL = vi.fn()
+    const anchorClick = vi.fn()
+    const originalCreateElement = document.createElement.bind(document)
+
+    vi.stubGlobal('URL', {
+      createObjectURL,
+      revokeObjectURL,
+    })
+
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'a') {
+        const link = originalCreateElement('a')
+        link.click = anchorClick
+        return link
+      }
+
+      return originalCreateElement(tagName)
+    })
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'SAM3 backend strategy' }), 'native')
+    await user.clear(screen.getByRole('textbox', { name: 'SAM3 checkpoint path' }))
+    await user.type(screen.getByRole('textbox', { name: 'SAM3 checkpoint path' }), 'D:\\models\\sam3.pt')
+    await user.click(screen.getByRole('button', { name: 'Export backend runtime profile' }))
+
+    expect(createObjectURL).toHaveBeenCalled()
+    expect(anchorClick).toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:runtime-profile')
+    expect(exportedBlob).not.toBeNull()
+
+    const profileText = await exportedBlob!.text()
+    expect(profileText).toContain('"sam3BackendPreference": "native"')
+    expect(profileText).toContain('"sam3CheckpointPath": "D:\\\\models\\\\sam3.pt"')
+    expect(profileText).toContain('"CREATORS_COCO_SAM3_CHECKPOINT": "D:\\\\models\\\\sam3.pt"')
+
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('exports a SAM3 setup script from the Help dialog', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({
@@ -1193,14 +1364,699 @@ describe('App shell', () => {
     }))
     vi.stubGlobal('fetch', fetchMock)
 
+    const user = userEvent.setup()
+    let exportedBlob: Blob | null = null
+    const createObjectURL = vi.fn((blob: Blob) => {
+      exportedBlob = blob
+      return 'blob:sam3-setup-script'
+    })
+    const revokeObjectURL = vi.fn()
+    const anchorClick = vi.fn()
+    const originalCreateElement = document.createElement.bind(document)
+
+    vi.stubGlobal('URL', {
+      createObjectURL,
+      revokeObjectURL,
+    })
+
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'a') {
+        const link = originalCreateElement('a')
+        link.click = anchorClick
+        return link
+      }
+
+      return originalCreateElement(tagName)
+    })
+
     render(<App />)
 
-    expect((await screen.findAllByText('SAM3 model size: large')).length).toBeGreaterThan(0)
-    expect(screen.getByText('Auto mosaic strength: strong')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('0.82')).toBeInTheDocument()
-    expect(screen.getByText('Manual segment points: 3')).toBeInTheDocument()
-    expect(screen.getByText('Last manual point label: negative')).toBeInTheDocument()
-    expect(screen.getByText('Last manual point: 960, 540')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'SAM3 backend strategy' }), 'native')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'NudeNet backend strategy' }), 'heuristic')
+    await user.clear(screen.getByRole('textbox', { name: 'SAM3 checkpoint path' }))
+    await user.type(screen.getByRole('textbox', { name: 'SAM3 checkpoint path' }), 'D:\\models\\sam3.pt')
+    await user.clear(screen.getByRole('textbox', { name: 'SAM3 config path' }))
+    await user.type(screen.getByRole('textbox', { name: 'SAM3 config path' }), 'D:\\models\\sam3.yaml')
+    await user.click(screen.getByRole('button', { name: 'Export SAM3 setup script' }))
+
+    expect(createObjectURL).toHaveBeenCalled()
+    expect(anchorClick).toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:sam3-setup-script')
+    expect(exportedBlob).not.toBeNull()
+
+    const scriptText = await exportedBlob!.text()
+    expect(scriptText).toContain('$env:CREATORS_COCO_SAM3_BACKEND = "native"')
+    expect(scriptText).toContain('$env:CREATORS_COCO_NUDENET_BACKEND = "heuristic"')
+    expect(scriptText).toContain('$env:CREATORS_COCO_SAM3_CHECKPOINT = "D:\\models\\sam3.pt"')
+    expect(scriptText).toContain('$env:CREATORS_COCO_SAM3_CONFIG = "D:\\models\\sam3.yaml"')
+
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('imports a backend runtime profile from the Help dialog', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/model/runtime-config')) {
+        if ((init?.method ?? 'GET') === 'POST') {
+          expect(init?.body).toContain('"sam3_backend_preference":"native"')
+          expect(init?.body).toContain('"nudenet_backend_preference":"auto"')
+          expect(init?.body).toContain('"sam3_checkpoint_path":"D:\\\\models\\\\sam3.pt"')
+          expect(init?.body).toContain('"sam3_config_path":"D:\\\\models\\\\sam3.yaml"')
+        }
+
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_backend_preference: 'native',
+            nudenet_backend_preference: 'auto',
+            sam3_native_available: false,
+            nudenet_native_available: true,
+            sam3_checkpoint_path: 'D:\\models\\sam3.pt',
+            sam3_config_path: 'D:\\models\\sam3.yaml',
+            sam3_checkpoint_ready: false,
+            sam3_native_reason: 'SAM3 checkpoint not found: D:\\models\\sam3.pt',
+            nudenet_native_reason: null,
+            sam3_effective_backend: 'heuristic',
+            nudenet_effective_backend: 'native',
+            sam3_recommendation: 'SAM3 checkpoint path is invalid. Update it from Help or fix the file path: D:\\models\\sam3.pt',
+            nudenet_recommendation: 'Native backend is available for this model.',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    const input = screen.getByLabelText('Import backend runtime profile')
+    await user.upload(
+      input,
+      new File(
+        [
+          JSON.stringify({
+            sam3BackendPreference: 'native',
+            nudenetBackendPreference: 'auto',
+            sam3CheckpointPath: 'D:\\models\\sam3.pt',
+            sam3ConfigPath: 'D:\\models\\sam3.yaml',
+          }),
+        ],
+        'runtime-profile.json',
+        { type: 'application/json' },
+      ),
+    )
+
+    expect(await screen.findByDisplayValue('D:\\models\\sam3.pt')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('D:\\models\\sam3.yaml')).toBeInTheDocument()
+    expect(screen.getAllByText('Runtime profile imported: SAM3 heuristic, NudeNet native').length).toBeGreaterThan(0)
+  })
+
+  it('imports a backend runtime profile from a portable handoff zip', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/model/runtime-config')) {
+        if ((init?.method ?? 'GET') === 'POST') {
+          expect(init?.body).toContain('"sam3_backend_preference":"native"')
+          expect(init?.body).toContain('"nudenet_backend_preference":"heuristic"')
+          expect(init?.body).toContain('"sam3_checkpoint_path":"D:\\\\models\\\\sam3.pt"')
+          expect(init?.body).toContain('"sam3_config_path":"D:\\\\models\\\\sam3.yaml"')
+        }
+
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_backend_preference: 'native',
+            nudenet_backend_preference: 'heuristic',
+            sam3_native_available: false,
+            nudenet_native_available: true,
+            sam3_checkpoint_path: 'D:\\models\\sam3.pt',
+            sam3_config_path: 'D:\\models\\sam3.yaml',
+            sam3_checkpoint_ready: false,
+            sam3_native_reason: 'SAM3 checkpoint not found: D:\\models\\sam3.pt',
+            nudenet_native_reason: null,
+            sam3_effective_backend: 'heuristic',
+            nudenet_effective_backend: 'heuristic',
+            sam3_recommendation: 'SAM3 checkpoint path is invalid. Update it from Help or fix the file path: D:\\models\\sam3.pt',
+            nudenet_recommendation: 'Native backend is available for this model.',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    const zip = new JSZip()
+    zip.file(
+      'runtime-profile.json',
+      JSON.stringify({
+        sam3BackendPreference: 'native',
+        nudenetBackendPreference: 'heuristic',
+        sam3CheckpointPath: 'D:\\models\\sam3.pt',
+        sam3ConfigPath: 'D:\\models\\sam3.yaml',
+      }),
+    )
+    zip.file(
+      'diagnostics.json',
+      JSON.stringify({
+        performanceThresholds: {
+          backendStatus: 2222,
+          sam3AutoMosaic: 7777,
+        },
+      }),
+    )
+    zip.file(
+      'portable-smoke-summary.json',
+      JSON.stringify({
+        portableSmokeChecklist: [
+          {
+            id: 'backend-panel',
+            label: 'Backend panel and status',
+            status: 'passed',
+            note: 'imported from tester',
+          },
+        ],
+        trialReadinessCheckpoints: {
+          backendConnectedAt: '2026-03-23T00:00:00.000Z',
+          sampleLoadedAt: '2026-03-23T00:10:00.000Z',
+        },
+      }),
+    )
+    const zipBuffer = await zip.generateAsync({ type: 'uint8array' })
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    const input = screen.getByLabelText('Import backend runtime profile')
+    await user.upload(
+      input,
+      new File([zipBuffer], 'portable-handoff.zip', { type: 'application/zip' }),
+    )
+
+    expect(await screen.findByDisplayValue('D:\\models\\sam3.pt')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('D:\\models\\sam3.yaml')).toBeInTheDocument()
+    expect(
+      screen.getAllByText('Runtime profile imported: SAM3 heuristic, NudeNet heuristic with handoff data').length,
+    ).toBeGreaterThan(0)
+    expect(screen.getByDisplayValue('2222')).toBeInTheDocument()
+    expect(screen.getByText('Backend panel and status passed')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('imported from tester')).toBeInTheDocument()
+    expect(screen.getByText('Backend connected complete')).toBeInTheDocument()
+    expect(screen.getByText('Imported handoff history')).toBeInTheDocument()
+    expect(screen.getByText('portable-handoff.zip zip')).toBeInTheDocument()
+    expect(screen.getByText('Included handoff smoke/diagnostic data')).toBeInTheDocument()
+  })
+
+  it('imports a portable smoke report from the Help dialog', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        sam3_loaded: true,
+        nudenet_loaded: true,
+        gpu_available: true,
+        packaged_runtime: true,
+        python_version: '3.12.11',
+        sam3_backend: 'heuristic',
+        nudenet_backend: 'native',
+        sam3_native_available: false,
+        nudenet_native_available: true,
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    const input = screen.getByLabelText('Import portable smoke report')
+    await user.upload(
+      input,
+      new File(
+        [
+          JSON.stringify({
+            generatedAt: '2026-03-23T13:10:27.199Z',
+            portableExePath: 'C:\\Temp\\CreatorsCOCO 1.0.0.exe',
+            smokeRoot: 'C:\\Temp\\CreatorsCOCO-smoke',
+            startupTimeoutSeconds: 40,
+            statusUrl: 'http://127.0.0.1:8765/api/status',
+            statusOk: true,
+            statusError: '処理がタイムアウトになりました。',
+            backendStatus: {
+              packaged_runtime: true,
+              python_version: '3.12.11',
+              sam3_backend: 'heuristic',
+              nudenet_backend: 'native',
+            },
+          }),
+        ],
+        'portable-smoke-report.json',
+        { type: 'application/json' },
+      ),
+    )
+
+    expect(
+      (
+        await screen.findAllByText(
+          'Portable smoke report imported: backend status reached from portable-smoke-report.json',
+        )
+      ).length,
+    ).toBeGreaterThan(0)
+    expect(screen.getByText('portable-smoke-report.json ok')).toBeInTheDocument()
+    expect(screen.getByText('Backend panel and status passed')).toBeInTheDocument()
+    expect(screen.getByText('Runtime labels and capabilities passed')).toBeInTheDocument()
+    expect(
+      screen.getByDisplayValue('Python 3.12.11 / SAM3 heuristic / NudeNet native'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Imported smoke report ready')).toBeInTheDocument()
+  })
+
+  it('shows trial readiness checkpoints in the Help dialog after core actions', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: false,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [{ label: 'explicit' }],
+            status: 'ok',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Save now' }))
+    await user.click(screen.getByRole('button', { name: 'Run NSFW detection' }))
+    await user.click(screen.getByRole('button', { name: 'Help' }))
+
+    expect(screen.getByText('Trial readiness')).toBeInTheDocument()
+    expect(screen.getByText('Backend connected complete')).toBeInTheDocument()
+    expect(screen.getByText('Sample loaded complete')).toBeInTheDocument()
+    expect(screen.getByText('Project saved complete')).toBeInTheDocument()
+    expect(screen.getByText('NSFW reviewed complete')).toBeInTheDocument()
+  })
+
+  it('tracks export and restore checkpoints in trial readiness', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: false,
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const user = userEvent.setup()
+    const createObjectURL = vi.fn(() => 'blob:trial-export')
+    const revokeObjectURL = vi.fn()
+    const anchorClick = vi.fn()
+    const originalCreateElement = document.createElement.bind(document)
+    const appendChildSpy = vi.spyOn(document.body, 'appendChild')
+    const removeChildSpy = vi.spyOn(document.body, 'removeChild')
+
+    vi.stubGlobal('URL', {
+      createObjectURL,
+      revokeObjectURL,
+    })
+
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'canvas') {
+        const canvas = originalCreateElement('canvas') as HTMLCanvasElement
+        canvas.getContext = vi.fn(() => ({
+          fillStyle: '',
+          fillRect: vi.fn(),
+          drawImage: vi.fn(),
+          fillText: vi.fn(),
+          font: '',
+          textAlign: 'left',
+        })) as typeof canvas.getContext
+        canvas.toBlob = vi.fn((callback: BlobCallback) => {
+          callback(new Blob(['png-binary'], { type: 'image/png' }))
+        })
+        return canvas
+      }
+
+      if (tagName === 'a') {
+        const link = originalCreateElement('a')
+        link.click = anchorClick
+        return link
+      }
+
+      return originalCreateElement(tagName)
+    })
+
+    const { unmount } = render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Save now' }))
+    await user.click(screen.getByRole('button', { name: 'Export PNG' }))
+    await user.click(screen.getByRole('button', { name: 'Help' }))
+
+    expect(screen.getByText('Portable trial ready')).toBeInTheDocument()
+    expect(screen.getByText('Export completed complete')).toBeInTheDocument()
+
+    unmount()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    expect(screen.getByText('Project restored complete')).toBeInTheDocument()
+
+    appendChildSpy.mockRestore()
+    removeChildSpy.mockRestore()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('persists portable smoke checklist progress in the Help dialog', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        sam3_loaded: true,
+        nudenet_loaded: true,
+        gpu_available: true,
+        packaged_runtime: true,
+        python_version: '3.14.3',
+        sam3_backend: 'heuristic',
+        nudenet_backend: 'native',
+        sam3_native_available: false,
+        nudenet_native_available: true,
+        sam3_recommendation: 'SAM3 native is unavailable here. Use Python 3.12 plus the optional native install script for the best chance of loading checkpoints.',
+        nudenet_recommendation: 'Native backend is available for this model.',
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    await user.click(screen.getByRole('button', { name: 'Cycle smoke step: Backend panel and status' }))
+    await user.type(screen.getByLabelText('Backend panel and status note'), 'portable exe on tester PC')
+
+    expect(screen.getByText('Portable smoke checklist')).toBeInTheDocument()
+    expect(screen.getByText('Backend panel and status passed')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('portable exe on tester PC')).toBeInTheDocument()
+    expect(screen.getByText('Portable smoke checklist pending')).toBeInTheDocument()
+
+    cleanup()
+    resetWorkspaceStore()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    expect(screen.getByText('Backend panel and status passed')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('portable exe on tester PC')).toBeInTheDocument()
+  })
+
+  it('syncs the portable smoke checklist from current app state', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+
+      if (url.endsWith('/api/status')) {
+        return {
+          ok: true,
+          json: async () => ({
+            sam3_loaded: true,
+            nudenet_loaded: true,
+            gpu_available: true,
+            packaged_runtime: true,
+            python_version: '3.14.3',
+            sam3_backend: 'heuristic',
+            nudenet_backend: 'native',
+            sam3_native_available: false,
+            nudenet_native_available: true,
+          }),
+        }
+      }
+
+      if (url.endsWith('/api/nsfw/detect')) {
+        return {
+          ok: true,
+          json: async () => ({
+            detections: [{ label: 'explicit' }],
+            status: 'ok',
+          }),
+        }
+      }
+
+      throw new Error(`Unexpected fetch url: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const user = userEvent.setup()
+    const createObjectURL = vi.fn(() => 'blob:smoke-sync')
+    const revokeObjectURL = vi.fn()
+    const anchorClick = vi.fn()
+    const originalCreateElement = document.createElement.bind(document)
+
+    vi.stubGlobal('URL', {
+      createObjectURL,
+      revokeObjectURL,
+    })
+
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'canvas') {
+        const canvas = originalCreateElement('canvas') as HTMLCanvasElement
+        canvas.getContext = vi.fn(() => ({
+          fillStyle: '',
+          fillRect: vi.fn(),
+          drawImage: vi.fn(),
+          fillText: vi.fn(),
+          font: '',
+          textAlign: 'left',
+        })) as typeof canvas.getContext
+        canvas.toBlob = vi.fn((callback: BlobCallback) => {
+          callback(new Blob(['png-binary'], { type: 'image/png' }))
+        })
+        return canvas
+      }
+
+      if (tagName === 'a') {
+        const link = originalCreateElement('a')
+        link.click = anchorClick
+        return link
+      }
+
+      return originalCreateElement(tagName)
+    })
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Save now' }))
+    await user.click(screen.getByRole('button', { name: 'Run NSFW detection' }))
+    await user.click(screen.getByRole('button', { name: 'Export PNG' }))
+    await user.click(screen.getByRole('button', { name: 'Help' }))
+    await user.click(screen.getByRole('button', { name: 'Sync portable smoke checklist' }))
+
+    expect(screen.getByText('Backend panel and status passed')).toBeInTheDocument()
+    expect(screen.getByText('Runtime labels and capabilities passed')).toBeInTheDocument()
+    expect(screen.getByText('Sample load and review flow passed')).toBeInTheDocument()
+    expect(screen.getByText('Save restore and export flow passed')).toBeInTheDocument()
+
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('exports a diagnostics report from the Help dialog', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        sam3_loaded: true,
+        nudenet_loaded: true,
+        gpu_available: true,
+        packaged_runtime: true,
+        python_version: '3.14.3',
+        sam3_backend: 'heuristic',
+        nudenet_backend: 'native',
+        sam3_native_available: false,
+        nudenet_native_available: true,
+        sam3_checkpoint_path: 'D:\\models\\sam3.pt',
+        sam3_config_path: 'D:\\models\\sam3.yaml',
+        sam3_checkpoint_ready: false,
+        sam3_native_reason: "No module named 'sam3'",
+        nudenet_native_reason: null,
+        sam3_recommendation:
+          'SAM3 native is unavailable here. Use Python 3.12 plus the optional native install script for the best chance of loading checkpoints.',
+        nudenet_recommendation: 'Native backend is available for this model.',
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const user = userEvent.setup()
+    let exportedBlob: Blob | null = null
+    const createObjectURL = vi.fn((blob: Blob) => {
+      exportedBlob = blob
+      return 'blob:diagnostics-report'
+    })
+    const revokeObjectURL = vi.fn()
+    const anchorClick = vi.fn()
+    const originalCreateElement = document.createElement.bind(document)
+
+    vi.stubGlobal('URL', {
+      createObjectURL,
+      revokeObjectURL,
+    })
+
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'a') {
+        const link = originalCreateElement('a')
+        link.click = anchorClick
+        return link
+      }
+
+      return originalCreateElement(tagName)
+    })
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    await user.click(screen.getByRole('button', { name: 'Export diagnostics report' }))
+
+    expect(createObjectURL).toHaveBeenCalled()
+    expect(anchorClick).toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:diagnostics-report')
+    expect(exportedBlob).not.toBeNull()
+
+    const reportText = await exportedBlob!.text()
+    expect(reportText).toContain('"appVersion": "1.0.0"')
+    expect(reportText).toContain('"python_version": "3.14.3"')
+    expect(reportText).toContain('"portableSmokeChecklist"')
+
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('exports a portable handoff bundle from the Help dialog', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        sam3_loaded: true,
+        nudenet_loaded: true,
+        gpu_available: true,
+        packaged_runtime: true,
+        python_version: '3.14.3',
+        sam3_backend: 'heuristic',
+        nudenet_backend: 'native',
+        sam3_native_available: false,
+        nudenet_native_available: true,
+        sam3_checkpoint_path: 'D:\\models\\sam3.pt',
+        sam3_config_path: 'D:\\models\\sam3.yaml',
+        sam3_checkpoint_ready: false,
+        sam3_native_reason: "No module named 'sam3'",
+        nudenet_native_reason: null,
+        sam3_recommendation:
+          'SAM3 native is unavailable here. Use Python 3.12 plus the optional native install script for the best chance of loading checkpoints.',
+        nudenet_recommendation: 'Native backend is available for this model.',
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const user = userEvent.setup()
+    let exportedBlob: Blob | null = null
+    const createObjectURL = vi.fn((blob: Blob) => {
+      exportedBlob = blob
+      return 'blob:portable-handoff'
+    })
+    const revokeObjectURL = vi.fn()
+    const anchorClick = vi.fn()
+    const originalCreateElement = document.createElement.bind(document)
+
+    vi.stubGlobal('URL', {
+      createObjectURL,
+      revokeObjectURL,
+    })
+
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      if (tagName === 'a') {
+        const link = originalCreateElement('a')
+        link.click = anchorClick
+        return link
+      }
+
+      return originalCreateElement(tagName)
+    })
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+    await user.click(screen.getByRole('button', { name: 'Export portable handoff bundle' }))
+
+    expect(createObjectURL).toHaveBeenCalled()
+    expect(anchorClick).toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:portable-handoff')
+    expect(exportedBlob).not.toBeNull()
+
+    const zip = await JSZip.loadAsync(await exportedBlob!.arrayBuffer())
+    const diagnosticsText = await zip.file('diagnostics.json')!.async('string')
+    const profileText = await zip.file('runtime-profile.json')!.async('string')
+    const smokeText = await zip.file('portable-smoke-summary.json')!.async('string')
+    const readmeText = await zip.file('README.txt')!.async('string')
+
+    expect(diagnosticsText).toContain('"python_version": "3.14.3"')
+    expect(profileText).toContain('"sam3CheckpointPath": "D:\\\\models\\\\sam3.pt"')
+    expect(smokeText).toContain('"portableSmokeChecklist"')
+    expect(readmeText).toContain('CreatorsCOCO portable handoff bundle')
+
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('restores backend review state from localStorage', async () => {
@@ -6032,6 +6888,80 @@ describe('App shell', () => {
     expect(migratedProject.outputSettings?.height).toBe(1600)
     expect(migratedProject.outputSettings?.resizeFitMode).toBe('contain')
     expect(migratedProject.outputSettings?.resizeBackgroundMode).toBe('white')
+  })
+
+  it('shows schema and migration policy details in the Help dialog', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        sam3_loaded: true,
+        nudenet_loaded: true,
+        gpu_available: true,
+        packaged_runtime: true,
+        python_version: '3.14.3',
+        sam3_backend: 'heuristic',
+        nudenet_backend: 'native',
+        sam3_native_available: false,
+        nudenet_native_available: true,
+        sam3_native_reason: "No module named 'sam3'",
+        nudenet_native_reason: null,
+        sam3_recommendation:
+          'SAM3 native is unavailable here. Use Python 3.12 plus the optional native install script for the best chance of loading checkpoints.',
+        nudenet_recommendation: 'Native backend is available for this model.',
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+
+    expect(screen.getByText(`Schema v${CURRENT_PROJECT_SCHEMA_VERSION}`)).toBeInTheDocument()
+    expect(screen.getByText('Migration path v0 -> v1')).toBeInTheDocument()
+    expect(screen.getByText('Storage key creators-coco.project')).toBeInTheDocument()
+    expect(screen.getAllByText('Backend runtime Portable packaged Python 3.14.3').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('SAM3 heuristic / native unavailable').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('NudeNet native / native available').length).toBeGreaterThan(0)
+    expect(document.body.textContent).toContain('Native backend readiness')
+    expect(document.body.textContent).toContain('Environment keys CREATORS_COCO_SAM3_CHECKPOINT / CREATORS_COCO_SAM3_CONFIG')
+    expect(document.body.textContent).toContain('SAM3 native is unavailable here.')
+    expect(document.body.textContent).toContain('Native backend is available for this model.')
+  })
+
+  it('records recent performance metrics and restores them in the Help dialog', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Load sample image' }))
+    await user.click(screen.getByRole('button', { name: 'Save now' }))
+    await user.click(screen.getByRole('button', { name: 'Help' }))
+
+    expect(screen.getByText('Recent performance')).toBeInTheDocument()
+    expect(screen.getAllByText(/Save project/).length).toBeGreaterThan(0)
+
+    cleanup()
+    resetWorkspaceStore()
+    window.localStorage.setItem(
+      PERFORMANCE_METRICS_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: 'metric-1',
+          action: 'NSFW detection',
+          durationMs: 812,
+          thresholdMs: 600,
+          level: 'warn',
+          recordedAt: '2026-03-23T02:40:00.000Z',
+        },
+      ]),
+    )
+
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'Help' }))
+
+    expect(screen.getByText('NSFW detection 812ms')).toBeInTheDocument()
+    expect(screen.getByText(/812ms/)).toBeInTheDocument()
+    expect(screen.getByText('Slow')).toBeInTheDocument()
   })
 
   it('recalculates SAM3 review candidates and resets edited focused values', async () => {

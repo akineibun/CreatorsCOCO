@@ -30,10 +30,14 @@ const getLocalVenvPython = () => {
   const candidates = getBackendSearchRoots().flatMap((backendDir) =>
     process.platform === 'win32'
       ? [
+          path.join(backendDir, '.venv312', 'Scripts', 'python.exe'),
+          path.join(backendDir, '.venv-native', 'Scripts', 'python.exe'),
           path.join(backendDir, '.venv', 'Scripts', 'python.exe'),
           path.join(backendDir, 'venv', 'Scripts', 'python.exe'),
         ]
       : [
+          path.join(backendDir, '.venv312', 'bin', 'python'),
+          path.join(backendDir, '.venv-native', 'bin', 'python'),
           path.join(backendDir, '.venv', 'bin', 'python'),
           path.join(backendDir, 'venv', 'bin', 'python'),
         ],

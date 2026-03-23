@@ -2,6 +2,7 @@ from PIL import Image, ImageFilter
 
 from image_utils import decode_image, detection_mask_from_bbox, mask_candidate
 from model_manager import model_manager
+from native_backends import nudenet_native_adapter
 from schemas import DetectRequest, DetectionCandidate, DetectionResponse
 
 
@@ -74,6 +75,17 @@ class NsfwService:
         return components
 
     def detect_candidate_regions(self, image: Image.Image, threshold: float) -> list[DetectionCandidate]:
+        backend = model_manager.get_effective_backend("nudenet")
+        if backend == "native":
+            try:
+                native_detections = self.detect_native_regions(image, threshold)
+                if native_detections:
+                    model_manager.set_active_backend("nudenet", "native")
+                    return native_detections
+            except Exception as exc:
+                model_manager.set_active_backend("nudenet", "heuristic", f"NudeNet native fallback: {exc}")
+                backend = "heuristic"
+
         mask = self.skin_mask(image)
         components = self.connected_components(mask)
         scale_x = image.width / mask.width
@@ -110,7 +122,60 @@ class NsfwService:
                     right=candidate.right,
                     bottom=candidate.bottom,
                     area_ratio=candidate.area_ratio,
-                    source=candidate.source,
+                    source=f"{backend}-{candidate.source}",
+                    mask_base64=candidate.mask_base64,
+                )
+            )
+
+        return detections
+
+    def detect_native_regions(self, image: Image.Image, threshold: float) -> list[DetectionCandidate]:
+        raw_detections = nudenet_native_adapter.detect(image)
+        if not raw_detections:
+            return []
+
+        detections: list[DetectionCandidate] = []
+        for index, detection in enumerate(raw_detections):
+            box = detection.get("box") or detection.get("bbox") or detection.get("bounds")
+            if not isinstance(box, (list, tuple)) or len(box) < 4:
+                continue
+
+            left = int(float(box[0]))
+            top = int(float(box[1]))
+            right_or_width = int(float(box[2]))
+            bottom_or_height = int(float(box[3]))
+
+            width = right_or_width - left if right_or_width > left else right_or_width
+            height = bottom_or_height - top if bottom_or_height > top else bottom_or_height
+            if width <= 0 or height <= 0:
+                continue
+
+            confidence = float(detection.get("score", detection.get("confidence", 0.0)))
+            if confidence < threshold:
+                continue
+
+            bbox = (left, top, left + width, top + height)
+            bbox_mask = detection_mask_from_bbox(image.size, bbox)
+            candidate = mask_candidate(
+                bbox_mask,
+                label=str(detection.get("label", detection.get("class", f"nsfw-region-{index + 1}"))),
+                source="native-nudenet-detector",
+                confidence=confidence,
+            )
+            detections.append(
+                DetectionCandidate(
+                    label=f"nsfw-region-{index + 1}",
+                    confidence=candidate.confidence,
+                    x=candidate.x,
+                    y=candidate.y,
+                    width=candidate.width,
+                    height=candidate.height,
+                    left=candidate.left,
+                    top=candidate.top,
+                    right=candidate.right,
+                    bottom=candidate.bottom,
+                    area_ratio=candidate.area_ratio,
+                    source=f"native-{candidate.source}",
                     mask_base64=candidate.mask_base64,
                 )
             )
