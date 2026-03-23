@@ -291,6 +291,12 @@ type StoredProjectSnapshot = Partial<PersistedProject> & {
   schemaVersion?: number
 }
 
+export type ProjectSchemaMigration = {
+  fromVersion: number
+  toVersion: number
+  label: string
+}
+
 export type RecentProjectEntry = {
   id: string
   name: string
@@ -594,7 +600,15 @@ const clampZoom = (value: number) => Math.max(25, Math.min(400, value))
 const supportedExtensions = ['png', 'jpg', 'jpeg', 'webp']
 export const PROJECT_STORAGE_KEY = 'creators-coco.project'
 export const RECENT_PROJECTS_STORAGE_KEY = 'creators-coco.recent-projects'
+export const PERFORMANCE_METRICS_STORAGE_KEY = 'creators-coco.performance-metrics'
 export const CURRENT_PROJECT_SCHEMA_VERSION = 1
+export const PROJECT_SCHEMA_MIGRATIONS: ProjectSchemaMigration[] = [
+  {
+    fromVersion: 0,
+    toVersion: 1,
+    label: 'v0 -> v1',
+  },
+]
 export const outputPresets: OutputSettings[] = [
   {
     presetId: 'hd-landscape',
@@ -1092,6 +1106,44 @@ const shouldRewriteStoredProject = (project: StoredProjectSnapshot) =>
   project.outputSettings.resizeBackgroundMode == null ||
   project.outputSettings.qualityMode == null
 
+const getStoredProjectSchemaVersion = (project: StoredProjectSnapshot) =>
+  typeof project.schemaVersion === 'number' && Number.isFinite(project.schemaVersion) ? project.schemaVersion : 0
+
+const migrateStoredProjectSnapshot = (project: StoredProjectSnapshot): StoredProjectSnapshot => {
+  let currentProject: StoredProjectSnapshot = { ...project }
+  let currentVersion = getStoredProjectSchemaVersion(currentProject)
+
+  while (currentVersion < CURRENT_PROJECT_SCHEMA_VERSION) {
+    const migration = PROJECT_SCHEMA_MIGRATIONS.find((entry) => entry.fromVersion === currentVersion)
+    if (!migration) {
+      break
+    }
+
+    if (migration.fromVersion === 0 && migration.toVersion === 1) {
+      currentProject = {
+        ...currentProject,
+        schemaVersion: 1,
+        outputSettings: currentProject.outputSettings
+          ? {
+              ...currentProject.outputSettings,
+              resizeFitMode: currentProject.outputSettings.resizeFitMode ?? 'contain',
+              resizeBackgroundMode: currentProject.outputSettings.resizeBackgroundMode ?? 'white',
+              qualityMode: currentProject.outputSettings.qualityMode ?? 'high',
+            }
+          : {
+              ...outputPresets[0],
+            },
+      }
+      currentVersion = migration.toVersion
+      continue
+    }
+
+    break
+  }
+
+  return currentProject
+}
+
 const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
 
 const writeProjectToStorage = (project: PersistedProject) => {
@@ -1154,7 +1206,8 @@ const readProjectFromStorage = (): PersistedProject | null => {
   }
 
   try {
-    const parsedProject = JSON.parse(storedProject) as StoredProjectSnapshot
+    const rawParsedProject = JSON.parse(storedProject) as StoredProjectSnapshot
+    const parsedProject = migrateStoredProjectSnapshot(rawParsedProject)
     const storedPreset = outputPresets.find(
       (preset) => preset.presetId === parsedProject.outputSettings?.presetId,
     )
@@ -1335,7 +1388,7 @@ const readProjectFromStorage = (): PersistedProject | null => {
         : [],
     }
 
-    if (shouldRewriteStoredProject(parsedProject)) {
+    if (shouldRewriteStoredProject(rawParsedProject)) {
       writeProjectToStorage(normalizedProject)
     }
 

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent } from 'react'
+import JSZip from 'jszip'
 import {
   downloadBackendModel,
+  getBackendRuntimeConfig,
   getBackendModelProgress,
   getBackendStatus,
   runNsfwDetection,
@@ -9,6 +11,7 @@ import {
   runSam3ManualSegment,
   type Sam3SegmentPoint,
   subscribeToBackendModelProgress,
+  updateBackendRuntimeConfig,
 } from './lib/api/pythonClient'
 import {
   createPdfExportName,
@@ -22,13 +25,27 @@ import { exportPageAsPdf } from './lib/export/pdfExporter'
 import { exportPageAsPng } from './lib/export/pngExporter'
 import { exportPagesAsZip } from './lib/export/zipExporter'
 import type { ResizeHandle } from './stores/workspaceStore'
-import { outputPresets, selectActiveImage, toolLabels, useWorkspaceStore } from './stores/workspaceStore'
+import {
+  CURRENT_PROJECT_SCHEMA_VERSION,
+  PERFORMANCE_METRICS_STORAGE_KEY,
+  PROJECT_SCHEMA_MIGRATIONS,
+  PROJECT_STORAGE_KEY,
+  outputPresets,
+  selectActiveImage,
+  toolLabels,
+  useWorkspaceStore,
+} from './stores/workspaceStore'
 
 const EXPORT_HISTORY_STORAGE_KEY = 'creators-coco.export-history'
 const BACKEND_SETTINGS_STORAGE_KEY = 'creators-coco.backend-settings'
 const BACKEND_ACTION_HISTORY_STORAGE_KEY = 'creators-coco.backend-action-history'
 const BACKEND_REVIEW_STATE_STORAGE_KEY = 'creators-coco.backend-review-state'
 const GLOBAL_BACKEND_REVIEW_PAGE_ID = '__workspace__'
+const PERFORMANCE_THRESHOLD_SETTINGS_STORAGE_KEY = 'creators-coco.performance-thresholds'
+const TRIAL_CHECKPOINTS_STORAGE_KEY = 'creators-coco.trial-checkpoints'
+const PORTABLE_SMOKE_CHECKLIST_STORAGE_KEY = 'creators-coco.portable-smoke-checklist'
+const IMPORTED_HANDOFF_HISTORY_STORAGE_KEY = 'creators-coco.imported-handoff-history'
+const IMPORTED_PORTABLE_SMOKE_REPORT_STORAGE_KEY = 'creators-coco.imported-portable-smoke-report'
 
 const getTemplatePreviewLines = (template: {
   textLayers: Array<{ text: string }>
@@ -182,6 +199,17 @@ type ExportHistoryEntry = {
   label: string
 }
 
+type PerformanceMetricLevel = 'ok' | 'warn'
+
+type PerformanceMetricEntry = {
+  id: string
+  action: string
+  durationMs: number
+  thresholdMs: number
+  level: PerformanceMetricLevel
+  recordedAt: string
+}
+
 type BackendStatusState = {
   sam3_loaded: boolean
   nudenet_loaded: boolean
@@ -190,6 +218,23 @@ type BackendStatusState = {
   sam3_progress?: number
   nudenet_status?: string
   nudenet_progress?: number
+  packaged_runtime?: boolean
+  python_version?: string
+  sam3_backend?: string
+  nudenet_backend?: string
+  sam3_native_available?: boolean
+  nudenet_native_available?: boolean
+  sam3_checkpoint_path?: string | null
+  sam3_config_path?: string | null
+  sam3_checkpoint_ready?: boolean
+  sam3_native_reason?: string | null
+  nudenet_native_reason?: string | null
+  sam3_backend_preference?: BackendPreference
+  nudenet_backend_preference?: BackendPreference
+  sam3_recommendation?: string
+  nudenet_recommendation?: string
+  sam3_error_message?: string | null
+  nudenet_error_message?: string | null
 }
 
 type BackendDownloadState = {
@@ -258,6 +303,89 @@ type BackendActionHistoryEntry = {
   type: 'sam3-auto-mosaic' | 'nsfw-detection' | 'sam3-manual-segment'
   label: string
 }
+
+type BackendPreference = 'auto' | 'native' | 'heuristic'
+
+type PerformanceThresholds = {
+  backendStatus: number
+  loadSampleImage: number
+  saveProject: number
+  pngExport: number
+  pdfExport: number
+  zipExport: number
+  sam3AutoMosaic: number
+  nsfwDetection: number
+  sam3ManualSegment: number
+}
+
+type TrialReadinessCheckpoints = {
+  backendConnectedAt: string | null
+  sampleLoadedAt: string | null
+  projectSavedAt: string | null
+  projectRestoredAt: string | null
+  exportCompletedAt: string | null
+  sam3ReviewedAt: string | null
+  nsfwReviewedAt: string | null
+}
+
+type PortableSmokeStepStatus = 'pending' | 'passed' | 'failed'
+
+type PortableSmokeChecklistItem = {
+  id: string
+  label: string
+  status: PortableSmokeStepStatus
+  note: string
+}
+
+type ImportedHandoffHistoryEntry = {
+  id: string
+  filename: string
+  importedAt: string
+  source: 'json' | 'zip'
+  includedHandoffData: boolean
+}
+
+type ImportedPortableSmokeReport = {
+  filename: string
+  importedAt: string
+  generatedAt: string | null
+  portableExePath: string | null
+  smokeRoot: string | null
+  startupTimeoutSeconds: number | null
+  statusUrl: string | null
+  statusOk: boolean
+  statusError: string | null
+  backendStatus: BackendStatusState | null
+}
+
+const DEFAULT_PERFORMANCE_THRESHOLDS: PerformanceThresholds = {
+  backendStatus: 1500,
+  loadSampleImage: 200,
+  saveProject: 250,
+  pngExport: 2500,
+  pdfExport: 3500,
+  zipExport: 4500,
+  sam3AutoMosaic: 5000,
+  nsfwDetection: 3000,
+  sam3ManualSegment: 4000,
+}
+
+const EMPTY_TRIAL_READINESS_CHECKPOINTS: TrialReadinessCheckpoints = {
+  backendConnectedAt: null,
+  sampleLoadedAt: null,
+  projectSavedAt: null,
+  projectRestoredAt: null,
+  exportCompletedAt: null,
+  sam3ReviewedAt: null,
+  nsfwReviewedAt: null,
+}
+
+const DEFAULT_PORTABLE_SMOKE_CHECKLIST: PortableSmokeChecklistItem[] = [
+  { id: 'backend-panel', label: 'Backend panel and status', status: 'pending', note: '' },
+  { id: 'runtime-labels', label: 'Runtime labels and capabilities', status: 'pending', note: '' },
+  { id: 'sample-review', label: 'Sample load and review flow', status: 'pending', note: '' },
+  { id: 'save-restore-export', label: 'Save restore and export flow', status: 'pending', note: '' },
+]
 
 type MarqueeSelection = {
   startX: number
@@ -358,6 +486,231 @@ const getRendererBackendUrl = () =>
 const getRendererAppVersion = () =>
   ((window as { creatorsCoco?: { appVersion?: string } }).creatorsCoco?.appVersion ?? '1.0.0')
 
+const downloadJsonBlob = (blob: Blob, filename: string) => {
+  const objectUrl = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(objectUrl)
+}
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const objectUrl = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  window.URL.revokeObjectURL(objectUrl)
+}
+
+const formatMetricDuration = (durationMs: number) => `${Math.max(0, Math.round(durationMs))}ms`
+
+const formatMetricRecordedAt = (recordedAt: string) => {
+  const parsed = new Date(recordedAt)
+  if (Number.isNaN(parsed.getTime())) {
+    return recordedAt
+  }
+
+  return parsed.toLocaleString('ja-JP', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+const readStoredPerformanceMetrics = (): PerformanceMetricEntry[] => {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  const storedMetrics = window.localStorage.getItem(PERFORMANCE_METRICS_STORAGE_KEY)
+  if (!storedMetrics) {
+    return []
+  }
+
+  try {
+    const parsedMetrics = JSON.parse(storedMetrics) as PerformanceMetricEntry[]
+    return Array.isArray(parsedMetrics) ? parsedMetrics.slice(0, 10) : []
+  } catch {
+    window.localStorage.removeItem(PERFORMANCE_METRICS_STORAGE_KEY)
+    return []
+  }
+}
+
+const readStoredPerformanceThresholds = (): PerformanceThresholds => {
+  if (typeof window === 'undefined') {
+    return { ...DEFAULT_PERFORMANCE_THRESHOLDS }
+  }
+
+  const storedThresholds = window.localStorage.getItem(PERFORMANCE_THRESHOLD_SETTINGS_STORAGE_KEY)
+  if (!storedThresholds) {
+    return { ...DEFAULT_PERFORMANCE_THRESHOLDS }
+  }
+
+  try {
+    const parsedThresholds = JSON.parse(storedThresholds) as Partial<PerformanceThresholds>
+    return {
+      backendStatus:
+        typeof parsedThresholds.backendStatus === 'number'
+          ? parsedThresholds.backendStatus
+          : DEFAULT_PERFORMANCE_THRESHOLDS.backendStatus,
+      loadSampleImage:
+        typeof parsedThresholds.loadSampleImage === 'number'
+          ? parsedThresholds.loadSampleImage
+          : DEFAULT_PERFORMANCE_THRESHOLDS.loadSampleImage,
+      saveProject:
+        typeof parsedThresholds.saveProject === 'number'
+          ? parsedThresholds.saveProject
+          : DEFAULT_PERFORMANCE_THRESHOLDS.saveProject,
+      pngExport:
+        typeof parsedThresholds.pngExport === 'number'
+          ? parsedThresholds.pngExport
+          : DEFAULT_PERFORMANCE_THRESHOLDS.pngExport,
+      pdfExport:
+        typeof parsedThresholds.pdfExport === 'number'
+          ? parsedThresholds.pdfExport
+          : DEFAULT_PERFORMANCE_THRESHOLDS.pdfExport,
+      zipExport:
+        typeof parsedThresholds.zipExport === 'number'
+          ? parsedThresholds.zipExport
+          : DEFAULT_PERFORMANCE_THRESHOLDS.zipExport,
+      sam3AutoMosaic:
+        typeof parsedThresholds.sam3AutoMosaic === 'number'
+          ? parsedThresholds.sam3AutoMosaic
+          : DEFAULT_PERFORMANCE_THRESHOLDS.sam3AutoMosaic,
+      nsfwDetection:
+        typeof parsedThresholds.nsfwDetection === 'number'
+          ? parsedThresholds.nsfwDetection
+          : DEFAULT_PERFORMANCE_THRESHOLDS.nsfwDetection,
+      sam3ManualSegment:
+        typeof parsedThresholds.sam3ManualSegment === 'number'
+          ? parsedThresholds.sam3ManualSegment
+          : DEFAULT_PERFORMANCE_THRESHOLDS.sam3ManualSegment,
+    }
+  } catch {
+    window.localStorage.removeItem(PERFORMANCE_THRESHOLD_SETTINGS_STORAGE_KEY)
+    return { ...DEFAULT_PERFORMANCE_THRESHOLDS }
+  }
+}
+
+const readStoredTrialReadinessCheckpoints = (): TrialReadinessCheckpoints => {
+  if (typeof window === 'undefined') {
+    return { ...EMPTY_TRIAL_READINESS_CHECKPOINTS }
+  }
+
+  const storedCheckpoints = window.localStorage.getItem(TRIAL_CHECKPOINTS_STORAGE_KEY)
+  if (!storedCheckpoints) {
+    return { ...EMPTY_TRIAL_READINESS_CHECKPOINTS }
+  }
+
+  try {
+    const parsedCheckpoints = JSON.parse(storedCheckpoints) as Partial<TrialReadinessCheckpoints>
+    return {
+      backendConnectedAt:
+        typeof parsedCheckpoints.backendConnectedAt === 'string' ? parsedCheckpoints.backendConnectedAt : null,
+      sampleLoadedAt: typeof parsedCheckpoints.sampleLoadedAt === 'string' ? parsedCheckpoints.sampleLoadedAt : null,
+      projectSavedAt: typeof parsedCheckpoints.projectSavedAt === 'string' ? parsedCheckpoints.projectSavedAt : null,
+      projectRestoredAt:
+        typeof parsedCheckpoints.projectRestoredAt === 'string' ? parsedCheckpoints.projectRestoredAt : null,
+      exportCompletedAt:
+        typeof parsedCheckpoints.exportCompletedAt === 'string' ? parsedCheckpoints.exportCompletedAt : null,
+      sam3ReviewedAt: typeof parsedCheckpoints.sam3ReviewedAt === 'string' ? parsedCheckpoints.sam3ReviewedAt : null,
+      nsfwReviewedAt: typeof parsedCheckpoints.nsfwReviewedAt === 'string' ? parsedCheckpoints.nsfwReviewedAt : null,
+    }
+  } catch {
+    window.localStorage.removeItem(TRIAL_CHECKPOINTS_STORAGE_KEY)
+    return { ...EMPTY_TRIAL_READINESS_CHECKPOINTS }
+  }
+}
+
+const readStoredPortableSmokeChecklist = (): PortableSmokeChecklistItem[] => {
+  if (typeof window === 'undefined') {
+    return DEFAULT_PORTABLE_SMOKE_CHECKLIST.map((item) => ({ ...item }))
+  }
+
+  const storedChecklist = window.localStorage.getItem(PORTABLE_SMOKE_CHECKLIST_STORAGE_KEY)
+  if (!storedChecklist) {
+    return DEFAULT_PORTABLE_SMOKE_CHECKLIST.map((item) => ({ ...item }))
+  }
+
+  try {
+    const parsedChecklist = JSON.parse(storedChecklist) as Array<Partial<PortableSmokeChecklistItem>>
+    return DEFAULT_PORTABLE_SMOKE_CHECKLIST.map((item) => {
+      const storedItem = parsedChecklist.find((candidate) => candidate.id === item.id)
+      return {
+        ...item,
+        status:
+          storedItem?.status === 'passed' || storedItem?.status === 'failed' || storedItem?.status === 'pending'
+            ? storedItem.status
+            : item.status,
+        note: typeof storedItem?.note === 'string' ? storedItem.note : item.note,
+      }
+    })
+  } catch {
+    window.localStorage.removeItem(PORTABLE_SMOKE_CHECKLIST_STORAGE_KEY)
+    return DEFAULT_PORTABLE_SMOKE_CHECKLIST.map((item) => ({ ...item }))
+  }
+}
+
+const readStoredImportedHandoffHistory = (): ImportedHandoffHistoryEntry[] => {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  const storedHistory = window.localStorage.getItem(IMPORTED_HANDOFF_HISTORY_STORAGE_KEY)
+  if (!storedHistory) {
+    return []
+  }
+
+  try {
+    const parsedHistory = JSON.parse(storedHistory) as ImportedHandoffHistoryEntry[]
+    return Array.isArray(parsedHistory) ? parsedHistory.slice(0, 5) : []
+  } catch {
+    window.localStorage.removeItem(IMPORTED_HANDOFF_HISTORY_STORAGE_KEY)
+    return []
+  }
+}
+
+const readStoredImportedPortableSmokeReport = (): ImportedPortableSmokeReport | null => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const storedReport = window.localStorage.getItem(IMPORTED_PORTABLE_SMOKE_REPORT_STORAGE_KEY)
+  if (!storedReport) {
+    return null
+  }
+
+  try {
+    const parsedReport = JSON.parse(storedReport) as Partial<ImportedPortableSmokeReport>
+    return {
+      filename: typeof parsedReport.filename === 'string' ? parsedReport.filename : 'portable-smoke-report.json',
+      importedAt: typeof parsedReport.importedAt === 'string' ? parsedReport.importedAt : new Date().toISOString(),
+      generatedAt: typeof parsedReport.generatedAt === 'string' ? parsedReport.generatedAt : null,
+      portableExePath: typeof parsedReport.portableExePath === 'string' ? parsedReport.portableExePath : null,
+      smokeRoot: typeof parsedReport.smokeRoot === 'string' ? parsedReport.smokeRoot : null,
+      startupTimeoutSeconds:
+        typeof parsedReport.startupTimeoutSeconds === 'number' ? parsedReport.startupTimeoutSeconds : null,
+      statusUrl: typeof parsedReport.statusUrl === 'string' ? parsedReport.statusUrl : null,
+      statusOk: parsedReport.statusOk === true,
+      statusError: typeof parsedReport.statusError === 'string' ? parsedReport.statusError : null,
+      backendStatus:
+        parsedReport.backendStatus && typeof parsedReport.backendStatus === 'object'
+          ? (parsedReport.backendStatus as BackendStatusState)
+          : null,
+    }
+  } catch {
+    window.localStorage.removeItem(IMPORTED_PORTABLE_SMOKE_REPORT_STORAGE_KEY)
+    return null
+  }
+}
+
 const getExportPreviewLayout = (
   image: { width: number; height: number } | null,
   outputSettings: { width: number; height: number; resizeFitMode: 'contain' | 'cover' | 'stretch' },
@@ -395,11 +748,32 @@ const getExportPreviewLayout = (
 function App() {
   const [exportMessage, setExportMessage] = useState('Export idle')
   const [recentExports, setRecentExports] = useState<ExportHistoryEntry[]>([])
+  const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetricEntry[]>(readStoredPerformanceMetrics)
+  const [performanceThresholds, setPerformanceThresholds] = useState<PerformanceThresholds>(
+    readStoredPerformanceThresholds,
+  )
+  const [trialReadinessCheckpoints, setTrialReadinessCheckpoints] = useState<TrialReadinessCheckpoints>(
+    readStoredTrialReadinessCheckpoints,
+  )
+  const [portableSmokeChecklist, setPortableSmokeChecklist] = useState<PortableSmokeChecklistItem[]>(
+    readStoredPortableSmokeChecklist,
+  )
+  const [importedHandoffHistory, setImportedHandoffHistory] = useState<ImportedHandoffHistoryEntry[]>(
+    readStoredImportedHandoffHistory,
+  )
+  const [importedPortableSmokeReport, setImportedPortableSmokeReport] = useState<ImportedPortableSmokeReport | null>(
+    readStoredImportedPortableSmokeReport,
+  )
   const [backendStatus, setBackendStatus] = useState<BackendStatusState | null>(null)
   const [backendStatusError, setBackendStatusError] = useState<string | null>(null)
   const [backendSam3ModelSize, setBackendSam3ModelSize] = useState<'base' | 'large'>('base')
   const [backendAutoMosaicStrength, setBackendAutoMosaicStrength] = useState<'light' | 'medium' | 'strong'>('medium')
   const [backendNsfwThreshold, setBackendNsfwThreshold] = useState('0.70')
+  const [sam3BackendPreference, setSam3BackendPreference] = useState<BackendPreference>('auto')
+  const [nudenetBackendPreference, setNudenetBackendPreference] = useState<BackendPreference>('auto')
+  const [sam3CheckpointPath, setSam3CheckpointPath] = useState('')
+  const [sam3ConfigPath, setSam3ConfigPath] = useState('')
+  const [backendRuntimeConfigMessage, setBackendRuntimeConfigMessage] = useState<string | null>(null)
   const [backendDownloads, setBackendDownloads] = useState<BackendDownloadState>({
     sam3: null,
     nudenet: null,
@@ -951,6 +1325,35 @@ function App() {
 
     return `${label} status: ${status} ${progress}%`
   }
+  const getBackendRuntimeLabel = () =>
+    `Backend runtime ${backendStatus?.packaged_runtime ? 'Portable packaged' : 'Development'} Python ${
+      backendStatus?.python_version ?? 'unknown'
+    }`
+  const getBackendCapabilityLabel = (modelName: BackendModelName) => {
+    const backend = modelName === 'sam3' ? backendStatus?.sam3_backend : backendStatus?.nudenet_backend
+    const nativeAvailable =
+      modelName === 'sam3' ? backendStatus?.sam3_native_available : backendStatus?.nudenet_native_available
+    const label = modelName === 'sam3' ? 'SAM3' : 'NudeNet'
+    return `${label} ${backend ?? 'heuristic'} / native ${nativeAvailable ? 'available' : 'unavailable'}`
+  }
+  const getBackendPreferenceLabel = (modelName: BackendModelName) => {
+    const preference = modelName === 'sam3' ? sam3BackendPreference : nudenetBackendPreference
+    const label = modelName === 'sam3' ? 'SAM3' : 'NudeNet'
+    return `${label} strategy ${preference}`
+  }
+  const getSam3CheckpointLabel = () => {
+    if (backendStatus?.sam3_checkpoint_ready) {
+      return 'SAM3 checkpoint ready'
+    }
+    if (sam3CheckpointPath.trim().length > 0 || backendStatus?.sam3_checkpoint_path) {
+      return 'SAM3 checkpoint missing'
+    }
+    return 'SAM3 checkpoint not configured'
+  }
+  const getSam3CheckpointPathLabel = () =>
+    `SAM3 checkpoint path ${sam3CheckpointPath.trim() || backendStatus?.sam3_checkpoint_path || 'not set'}`
+  const getSam3ConfigPathLabel = () =>
+    `SAM3 config path ${sam3ConfigPath.trim() || backendStatus?.sam3_config_path || 'not set'}`
   const getBackendModelButtonLabel = (modelName: BackendModelName) => {
     const label = getBackendModelLabel(modelName)
     if (isBackendModelReady(modelName)) {
@@ -974,6 +1377,41 @@ function App() {
   const pushExportHistory = (entry: ExportHistoryEntry) => {
     setRecentExports((current) => [entry, ...current].slice(0, 5))
   }
+
+  const pushPerformanceMetric = useCallback((action: string, durationMs: number, thresholdMs: number) => {
+    const normalizedDuration = Math.max(0, Math.round(durationMs))
+    setPerformanceMetrics((current) => [
+      {
+        id: crypto.randomUUID(),
+        action,
+        durationMs: normalizedDuration,
+        thresholdMs,
+        level: normalizedDuration > thresholdMs ? 'warn' : 'ok',
+        recordedAt: new Date().toISOString(),
+      },
+      ...current,
+    ].slice(0, 10))
+  }, [])
+
+  const measureSyncAction = useCallback(<T,>(action: string, thresholdMs: number, callback: () => T): T => {
+    const startedAt = Date.now()
+    const result = callback()
+    pushPerformanceMetric(action, Date.now() - startedAt, thresholdMs)
+    return result
+  }, [pushPerformanceMetric])
+
+  const measureAsyncAction = useCallback(async <T,>(
+    action: string,
+    thresholdMs: number,
+    callback: () => Promise<T>,
+  ): Promise<T> => {
+    const startedAt = Date.now()
+    try {
+      return await callback()
+    } finally {
+      pushPerformanceMetric(action, Date.now() - startedAt, thresholdMs)
+    }
+  }, [pushPerformanceMetric])
 
   const clearBackendModelProgressWatch = (modelName: BackendModelName) => {
     if (backendPollTimeouts.current[modelName]) {
@@ -1050,13 +1488,35 @@ function App() {
   }
 
   const loadBackendStatus = async () => {
-    try {
-      const status = await getBackendStatus()
-      setBackendStatus(status)
-      setBackendStatusError(null)
-    } catch {
-      setBackendStatusError('Backend connection unavailable')
-    }
+    await measureAsyncAction('Backend status', performanceThresholds.backendStatus, async () => {
+      try {
+        const status = await getBackendStatus()
+        setBackendStatus(status)
+        setBackendStatusError(null)
+        setTrialReadinessCheckpoints((current) => ({
+          ...current,
+          backendConnectedAt: current.backendConnectedAt ?? new Date().toISOString(),
+        }))
+        if (
+          status.sam3_backend_preference === 'auto' ||
+          status.sam3_backend_preference === 'native' ||
+          status.sam3_backend_preference === 'heuristic'
+        ) {
+          setSam3BackendPreference(status.sam3_backend_preference)
+        }
+        setSam3CheckpointPath(typeof status.sam3_checkpoint_path === 'string' ? status.sam3_checkpoint_path : '')
+        setSam3ConfigPath(typeof status.sam3_config_path === 'string' ? status.sam3_config_path : '')
+        if (
+          status.nudenet_backend_preference === 'auto' ||
+          status.nudenet_backend_preference === 'native' ||
+          status.nudenet_backend_preference === 'heuristic'
+        ) {
+          setNudenetBackendPreference(status.nudenet_backend_preference)
+        }
+      } catch {
+        setBackendStatusError('Backend connection unavailable')
+      }
+    })
   }
 
   const startBackendModelDownload = async (modelName: BackendModelName) => {
@@ -1108,6 +1568,76 @@ function App() {
     }
   }
 
+  const syncBackendRuntimePreferences = useCallback(async () => {
+    try {
+      const config = await updateBackendRuntimeConfig(
+        sam3BackendPreference,
+        nudenetBackendPreference,
+        sam3CheckpointPath,
+        sam3ConfigPath,
+      )
+      setBackendRuntimeConfigMessage(
+        `Runtime strategy synced: SAM3 ${config.sam3_effective_backend}, NudeNet ${config.nudenet_effective_backend}`,
+      )
+      setSam3CheckpointPath(config.sam3_checkpoint_path ?? '')
+      setSam3ConfigPath(config.sam3_config_path ?? '')
+      setBackendStatus((current) =>
+        current
+          ? {
+              ...current,
+              sam3_backend: config.sam3_effective_backend,
+              nudenet_backend: config.nudenet_effective_backend,
+              sam3_native_available: config.sam3_native_available,
+              nudenet_native_available: config.nudenet_native_available,
+              sam3_checkpoint_path: config.sam3_checkpoint_path,
+              sam3_config_path: config.sam3_config_path,
+              sam3_checkpoint_ready: config.sam3_checkpoint_ready,
+              sam3_native_reason: config.sam3_native_reason,
+              nudenet_native_reason: config.nudenet_native_reason,
+              sam3_backend_preference: config.sam3_backend_preference,
+              nudenet_backend_preference: config.nudenet_backend_preference,
+              sam3_recommendation: config.sam3_recommendation,
+              nudenet_recommendation: config.nudenet_recommendation,
+            }
+          : current,
+      )
+    } catch {
+      setBackendRuntimeConfigMessage('Runtime strategy sync failed')
+    }
+  }, [nudenetBackendPreference, sam3BackendPreference, sam3CheckpointPath, sam3ConfigPath])
+
+  const refreshBackendRuntimePreferences = useCallback(async () => {
+    try {
+      const config = await getBackendRuntimeConfig()
+      setSam3BackendPreference(config.sam3_backend_preference)
+      setNudenetBackendPreference(config.nudenet_backend_preference)
+      setSam3CheckpointPath(config.sam3_checkpoint_path ?? '')
+      setSam3ConfigPath(config.sam3_config_path ?? '')
+      setBackendStatus((current) =>
+        current
+          ? {
+              ...current,
+              sam3_backend: config.sam3_effective_backend,
+              nudenet_backend: config.nudenet_effective_backend,
+              sam3_native_available: config.sam3_native_available,
+              nudenet_native_available: config.nudenet_native_available,
+              sam3_checkpoint_path: config.sam3_checkpoint_path,
+              sam3_config_path: config.sam3_config_path,
+              sam3_checkpoint_ready: config.sam3_checkpoint_ready,
+              sam3_native_reason: config.sam3_native_reason,
+              nudenet_native_reason: config.nudenet_native_reason,
+              sam3_backend_preference: config.sam3_backend_preference,
+              nudenet_backend_preference: config.nudenet_backend_preference,
+              sam3_recommendation: config.sam3_recommendation,
+              nudenet_recommendation: config.nudenet_recommendation,
+            }
+          : current,
+      )
+    } catch {
+      setBackendRuntimeConfigMessage('Runtime config unavailable')
+    }
+  }, [])
+
   const runBackendSam3AutoMosaic = async () => {
     if (!image) {
       return
@@ -1119,10 +1649,8 @@ function App() {
     }))
 
     try {
-      const response = await runSam3AutoMosaic(
-        getPageBackendImageSource(image),
-        backendSam3ModelSize,
-        backendAutoMosaicStrength,
+      const response = await measureAsyncAction('SAM3 auto mosaic', performanceThresholds.sam3AutoMosaic, () =>
+        runSam3AutoMosaic(getPageBackendImageSource(image), backendSam3ModelSize, backendAutoMosaicStrength),
       )
       const baseline: Sam3ReviewBaseline = {
         masks: response.masks,
@@ -1151,6 +1679,10 @@ function App() {
         ...current,
         sam3AutoMosaic: resultLabel,
       }))
+      setTrialReadinessCheckpoints((current) => ({
+        ...current,
+        sam3ReviewedAt: new Date().toISOString(),
+      }))
       pushBackendActionHistory('sam3-auto-mosaic', resultLabel)
     } catch {
       setBackendActions((current) => ({
@@ -1171,9 +1703,8 @@ function App() {
     }))
 
     try {
-      const response = await runNsfwDetection(
-        getPageBackendImageSource(image),
-        Number.parseFloat(backendNsfwThreshold) || 0.7,
+      const response = await measureAsyncAction('NSFW detection', performanceThresholds.nsfwDetection, () =>
+        runNsfwDetection(getPageBackendImageSource(image), Number.parseFloat(backendNsfwThreshold) || 0.7),
       )
       const baseline: NsfwReviewBaseline = {
         detections: response.detections,
@@ -1200,6 +1731,10 @@ function App() {
         ...current,
         nsfwDetection: resultLabel,
       }))
+      setTrialReadinessCheckpoints((current) => ({
+        ...current,
+        nsfwReviewedAt: new Date().toISOString(),
+      }))
       pushBackendActionHistory('nsfw-detection', resultLabel)
     } catch {
       setBackendActions((current) => ({
@@ -1220,10 +1755,10 @@ function App() {
     }))
 
     try {
-      const response = await runSam3ManualSegment(
-        getPageBackendImageSource(image),
-        backendSam3ModelSize,
-        backendManualSegmentPoints,
+      const response = await measureAsyncAction(
+        'SAM3 manual segment',
+        performanceThresholds.sam3ManualSegment,
+        () => runSam3ManualSegment(getPageBackendImageSource(image), backendSam3ModelSize, backendManualSegmentPoints),
       )
       const resultLabel = `SAM3 manual segment ready with ${backendManualSegmentPoints.length} point${
         backendManualSegmentPoints.length === 1 ? '' : 's'
@@ -2124,6 +2659,41 @@ function App() {
   }, [recentExports])
 
   useEffect(() => {
+    window.localStorage.setItem(PERFORMANCE_METRICS_STORAGE_KEY, JSON.stringify(performanceMetrics))
+  }, [performanceMetrics])
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      PERFORMANCE_THRESHOLD_SETTINGS_STORAGE_KEY,
+      JSON.stringify(performanceThresholds),
+    )
+  }, [performanceThresholds])
+
+  useEffect(() => {
+    window.localStorage.setItem(TRIAL_CHECKPOINTS_STORAGE_KEY, JSON.stringify(trialReadinessCheckpoints))
+  }, [trialReadinessCheckpoints])
+
+  useEffect(() => {
+    window.localStorage.setItem(PORTABLE_SMOKE_CHECKLIST_STORAGE_KEY, JSON.stringify(portableSmokeChecklist))
+  }, [portableSmokeChecklist])
+
+  useEffect(() => {
+    window.localStorage.setItem(IMPORTED_HANDOFF_HISTORY_STORAGE_KEY, JSON.stringify(importedHandoffHistory))
+  }, [importedHandoffHistory])
+
+  useEffect(() => {
+    if (!importedPortableSmokeReport) {
+      window.localStorage.removeItem(IMPORTED_PORTABLE_SMOKE_REPORT_STORAGE_KEY)
+      return
+    }
+
+    window.localStorage.setItem(
+      IMPORTED_PORTABLE_SMOKE_REPORT_STORAGE_KEY,
+      JSON.stringify(importedPortableSmokeReport),
+    )
+  }, [importedPortableSmokeReport])
+
+  useEffect(() => {
     const storedSettings = window.localStorage.getItem(BACKEND_SETTINGS_STORAGE_KEY)
 
     if (!storedSettings) {
@@ -2136,6 +2706,10 @@ function App() {
           autoMosaicStrength?: 'light' | 'medium' | 'strong'
           nsfwThreshold?: string
           manualSegmentPoints?: Sam3SegmentPoint[]
+          sam3BackendPreference?: BackendPreference
+          nudenetBackendPreference?: BackendPreference
+          sam3CheckpointPath?: string
+          sam3ConfigPath?: string
         }
 
       if (parsedSettings.sam3ModelSize === 'large' || parsedSettings.sam3ModelSize === 'base') {
@@ -2167,6 +2741,30 @@ function App() {
             setBackendManualSegmentPoints(validPoints)
           }
         }
+
+        if (
+          parsedSettings.sam3BackendPreference === 'auto' ||
+          parsedSettings.sam3BackendPreference === 'native' ||
+          parsedSettings.sam3BackendPreference === 'heuristic'
+        ) {
+          setSam3BackendPreference(parsedSettings.sam3BackendPreference)
+        }
+
+        if (
+          parsedSettings.nudenetBackendPreference === 'auto' ||
+          parsedSettings.nudenetBackendPreference === 'native' ||
+          parsedSettings.nudenetBackendPreference === 'heuristic'
+        ) {
+          setNudenetBackendPreference(parsedSettings.nudenetBackendPreference)
+        }
+
+        if (typeof parsedSettings.sam3CheckpointPath === 'string') {
+          setSam3CheckpointPath(parsedSettings.sam3CheckpointPath)
+        }
+
+        if (typeof parsedSettings.sam3ConfigPath === 'string') {
+          setSam3ConfigPath(parsedSettings.sam3ConfigPath)
+        }
       } catch {
         window.localStorage.removeItem(BACKEND_SETTINGS_STORAGE_KEY)
       }
@@ -2180,9 +2778,22 @@ function App() {
           autoMosaicStrength: backendAutoMosaicStrength,
           nsfwThreshold: backendNsfwThreshold,
           manualSegmentPoints: backendManualSegmentPoints,
+          sam3BackendPreference,
+          nudenetBackendPreference,
+          sam3CheckpointPath,
+          sam3ConfigPath,
         }),
       )
-  }, [backendAutoMosaicStrength, backendManualSegmentPoints, backendNsfwThreshold, backendSam3ModelSize])
+  }, [
+    backendAutoMosaicStrength,
+    backendManualSegmentPoints,
+    backendNsfwThreshold,
+    backendSam3ModelSize,
+    nudenetBackendPreference,
+    sam3CheckpointPath,
+    sam3ConfigPath,
+    sam3BackendPreference,
+  ])
 
   useEffect(() => {
     const storedBackendActionHistory = window.localStorage.getItem(BACKEND_ACTION_HISTORY_STORAGE_KEY)
@@ -2653,13 +3264,720 @@ function App() {
     })
   }
 
+  const handleLoadSampleImage = useCallback(() => {
+    measureSyncAction('Load sample image', performanceThresholds.loadSampleImage, () => {
+      loadSampleImage()
+      setTrialReadinessCheckpoints((current) => ({
+        ...current,
+        sampleLoadedAt: new Date().toISOString(),
+      }))
+    })
+  }, [loadSampleImage, measureSyncAction, performanceThresholds.loadSampleImage])
+
+  const handleSaveNow = useCallback(() => {
+    measureSyncAction('Save project', performanceThresholds.saveProject, () => {
+      saveNow()
+      setTrialReadinessCheckpoints((current) => ({
+        ...current,
+        projectSavedAt: new Date().toISOString(),
+      }))
+    })
+  }, [measureSyncAction, performanceThresholds.saveProject, saveNow])
+
+  const trialReadinessItems = [
+    {
+      label: 'Backend connected',
+      completedAt: trialReadinessCheckpoints.backendConnectedAt,
+      required: true,
+    },
+    {
+      label: 'Sample loaded',
+      completedAt: trialReadinessCheckpoints.sampleLoadedAt,
+      required: true,
+    },
+    {
+      label: 'Project saved',
+      completedAt: trialReadinessCheckpoints.projectSavedAt,
+      required: true,
+    },
+    {
+      label: 'Project restored',
+      completedAt: trialReadinessCheckpoints.projectRestoredAt,
+      required: false,
+    },
+    {
+      label: 'Export completed',
+      completedAt: trialReadinessCheckpoints.exportCompletedAt,
+      required: true,
+    },
+    {
+      label: 'SAM3 reviewed',
+      completedAt: trialReadinessCheckpoints.sam3ReviewedAt,
+      required: false,
+    },
+    {
+      label: 'NSFW reviewed',
+      completedAt: trialReadinessCheckpoints.nsfwReviewedAt,
+      required: false,
+    },
+  ] as const
+
+  const trialReadinessCompletedCount = trialReadinessItems.filter((item) => item.completedAt).length
+  const isPortableTrialReady = trialReadinessItems.filter((item) => item.required).every((item) => item.completedAt)
+  const portableSmokePassedCount = portableSmokeChecklist.filter((item) => item.status === 'passed').length
+  const portableSmokeFailedCount = portableSmokeChecklist.filter((item) => item.status === 'failed').length
+  const portableSmokeReady =
+    portableSmokeChecklist.length > 0 && portableSmokeChecklist.every((item) => item.status === 'passed')
+  const performanceWarningCount = performanceMetrics.filter((item) => item.level === 'warn').length
+  const releaseReadinessItems = [
+    {
+      label: 'Portable trial flow',
+      status: isPortableTrialReady ? 'ready' : 'pending',
+      detail: isPortableTrialReady
+        ? 'Core sample save restore export flow is complete.'
+        : `Trial checkpoints ${trialReadinessCompletedCount} / ${trialReadinessItems.length}`,
+    },
+    {
+      label: 'Portable smoke checklist',
+      status: portableSmokeReady ? 'ready' : portableSmokeFailedCount > 0 ? 'risk' : 'pending',
+      detail: portableSmokeReady
+        ? 'All portable smoke steps are marked passed.'
+        : portableSmokeFailedCount > 0
+          ? `${portableSmokeFailedCount} smoke step needs attention.`
+          : `${portableSmokePassedCount} / ${portableSmokeChecklist.length} smoke steps passed`,
+    },
+    {
+      label: 'Backend health',
+      status: backendStatus && !backendStatusError ? 'ready' : 'risk',
+      detail: backendStatus && !backendStatusError ? getBackendRuntimeLabel() : backendStatusError ?? 'Backend unknown',
+    },
+    {
+      label: 'Performance window',
+      status: performanceWarningCount === 0 ? 'ready' : 'risk',
+      detail:
+        performanceWarningCount === 0
+          ? 'No recent slow operations over the configured thresholds.'
+          : `${performanceWarningCount} recent operation${performanceWarningCount === 1 ? '' : 's'} exceeded threshold.`,
+    },
+    {
+      label: 'Native backend readiness',
+      status:
+        backendStatus?.sam3_native_available && backendStatus?.nudenet_native_available
+          ? 'ready'
+          : backendStatus?.sam3_checkpoint_ready || backendStatus?.nudenet_native_available
+            ? 'pending'
+            : 'risk',
+      detail:
+        backendStatus?.sam3_native_available && backendStatus?.nudenet_native_available
+          ? 'SAM3 and NudeNet native backends are both available.'
+          : backendStatus?.sam3_checkpoint_ready
+            ? 'SAM3 checkpoint is configured. Install or verify native runtime to complete the path.'
+            : 'SAM3 checkpoint or native runtime still needs setup.',
+    },
+    {
+      label: 'Imported smoke report',
+      status: importedPortableSmokeReport
+        ? importedPortableSmokeReport.statusOk
+          ? 'ready'
+          : 'risk'
+        : 'pending',
+      detail: importedPortableSmokeReport
+        ? importedPortableSmokeReport.statusOk
+          ? `Imported ${importedPortableSmokeReport.filename} with a healthy backend status.`
+          : importedPortableSmokeReport.statusError ?? 'Imported smoke report captured a startup issue.'
+        : 'Import portable-smoke-report.json from another PC to capture real startup results.',
+    },
+  ] as const
+
+  const cyclePortableSmokeStatus = useCallback((id: string) => {
+    setPortableSmokeChecklist((current) =>
+      current.map((item) => {
+        if (item.id !== id) {
+          return item
+        }
+
+        const nextStatus =
+          item.status === 'pending' ? 'passed' : item.status === 'passed' ? 'failed' : 'pending'
+
+        return {
+          ...item,
+          status: nextStatus,
+        }
+      }),
+    )
+  }, [])
+
+  const updatePortableSmokeNote = useCallback((id: string, note: string) => {
+    setPortableSmokeChecklist((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              note,
+            }
+          : item,
+      ),
+    )
+  }, [])
+
+  const resetPortableSmokeChecklist = useCallback(() => {
+    setPortableSmokeChecklist(DEFAULT_PORTABLE_SMOKE_CHECKLIST.map((item) => ({ ...item })))
+  }, [])
+
+  const syncPortableSmokeChecklist = useCallback(() => {
+    setPortableSmokeChecklist((current) =>
+      current.map((item) => {
+        if (item.id === 'backend-panel') {
+          return {
+            ...item,
+            status: backendStatus && !backendStatusError ? 'passed' : item.status === 'failed' ? 'failed' : 'pending',
+          }
+        }
+
+        if (item.id === 'runtime-labels') {
+          const runtimeReady =
+            Boolean(backendStatus?.python_version) &&
+            typeof backendStatus?.sam3_backend === 'string' &&
+            typeof backendStatus?.nudenet_backend === 'string'
+          return {
+            ...item,
+            status: runtimeReady ? 'passed' : item.status === 'failed' ? 'failed' : 'pending',
+          }
+        }
+
+        if (item.id === 'sample-review') {
+          const reviewReady =
+            trialReadinessCheckpoints.sampleLoadedAt !== null &&
+            (trialReadinessCheckpoints.sam3ReviewedAt !== null || trialReadinessCheckpoints.nsfwReviewedAt !== null)
+          return {
+            ...item,
+            status: reviewReady ? 'passed' : item.status === 'failed' ? 'failed' : 'pending',
+          }
+        }
+
+        if (item.id === 'save-restore-export') {
+          const saveRestoreExportReady =
+            trialReadinessCheckpoints.projectSavedAt !== null && trialReadinessCheckpoints.exportCompletedAt !== null
+          return {
+            ...item,
+            status: saveRestoreExportReady ? 'passed' : item.status === 'failed' ? 'failed' : 'pending',
+          }
+        }
+
+        return item
+      }),
+    )
+  }, [backendStatus, backendStatusError, trialReadinessCheckpoints])
+
+  const exportDiagnosticsReport = useCallback(() => {
+    const report = {
+      appVersion,
+      backendBaseUrl,
+      generatedAt: new Date().toISOString(),
+      saveStatusLabel,
+      exportMessage,
+      backendStatus,
+      backendStatusError,
+      sam3BackendPreference,
+      nudenetBackendPreference,
+      backendRuntimeConfigMessage,
+      trialReadinessCheckpoints,
+      portableSmokeChecklist,
+      importedPortableSmokeReport,
+      importedHandoffHistory,
+      performanceThresholds,
+      performanceMetrics,
+      recentExports,
+    }
+    const safeTimestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    downloadJsonBlob(
+      new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' }),
+      `creators-coco-diagnostics-${safeTimestamp}.json`,
+    )
+  }, [
+    appVersion,
+    backendBaseUrl,
+    saveStatusLabel,
+    exportMessage,
+    backendStatus,
+    backendStatusError,
+    sam3BackendPreference,
+    nudenetBackendPreference,
+    backendRuntimeConfigMessage,
+    trialReadinessCheckpoints,
+    portableSmokeChecklist,
+    importedPortableSmokeReport,
+    importedHandoffHistory,
+    performanceThresholds,
+    performanceMetrics,
+    recentExports,
+  ])
+
+  const exportPortableHandoffBundle = useCallback(async () => {
+    const diagnostics = {
+      appVersion,
+      backendBaseUrl,
+      generatedAt: new Date().toISOString(),
+      saveStatusLabel,
+      exportMessage,
+      backendStatus,
+      backendStatusError,
+      sam3BackendPreference,
+      nudenetBackendPreference,
+      backendRuntimeConfigMessage,
+      trialReadinessCheckpoints,
+      portableSmokeChecklist,
+      importedPortableSmokeReport,
+      importedHandoffHistory,
+      performanceThresholds,
+      performanceMetrics,
+      recentExports,
+    }
+    const runtimeProfile = {
+      exportedAt: new Date().toISOString(),
+      sam3BackendPreference,
+      nudenetBackendPreference,
+      sam3CheckpointPath: sam3CheckpointPath.trim() || null,
+      sam3ConfigPath: sam3ConfigPath.trim() || null,
+      environment: {
+        CREATORS_COCO_SAM3_BACKEND: sam3BackendPreference,
+        CREATORS_COCO_NUDENET_BACKEND: nudenetBackendPreference,
+        CREATORS_COCO_SAM3_CHECKPOINT: sam3CheckpointPath.trim() || null,
+        CREATORS_COCO_SAM3_CONFIG: sam3ConfigPath.trim() || null,
+      },
+    }
+    const smokeSummary = {
+      exportedAt: new Date().toISOString(),
+      portableSmokeChecklist,
+      portableSmokeReady,
+      releaseReadinessItems,
+      trialReadinessCheckpoints,
+      importedPortableSmokeReport,
+      importedHandoffHistory,
+    }
+
+    const zip = new JSZip()
+    zip.file('diagnostics.json', JSON.stringify(diagnostics, null, 2))
+    zip.file('runtime-profile.json', JSON.stringify(runtimeProfile, null, 2))
+    zip.file('portable-smoke-summary.json', JSON.stringify(smokeSummary, null, 2))
+    zip.file(
+      'README.txt',
+      [
+        'CreatorsCOCO portable handoff bundle',
+        `Generated: ${new Date().toISOString()}`,
+        '',
+        'Files:',
+        '- diagnostics.json',
+        '- runtime-profile.json',
+        '- portable-smoke-summary.json',
+      ].join('\r\n'),
+    )
+
+    const safeTimestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    const bundleBlob = await zip.generateAsync({ type: 'blob' })
+    downloadBlob(bundleBlob, `creators-coco-portable-handoff-${safeTimestamp}.zip`)
+  }, [
+    appVersion,
+    backendBaseUrl,
+    saveStatusLabel,
+    exportMessage,
+    backendStatus,
+    backendStatusError,
+    sam3BackendPreference,
+    nudenetBackendPreference,
+    backendRuntimeConfigMessage,
+    trialReadinessCheckpoints,
+    portableSmokeChecklist,
+    importedPortableSmokeReport,
+    importedHandoffHistory,
+    performanceThresholds,
+    performanceMetrics,
+    recentExports,
+    sam3CheckpointPath,
+    sam3ConfigPath,
+    portableSmokeReady,
+    releaseReadinessItems,
+  ])
+
+  const importPortableSmokeReport = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    try {
+      const parsedReport = JSON.parse(await file.text()) as {
+        generatedAt?: string
+        portableExePath?: string
+        smokeRoot?: string
+        startupTimeoutSeconds?: number
+        statusUrl?: string
+        statusOk?: boolean
+        statusError?: string | null
+        backendStatus?: BackendStatusState | null
+      }
+
+      const importedReport: ImportedPortableSmokeReport = {
+        filename: file.name,
+        importedAt: new Date().toISOString(),
+        generatedAt: typeof parsedReport.generatedAt === 'string' ? parsedReport.generatedAt : null,
+        portableExePath: typeof parsedReport.portableExePath === 'string' ? parsedReport.portableExePath : null,
+        smokeRoot: typeof parsedReport.smokeRoot === 'string' ? parsedReport.smokeRoot : null,
+        startupTimeoutSeconds:
+          typeof parsedReport.startupTimeoutSeconds === 'number' ? parsedReport.startupTimeoutSeconds : null,
+        statusUrl: typeof parsedReport.statusUrl === 'string' ? parsedReport.statusUrl : null,
+        statusOk: parsedReport.statusOk === true,
+        statusError: typeof parsedReport.statusError === 'string' ? parsedReport.statusError : null,
+        backendStatus:
+          parsedReport.backendStatus && typeof parsedReport.backendStatus === 'object'
+            ? parsedReport.backendStatus
+            : null,
+      }
+
+      setImportedPortableSmokeReport(importedReport)
+      setPortableSmokeChecklist((current) =>
+        current.map((item) => {
+          if (item.id === 'backend-panel') {
+            return {
+              ...item,
+              status: importedReport.statusOk ? 'passed' : 'failed',
+              note: importedReport.statusOk
+                ? `Smoke status OK from ${file.name}`
+                : importedReport.statusError ?? `Smoke status failed from ${file.name}`,
+            }
+          }
+
+          if (item.id === 'runtime-labels') {
+            const runtimeReady =
+              Boolean(importedReport.backendStatus?.python_version) &&
+              typeof importedReport.backendStatus?.sam3_backend === 'string' &&
+              typeof importedReport.backendStatus?.nudenet_backend === 'string'
+            return {
+              ...item,
+              status: runtimeReady ? 'passed' : importedReport.statusOk ? item.status : 'failed',
+              note: runtimeReady
+                ? `Python ${importedReport.backendStatus?.python_version ?? 'unknown'} / SAM3 ${importedReport.backendStatus?.sam3_backend ?? 'unknown'} / NudeNet ${importedReport.backendStatus?.nudenet_backend ?? 'unknown'}`
+                : item.note,
+            }
+          }
+
+          return item
+        }),
+      )
+      setBackendRuntimeConfigMessage(
+        importedReport.statusOk
+          ? `Portable smoke report imported: backend status reached from ${file.name}`
+          : `Portable smoke report imported with startup issue: ${importedReport.statusError ?? 'unknown error'}`,
+      )
+    } catch {
+      setBackendRuntimeConfigMessage('Portable smoke report import failed')
+    } finally {
+      event.target.value = ''
+    }
+  }, [])
+
+  const exportBackendRuntimeProfile = useCallback(() => {
+    const profile = {
+      exportedAt: new Date().toISOString(),
+      sam3BackendPreference,
+      nudenetBackendPreference,
+      sam3CheckpointPath: sam3CheckpointPath.trim() || null,
+      sam3ConfigPath: sam3ConfigPath.trim() || null,
+      environment: {
+        CREATORS_COCO_SAM3_BACKEND: sam3BackendPreference,
+        CREATORS_COCO_NUDENET_BACKEND: nudenetBackendPreference,
+        CREATORS_COCO_SAM3_CHECKPOINT: sam3CheckpointPath.trim() || null,
+        CREATORS_COCO_SAM3_CONFIG: sam3ConfigPath.trim() || null,
+      },
+    }
+    const safeTimestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    downloadJsonBlob(
+      new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' }),
+      `creators-coco-runtime-profile-${safeTimestamp}.json`,
+    )
+  }, [nudenetBackendPreference, sam3BackendPreference, sam3CheckpointPath, sam3ConfigPath])
+
+  const exportSam3SetupScript = useCallback(() => {
+    const scriptLines = [
+      `$env:CREATORS_COCO_SAM3_BACKEND = "${sam3BackendPreference}"`,
+      `$env:CREATORS_COCO_NUDENET_BACKEND = "${nudenetBackendPreference}"`,
+      `$env:CREATORS_COCO_SAM3_CHECKPOINT = "${sam3CheckpointPath.trim()}"`,
+      `$env:CREATORS_COCO_SAM3_CONFIG = "${sam3ConfigPath.trim()}"`,
+      '',
+      '# Launch CreatorsCOCO after setting the runtime profile.',
+      'npm run dev',
+    ]
+    const safeTimestamp = new Date().toISOString().replace(/[:.]/g, '-')
+    downloadJsonBlob(
+      new Blob([scriptLines.join('\r\n')], { type: 'text/plain;charset=utf-8' }),
+      `creators-coco-sam3-runtime-${safeTimestamp}.ps1`,
+    )
+  }, [nudenetBackendPreference, sam3BackendPreference, sam3CheckpointPath, sam3ConfigPath])
+
+  const importBackendRuntimeProfile = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      if (!file) {
+        return
+      }
+
+      try {
+        let rawText: string
+        let diagnosticsText: string | null = null
+        let smokeSummaryText: string | null = null
+        if (file.name.toLowerCase().endsWith('.zip')) {
+          const zip = await JSZip.loadAsync(await file.arrayBuffer())
+          const profileEntry = zip.file('runtime-profile.json')
+          if (!profileEntry) {
+            throw new Error('runtime-profile.json not found')
+          }
+          rawText = await profileEntry.async('string')
+          diagnosticsText = await zip.file('diagnostics.json')?.async('string') ?? null
+          smokeSummaryText = await zip.file('portable-smoke-summary.json')?.async('string') ?? null
+        } else {
+          rawText = await file.text()
+        }
+        const parsedProfile = JSON.parse(rawText) as {
+          sam3BackendPreference?: BackendPreference
+          nudenetBackendPreference?: BackendPreference
+          sam3CheckpointPath?: string | null
+          sam3ConfigPath?: string | null
+        }
+        const parsedDiagnostics = diagnosticsText
+          ? (JSON.parse(diagnosticsText) as {
+              performanceThresholds?: Partial<PerformanceThresholds>
+              importedPortableSmokeReport?: Partial<ImportedPortableSmokeReport> | null
+            })
+          : null
+        const parsedSmokeSummary = smokeSummaryText
+          ? (JSON.parse(smokeSummaryText) as {
+              portableSmokeChecklist?: PortableSmokeChecklistItem[]
+              trialReadinessCheckpoints?: Partial<TrialReadinessCheckpoints>
+              importedPortableSmokeReport?: Partial<ImportedPortableSmokeReport> | null
+            })
+          : null
+        const importedFromZip = file.name.toLowerCase().endsWith('.zip')
+        const nextSam3Preference =
+          parsedProfile.sam3BackendPreference === 'native' || parsedProfile.sam3BackendPreference === 'heuristic'
+            ? parsedProfile.sam3BackendPreference
+            : 'auto'
+        const nextNudenetPreference =
+          parsedProfile.nudenetBackendPreference === 'native' ||
+          parsedProfile.nudenetBackendPreference === 'heuristic'
+            ? parsedProfile.nudenetBackendPreference
+            : 'auto'
+        const nextCheckpointPath =
+          typeof parsedProfile.sam3CheckpointPath === 'string' ? parsedProfile.sam3CheckpointPath : ''
+        const nextConfigPath = typeof parsedProfile.sam3ConfigPath === 'string' ? parsedProfile.sam3ConfigPath : ''
+
+        setSam3BackendPreference(nextSam3Preference)
+        setNudenetBackendPreference(nextNudenetPreference)
+        setSam3CheckpointPath(nextCheckpointPath)
+        setSam3ConfigPath(nextConfigPath)
+        if (parsedDiagnostics?.performanceThresholds) {
+          setPerformanceThresholds((current) => ({
+            backendStatus:
+              typeof parsedDiagnostics.performanceThresholds?.backendStatus === 'number'
+                ? parsedDiagnostics.performanceThresholds.backendStatus
+                : current.backendStatus,
+            loadSampleImage:
+              typeof parsedDiagnostics.performanceThresholds?.loadSampleImage === 'number'
+                ? parsedDiagnostics.performanceThresholds.loadSampleImage
+                : current.loadSampleImage,
+            saveProject:
+              typeof parsedDiagnostics.performanceThresholds?.saveProject === 'number'
+                ? parsedDiagnostics.performanceThresholds.saveProject
+                : current.saveProject,
+            pngExport:
+              typeof parsedDiagnostics.performanceThresholds?.pngExport === 'number'
+                ? parsedDiagnostics.performanceThresholds.pngExport
+                : current.pngExport,
+            pdfExport:
+              typeof parsedDiagnostics.performanceThresholds?.pdfExport === 'number'
+                ? parsedDiagnostics.performanceThresholds.pdfExport
+                : current.pdfExport,
+            zipExport:
+              typeof parsedDiagnostics.performanceThresholds?.zipExport === 'number'
+                ? parsedDiagnostics.performanceThresholds.zipExport
+                : current.zipExport,
+            sam3AutoMosaic:
+              typeof parsedDiagnostics.performanceThresholds?.sam3AutoMosaic === 'number'
+                ? parsedDiagnostics.performanceThresholds.sam3AutoMosaic
+                : current.sam3AutoMosaic,
+            nsfwDetection:
+              typeof parsedDiagnostics.performanceThresholds?.nsfwDetection === 'number'
+                ? parsedDiagnostics.performanceThresholds.nsfwDetection
+                : current.nsfwDetection,
+            sam3ManualSegment:
+              typeof parsedDiagnostics.performanceThresholds?.sam3ManualSegment === 'number'
+                ? parsedDiagnostics.performanceThresholds.sam3ManualSegment
+                : current.sam3ManualSegment,
+          }))
+        }
+        if (Array.isArray(parsedSmokeSummary?.portableSmokeChecklist)) {
+          setPortableSmokeChecklist(
+            parsedSmokeSummary.portableSmokeChecklist.map((item, index) => ({
+              id: typeof item.id === 'string' ? item.id : `imported-${index + 1}`,
+              label: typeof item.label === 'string' ? item.label : `Imported step ${index + 1}`,
+              status:
+                item.status === 'passed' || item.status === 'failed' || item.status === 'pending'
+                  ? item.status
+                  : 'pending',
+              note: typeof item.note === 'string' ? item.note : '',
+            })),
+          )
+        }
+        if (parsedSmokeSummary?.trialReadinessCheckpoints) {
+          setTrialReadinessCheckpoints((current) => ({
+            backendConnectedAt:
+              typeof parsedSmokeSummary.trialReadinessCheckpoints?.backendConnectedAt === 'string'
+                ? parsedSmokeSummary.trialReadinessCheckpoints.backendConnectedAt
+                : current.backendConnectedAt,
+            sampleLoadedAt:
+              typeof parsedSmokeSummary.trialReadinessCheckpoints?.sampleLoadedAt === 'string'
+                ? parsedSmokeSummary.trialReadinessCheckpoints.sampleLoadedAt
+                : current.sampleLoadedAt,
+            projectSavedAt:
+              typeof parsedSmokeSummary.trialReadinessCheckpoints?.projectSavedAt === 'string'
+                ? parsedSmokeSummary.trialReadinessCheckpoints.projectSavedAt
+                : current.projectSavedAt,
+            projectRestoredAt:
+              typeof parsedSmokeSummary.trialReadinessCheckpoints?.projectRestoredAt === 'string'
+                ? parsedSmokeSummary.trialReadinessCheckpoints.projectRestoredAt
+                : current.projectRestoredAt,
+            exportCompletedAt:
+              typeof parsedSmokeSummary.trialReadinessCheckpoints?.exportCompletedAt === 'string'
+                ? parsedSmokeSummary.trialReadinessCheckpoints.exportCompletedAt
+                : current.exportCompletedAt,
+            sam3ReviewedAt:
+              typeof parsedSmokeSummary.trialReadinessCheckpoints?.sam3ReviewedAt === 'string'
+                ? parsedSmokeSummary.trialReadinessCheckpoints.sam3ReviewedAt
+                : current.sam3ReviewedAt,
+            nsfwReviewedAt:
+              typeof parsedSmokeSummary.trialReadinessCheckpoints?.nsfwReviewedAt === 'string'
+                ? parsedSmokeSummary.trialReadinessCheckpoints.nsfwReviewedAt
+                : current.nsfwReviewedAt,
+          }))
+        }
+        const importedSmokeReportCandidate =
+          parsedSmokeSummary?.importedPortableSmokeReport ?? parsedDiagnostics?.importedPortableSmokeReport ?? null
+        if (importedSmokeReportCandidate && typeof importedSmokeReportCandidate === 'object') {
+          setImportedPortableSmokeReport({
+            filename:
+              typeof importedSmokeReportCandidate.filename === 'string'
+                ? importedSmokeReportCandidate.filename
+                : 'portable-smoke-report.json',
+            importedAt:
+              typeof importedSmokeReportCandidate.importedAt === 'string'
+                ? importedSmokeReportCandidate.importedAt
+                : new Date().toISOString(),
+            generatedAt:
+              typeof importedSmokeReportCandidate.generatedAt === 'string'
+                ? importedSmokeReportCandidate.generatedAt
+                : null,
+            portableExePath:
+              typeof importedSmokeReportCandidate.portableExePath === 'string'
+                ? importedSmokeReportCandidate.portableExePath
+                : null,
+            smokeRoot:
+              typeof importedSmokeReportCandidate.smokeRoot === 'string' ? importedSmokeReportCandidate.smokeRoot : null,
+            startupTimeoutSeconds:
+              typeof importedSmokeReportCandidate.startupTimeoutSeconds === 'number'
+                ? importedSmokeReportCandidate.startupTimeoutSeconds
+                : null,
+            statusUrl:
+              typeof importedSmokeReportCandidate.statusUrl === 'string' ? importedSmokeReportCandidate.statusUrl : null,
+            statusOk: importedSmokeReportCandidate.statusOk === true,
+            statusError:
+              typeof importedSmokeReportCandidate.statusError === 'string'
+                ? importedSmokeReportCandidate.statusError
+                : null,
+            backendStatus:
+              importedSmokeReportCandidate.backendStatus &&
+              typeof importedSmokeReportCandidate.backendStatus === 'object'
+                ? (importedSmokeReportCandidate.backendStatus as BackendStatusState)
+                : null,
+          })
+        }
+        setImportedHandoffHistory((current) =>
+          [
+            {
+              id: `${Date.now()}-${file.name}`,
+              filename: file.name,
+              importedAt: new Date().toISOString(),
+              source: importedFromZip ? 'zip' : 'json',
+              includedHandoffData: importedFromZip && Boolean(smokeSummaryText || diagnosticsText),
+            },
+            ...current,
+          ].slice(0, 5),
+        )
+
+        const config = await updateBackendRuntimeConfig(
+          nextSam3Preference,
+          nextNudenetPreference,
+          nextCheckpointPath,
+          nextConfigPath,
+        )
+        setBackendRuntimeConfigMessage(
+          `Runtime profile imported: SAM3 ${config.sam3_effective_backend}, NudeNet ${config.nudenet_effective_backend}${importedFromZip ? ' with handoff data' : ''}`,
+        )
+        setBackendStatus((current) =>
+          current
+            ? {
+                ...current,
+                sam3_backend: config.sam3_effective_backend,
+                nudenet_backend: config.nudenet_effective_backend,
+                sam3_native_available: config.sam3_native_available,
+                nudenet_native_available: config.nudenet_native_available,
+                sam3_checkpoint_path: config.sam3_checkpoint_path,
+                sam3_config_path: config.sam3_config_path,
+                sam3_checkpoint_ready: config.sam3_checkpoint_ready,
+                sam3_native_reason: config.sam3_native_reason,
+                nudenet_native_reason: config.nudenet_native_reason,
+                sam3_backend_preference: config.sam3_backend_preference,
+                nudenet_backend_preference: config.nudenet_backend_preference,
+                sam3_recommendation: config.sam3_recommendation,
+                nudenet_recommendation: config.nudenet_recommendation,
+              }
+            : current,
+        )
+      } catch {
+        setBackendRuntimeConfigMessage('Runtime profile import failed')
+      } finally {
+        event.target.value = ''
+      }
+    },
+    [],
+  )
+
+  const updatePerformanceThreshold = useCallback(
+    (key: keyof PerformanceThresholds, rawValue: string) => {
+      const parsed = Number.parseInt(rawValue, 10)
+      setPerformanceThresholds((current) => ({
+        ...current,
+        [key]: Number.isFinite(parsed) ? Math.max(50, Math.min(20000, parsed)) : current[key],
+      }))
+    },
+    [],
+  )
+
+  const resetPerformanceThresholds = useCallback(() => {
+    setPerformanceThresholds({ ...DEFAULT_PERFORMANCE_THRESHOLDS })
+  }, [])
+
   const handleExportPng = async () => {
     if (!image) {
       return
     }
 
-    await exportPageAsPng(image, imageTransform, outputSettings, activePageIndex)
+    await measureAsyncAction('PNG export', performanceThresholds.pngExport, () =>
+      exportPageAsPng(image, imageTransform, outputSettings, activePageIndex),
+    )
     setExportMessage(`Exported ${image.name} as PNG`)
+    setTrialReadinessCheckpoints((current) => ({
+      ...current,
+      exportCompletedAt: new Date().toISOString(),
+    }))
     pushExportHistory({ format: 'PNG', label: image.name })
   }
 
@@ -2668,8 +3986,14 @@ function App() {
       return
     }
 
-    await exportPagesAsZip(pages, outputSettings)
+    await measureAsyncAction('ZIP export', performanceThresholds.zipExport, () =>
+      exportPagesAsZip(pages, outputSettings),
+    )
     setExportMessage(`Exported ${pages.length} pages as ZIP`)
+    setTrialReadinessCheckpoints((current) => ({
+      ...current,
+      exportCompletedAt: new Date().toISOString(),
+    }))
     pushExportHistory({ format: 'ZIP', label: `${pages.length} pages` })
   }
 
@@ -2678,8 +4002,14 @@ function App() {
       return
     }
 
-    await exportPageAsPdf(image, imageTransform, outputSettings, activePageIndex)
+    await measureAsyncAction('PDF export', performanceThresholds.pdfExport, () =>
+      exportPageAsPdf(image, imageTransform, outputSettings, activePageIndex),
+    )
     setExportMessage(`Exported ${image.name} as PDF`)
+    setTrialReadinessCheckpoints((current) => ({
+      ...current,
+      exportCompletedAt: new Date().toISOString(),
+    }))
     pushExportHistory({ format: 'PDF', label: image.name })
   }
 
@@ -2794,6 +4124,12 @@ function App() {
 
   useEffect(() => {
     restoreSavedProject()
+    if (typeof window !== 'undefined' && window.localStorage.getItem(PROJECT_STORAGE_KEY)) {
+      setTrialReadinessCheckpoints((current) => ({
+        ...current,
+        projectRestoredAt: current.projectRestoredAt ?? new Date().toISOString(),
+      }))
+    }
   }, [restoreSavedProject])
 
   useEffect(() => {
@@ -2815,13 +4151,13 @@ function App() {
     }
 
     const timer = window.setTimeout(() => {
-      saveNow()
+      handleSaveNow()
     }, 300000)
 
     return () => {
       window.clearTimeout(timer)
     }
-  }, [isDirty, saveNow])
+  }, [handleSaveNow, isDirty])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2846,7 +4182,7 @@ function App() {
 
       if (key === 's') {
         event.preventDefault()
-        saveNow()
+        handleSaveNow()
         return
       }
 
@@ -2866,7 +4202,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [nudgeSelectedLayer, redo, saveNow, undo])
+  }, [handleSaveNow, nudgeSelectedLayer, redo, undo])
 
   return (
     <div className="app-shell">
@@ -2917,6 +4253,24 @@ function App() {
                 <strong>Provided by Dakini_tencho</strong>
                 <span>CreatorsCOCO desktop editor with local FastAPI review tooling.</span>
                 <span>{`Backend target ${backendBaseUrl}`}</span>
+                <span>{getBackendRuntimeLabel()}</span>
+                <span>{getBackendCapabilityLabel('sam3')}</span>
+                <span>{getBackendCapabilityLabel('nudenet')}</span>
+                <span>{getSam3CheckpointLabel()}</span>
+                <span>{getSam3CheckpointPathLabel()}</span>
+                <span>{getSam3ConfigPathLabel()}</span>
+                <span>Environment keys CREATORS_COCO_SAM3_CHECKPOINT / CREATORS_COCO_SAM3_CONFIG</span>
+                {backendStatus?.sam3_native_reason ? <span>{`SAM3 native detail ${backendStatus.sam3_native_reason}`}</span> : null}
+                {backendStatus?.nudenet_native_reason ? <span>{`NudeNet native detail ${backendStatus.nudenet_native_reason}`}</span> : null}
+                {backendStatus?.sam3_recommendation ? <span>{backendStatus.sam3_recommendation}</span> : null}
+                {backendStatus?.nudenet_recommendation ? <span>{backendStatus.nudenet_recommendation}</span> : null}
+                {backendStatus?.sam3_error_message ? <span>{backendStatus.sam3_error_message}</span> : null}
+                {backendStatus?.nudenet_error_message ? <span>{backendStatus.nudenet_error_message}</span> : null}
+              </div>
+              <div className="page-card">
+                <strong>{`Schema v${CURRENT_PROJECT_SCHEMA_VERSION}`}</strong>
+                <span>{`Migration path ${PROJECT_SCHEMA_MIGRATIONS.map((migration) => migration.label).join(', ')}`}</span>
+                <span>{`Storage key ${PROJECT_STORAGE_KEY}`}</span>
               </div>
               <div className="page-card">
                 <strong>Portable Smoke Test</strong>
@@ -2924,6 +4278,365 @@ function App() {
                 <span>2. Launch it once and wait for unpacking to finish.</span>
                 <span>3. Confirm backend status leaves the unavailable state.</span>
                 <span>4. Load the sample image and run SAM3 or NSFW once.</span>
+                <label className="text-layer-field">
+                  <span>Import portable smoke report</span>
+                  <input
+                    aria-label="Import portable smoke report"
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={(event) => void importPortableSmokeReport(event)}
+                  />
+                </label>
+                {importedPortableSmokeReport ? (
+                  <div className="portable-smoke-imported-summary">
+                    <strong>{`${importedPortableSmokeReport.filename} ${importedPortableSmokeReport.statusOk ? 'ok' : 'issue'}`}</strong>
+                    <span>{`Imported ${formatMetricRecordedAt(importedPortableSmokeReport.importedAt)}`}</span>
+                    {importedPortableSmokeReport.generatedAt ? (
+                      <span>{`Generated ${formatMetricRecordedAt(importedPortableSmokeReport.generatedAt)}`}</span>
+                    ) : null}
+                    {importedPortableSmokeReport.portableExePath ? (
+                      <span>{`Exe ${importedPortableSmokeReport.portableExePath}`}</span>
+                    ) : null}
+                    {importedPortableSmokeReport.statusError ? <span>{importedPortableSmokeReport.statusError}</span> : null}
+                  </div>
+                ) : null}
+              </div>
+              <div className="page-card">
+                <strong>Trial readiness</strong>
+                <span>
+                  {isPortableTrialReady
+                    ? 'Portable trial ready'
+                    : `Portable trial in progress ${trialReadinessCompletedCount} / ${trialReadinessItems.length}`}
+                </span>
+                <div className="trial-readiness-list">
+                  {trialReadinessItems.map((item) => (
+                    <div
+                      key={item.label}
+                      className={`trial-readiness-item ${item.completedAt ? 'complete' : 'pending'}`}
+                    >
+                      <strong>{`${item.label} ${item.completedAt ? 'complete' : 'pending'}`}</strong>
+                      <span>
+                        {item.completedAt
+                          ? `Completed ${formatMetricRecordedAt(item.completedAt)}`
+                          : 'Run the core flow once to mark this checkpoint.'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="page-card page-button"
+                  onClick={() => setTrialReadinessCheckpoints({ ...EMPTY_TRIAL_READINESS_CHECKPOINTS })}
+                >
+                  Reset trial readiness
+                </button>
+              </div>
+              <div className="page-card">
+                <strong>Release readiness</strong>
+                <div className="help-action-row">
+                  <button type="button" className="page-card page-button" onClick={exportDiagnosticsReport}>
+                    Export diagnostics report
+                  </button>
+                  <button type="button" className="page-card page-button" onClick={() => void exportPortableHandoffBundle()}>
+                    Export portable handoff bundle
+                  </button>
+                </div>
+                <div className="trial-readiness-list">
+                  {releaseReadinessItems.map((item) => (
+                    <div
+                      key={item.label}
+                      className={`trial-readiness-item ${
+                        item.status === 'ready' ? 'complete' : item.status === 'risk' ? 'failed' : 'pending'
+                      }`}
+                    >
+                      <strong>{`${item.label} ${item.status}`}</strong>
+                      <span>{item.detail}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="page-card">
+                <strong>Portable smoke checklist</strong>
+                <span>{portableSmokeReady ? 'Portable smoke complete' : `${portableSmokePassedCount} / ${portableSmokeChecklist.length} steps passed`}</span>
+                <div className="portable-smoke-list">
+                  {portableSmokeChecklist.map((item) => (
+                    <div key={item.id} className={`portable-smoke-item ${item.status}`}>
+                      <strong>{`${item.label} ${item.status}`}</strong>
+                      <div className="help-action-row">
+                        <button
+                          type="button"
+                          className="page-card page-button"
+                          onClick={() => cyclePortableSmokeStatus(item.id)}
+                          aria-label={`Cycle smoke step: ${item.label}`}
+                        >
+                          {item.status === 'pending' ? 'Mark passed' : item.status === 'passed' ? 'Mark failed' : 'Reset pending'}
+                        </button>
+                      </div>
+                      <label className="text-layer-field">
+                        <span>{`${item.label} note`}</span>
+                        <input
+                          aria-label={`${item.label} note`}
+                          type="text"
+                          value={item.note}
+                          onChange={(event) => updatePortableSmokeNote(item.id, event.target.value)}
+                          placeholder="Optional tester note"
+                        />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                <div className="help-action-row">
+                  <button type="button" className="page-card page-button" onClick={syncPortableSmokeChecklist}>
+                    Sync portable smoke checklist
+                  </button>
+                </div>
+                <button type="button" className="page-card page-button" onClick={resetPortableSmokeChecklist}>
+                  Reset portable smoke checklist
+                </button>
+              </div>
+              <div className="page-card">
+                <strong>Imported handoff history</strong>
+                {importedHandoffHistory.length === 0 ? (
+                  <span>No handoff imports yet</span>
+                ) : (
+                  <div className="trial-readiness-list">
+                    {importedHandoffHistory.map((entry) => (
+                      <div key={entry.id} className="trial-readiness-item complete">
+                        <strong>{`${entry.filename} ${entry.source}`}</strong>
+                        <span>{`Imported ${formatMetricRecordedAt(entry.importedAt)}`}</span>
+                        <span>{entry.includedHandoffData ? 'Included handoff smoke/diagnostic data' : 'Runtime profile only'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="page-card">
+                <strong>Backend strategy</strong>
+                <label className="text-layer-field">
+                  <span>SAM3 strategy</span>
+                  <select
+                    aria-label="SAM3 backend strategy"
+                    value={sam3BackendPreference}
+                    onChange={(event) =>
+                      setSam3BackendPreference(
+                        event.target.value === 'native' || event.target.value === 'heuristic'
+                          ? event.target.value
+                          : 'auto',
+                      )
+                    }
+                  >
+                    <option value="auto">auto</option>
+                    <option value="native">native</option>
+                    <option value="heuristic">heuristic</option>
+                  </select>
+                </label>
+                <label className="text-layer-field">
+                  <span>SAM3 checkpoint path</span>
+                  <input
+                    aria-label="SAM3 checkpoint path"
+                    type="text"
+                    value={sam3CheckpointPath}
+                    onChange={(event) => setSam3CheckpointPath(event.target.value)}
+                    placeholder="D:\\models\\sam3.pt"
+                  />
+                </label>
+                <label className="text-layer-field">
+                  <span>SAM3 config path</span>
+                  <input
+                    aria-label="SAM3 config path"
+                    type="text"
+                    value={sam3ConfigPath}
+                    onChange={(event) => setSam3ConfigPath(event.target.value)}
+                    placeholder="D:\\models\\sam3.yaml"
+                  />
+                </label>
+                <label className="text-layer-field">
+                  <span>NudeNet strategy</span>
+                  <select
+                    aria-label="NudeNet backend strategy"
+                    value={nudenetBackendPreference}
+                    onChange={(event) =>
+                      setNudenetBackendPreference(
+                        event.target.value === 'native' || event.target.value === 'heuristic'
+                          ? event.target.value
+                          : 'auto',
+                      )
+                    }
+                  >
+                    <option value="auto">auto</option>
+                    <option value="native">native</option>
+                    <option value="heuristic">heuristic</option>
+                  </select>
+                </label>
+                <span>{getBackendPreferenceLabel('sam3')}</span>
+                <span>{getSam3CheckpointLabel()}</span>
+                <span>{getSam3CheckpointPathLabel()}</span>
+                <span>{getSam3ConfigPathLabel()}</span>
+                <span>Environment keys CREATORS_COCO_SAM3_CHECKPOINT / CREATORS_COCO_SAM3_CONFIG</span>
+                <span>{getBackendPreferenceLabel('nudenet')}</span>
+                {backendRuntimeConfigMessage ? <span>{backendRuntimeConfigMessage}</span> : null}
+                <div className="help-action-row">
+                  <button type="button" className="page-card page-button" onClick={() => void syncBackendRuntimePreferences()}>
+                    Apply backend strategy
+                  </button>
+                  <button type="button" className="page-card page-button" onClick={exportBackendRuntimeProfile}>
+                    Export backend runtime profile
+                  </button>
+                  <button type="button" className="page-card page-button" onClick={exportSam3SetupScript}>
+                    Export SAM3 setup script
+                  </button>
+                  <button
+                    type="button"
+                    className="page-card page-button"
+                    onClick={() => void refreshBackendRuntimePreferences()}
+                  >
+                    Refresh backend strategy
+                  </button>
+                </div>
+                <label className="text-layer-field">
+                  <span>Import backend runtime profile</span>
+                  <input
+                    aria-label="Import backend runtime profile"
+                    type="file"
+                    accept="application/json,.json,application/zip,.zip"
+                    onChange={(event) => void importBackendRuntimeProfile(event)}
+                  />
+                </label>
+              </div>
+              <div className="page-card">
+                <strong>Recent performance</strong>
+                {performanceMetrics.length === 0 ? (
+                  <span>No metrics recorded yet</span>
+                ) : (
+                  <div className="help-metric-list">
+                    {performanceMetrics.map((metric) => (
+                      <div
+                        key={metric.id}
+                        className={`help-metric-item ${metric.level === 'warn' ? 'warn' : 'ok'}`}
+                      >
+                        <strong>{`${metric.action} ${formatMetricDuration(metric.durationMs)}`}</strong>
+                        <span>{metric.level === 'warn' ? 'Slow' : 'OK'}</span>
+                        <span>{`${formatMetricRecordedAt(metric.recordedAt)} / threshold ${formatMetricDuration(metric.thresholdMs)}`}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="page-card">
+                <strong>Performance thresholds</strong>
+                <div className="help-threshold-grid">
+                  <label className="text-layer-field">
+                    <span>Backend status ms</span>
+                    <input
+                      aria-label="Backend status threshold"
+                      type="number"
+                      min={50}
+                      max={20000}
+                      step={50}
+                      value={performanceThresholds.backendStatus}
+                      onChange={(event) => updatePerformanceThreshold('backendStatus', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-layer-field">
+                    <span>Load sample ms</span>
+                    <input
+                      aria-label="Load sample threshold"
+                      type="number"
+                      min={50}
+                      max={20000}
+                      step={50}
+                      value={performanceThresholds.loadSampleImage}
+                      onChange={(event) => updatePerformanceThreshold('loadSampleImage', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-layer-field">
+                    <span>Save project ms</span>
+                    <input
+                      aria-label="Save project threshold"
+                      type="number"
+                      min={50}
+                      max={20000}
+                      step={50}
+                      value={performanceThresholds.saveProject}
+                      onChange={(event) => updatePerformanceThreshold('saveProject', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-layer-field">
+                    <span>PNG export ms</span>
+                    <input
+                      aria-label="PNG export threshold"
+                      type="number"
+                      min={50}
+                      max={20000}
+                      step={50}
+                      value={performanceThresholds.pngExport}
+                      onChange={(event) => updatePerformanceThreshold('pngExport', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-layer-field">
+                    <span>PDF export ms</span>
+                    <input
+                      aria-label="PDF export threshold"
+                      type="number"
+                      min={50}
+                      max={20000}
+                      step={50}
+                      value={performanceThresholds.pdfExport}
+                      onChange={(event) => updatePerformanceThreshold('pdfExport', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-layer-field">
+                    <span>ZIP export ms</span>
+                    <input
+                      aria-label="ZIP export threshold"
+                      type="number"
+                      min={50}
+                      max={20000}
+                      step={50}
+                      value={performanceThresholds.zipExport}
+                      onChange={(event) => updatePerformanceThreshold('zipExport', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-layer-field">
+                    <span>SAM3 auto mosaic ms</span>
+                    <input
+                      aria-label="SAM3 auto mosaic threshold"
+                      type="number"
+                      min={50}
+                      max={20000}
+                      step={50}
+                      value={performanceThresholds.sam3AutoMosaic}
+                      onChange={(event) => updatePerformanceThreshold('sam3AutoMosaic', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-layer-field">
+                    <span>NSFW detection ms</span>
+                    <input
+                      aria-label="NSFW detection threshold"
+                      type="number"
+                      min={50}
+                      max={20000}
+                      step={50}
+                      value={performanceThresholds.nsfwDetection}
+                      onChange={(event) => updatePerformanceThreshold('nsfwDetection', event.target.value)}
+                    />
+                  </label>
+                  <label className="text-layer-field">
+                    <span>SAM3 manual ms</span>
+                    <input
+                      aria-label="SAM3 manual segment threshold"
+                      type="number"
+                      min={50}
+                      max={20000}
+                      step={50}
+                      value={performanceThresholds.sam3ManualSegment}
+                      onChange={(event) => updatePerformanceThreshold('sam3ManualSegment', event.target.value)}
+                    />
+                  </label>
+                </div>
+                <button type="button" className="page-card page-button" onClick={resetPerformanceThresholds}>
+                  Reset performance thresholds
+                </button>
               </div>
             </div>
           </div>
@@ -2964,7 +4677,7 @@ function App() {
                   onChange={handleFileChange}
                 />
               </label>
-              <button type="button" onClick={loadSampleImage}>
+              <button type="button" onClick={handleLoadSampleImage}>
                 Load sample image
               </button>
               <button type="button" onClick={selectAllVisibleLayers} disabled={!image}>
@@ -3033,7 +4746,7 @@ function App() {
               <button type="button" onClick={redo} disabled={redoStack.length === 0}>
                 Redo
               </button>
-              <button type="button" onClick={saveNow} disabled={!isDirty}>
+              <button type="button" onClick={handleSaveNow} disabled={!isDirty}>
                 Save now
               </button>
               <button type="button" onClick={saveCurrentPageAsTemplate} disabled={!image}>
@@ -4714,13 +6427,47 @@ function App() {
                 <div className="page-card">
                   <strong>{backendStatus.sam3_loaded ? 'SAM3 Ready' : 'SAM3 Loading'}</strong>
                   <span>{getBackendModelStatusDetail('sam3')}</span>
+                  <span>{getBackendCapabilityLabel('sam3')}</span>
+                  {backendStatus.sam3_native_reason ? <span>{`SAM3 native detail ${backendStatus.sam3_native_reason}`}</span> : null}
+                  {backendStatus.sam3_recommendation ? <span>{backendStatus.sam3_recommendation}</span> : null}
+                  {backendStatus.sam3_error_message ? <span>{backendStatus.sam3_error_message}</span> : null}
                 </div>
                 <div className="page-card">
                   <strong>{backendStatus.nudenet_loaded ? 'NudeNet Ready' : 'NudeNet Loading'}</strong>
                   <span>{getBackendModelStatusDetail('nudenet')}</span>
+                  <span>{getBackendCapabilityLabel('nudenet')}</span>
+                  {backendStatus.nudenet_native_reason ? <span>{`NudeNet native detail ${backendStatus.nudenet_native_reason}`}</span> : null}
+                  {backendStatus.nudenet_recommendation ? <span>{backendStatus.nudenet_recommendation}</span> : null}
+                  {backendStatus.nudenet_error_message ? <span>{backendStatus.nudenet_error_message}</span> : null}
                 </div>
                 <div className="page-card">
                   <strong>{backendStatus.gpu_available ? 'GPU Available' : 'GPU Unavailable'}</strong>
+                  <span>{getBackendRuntimeLabel()}</span>
+                </div>
+                <div className="page-card">
+                  <strong>Runtime strategy</strong>
+                  <span>{getBackendPreferenceLabel('sam3')}</span>
+                  <span>{getSam3CheckpointLabel()}</span>
+                  <span>{getSam3CheckpointPathLabel()}</span>
+                  <span>{getSam3ConfigPathLabel()}</span>
+                  <span>{getBackendPreferenceLabel('nudenet')}</span>
+                  {backendRuntimeConfigMessage ? <span>{backendRuntimeConfigMessage}</span> : null}
+                  <div className="help-action-row">
+                    <button
+                      type="button"
+                      className="page-card page-button"
+                      onClick={() => void syncBackendRuntimePreferences()}
+                    >
+                      Apply backend strategy
+                    </button>
+                    <button
+                      type="button"
+                      className="page-card page-button"
+                      onClick={() => void refreshBackendRuntimePreferences()}
+                    >
+                      Refresh backend strategy
+                    </button>
+                  </div>
                 </div>
                 <label className="text-layer-field">
                   <span>SAM3 model size</span>

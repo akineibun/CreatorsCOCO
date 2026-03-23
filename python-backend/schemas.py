@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 ModelName = Literal["sam3", "nudenet"]
+BackendPreference = Literal["auto", "native", "heuristic"]
 
 
 class StatusResponse(BaseModel):
@@ -14,6 +15,46 @@ class StatusResponse(BaseModel):
     sam3_progress: int
     nudenet_status: str
     nudenet_progress: int
+    packaged_runtime: bool
+    python_version: str
+    sam3_backend: str
+    nudenet_backend: str
+    sam3_native_available: bool
+    nudenet_native_available: bool
+    sam3_checkpoint_path: str | None = None
+    sam3_config_path: str | None = None
+    sam3_checkpoint_ready: bool = False
+    sam3_native_reason: str | None = None
+    nudenet_native_reason: str | None = None
+    sam3_backend_preference: BackendPreference
+    nudenet_backend_preference: BackendPreference
+    sam3_recommendation: str
+    nudenet_recommendation: str
+    sam3_error_message: str | None = None
+    nudenet_error_message: str | None = None
+
+
+class RuntimeConfigResponse(BaseModel):
+    sam3_backend_preference: BackendPreference
+    nudenet_backend_preference: BackendPreference
+    sam3_native_available: bool
+    nudenet_native_available: bool
+    sam3_checkpoint_path: str | None = None
+    sam3_config_path: str | None = None
+    sam3_checkpoint_ready: bool = False
+    sam3_native_reason: str | None = None
+    nudenet_native_reason: str | None = None
+    sam3_effective_backend: str
+    nudenet_effective_backend: str
+    sam3_recommendation: str
+    nudenet_recommendation: str
+
+
+class RuntimeConfigUpdateRequest(BaseModel):
+    sam3_backend_preference: BackendPreference
+    nudenet_backend_preference: BackendPreference
+    sam3_checkpoint_path: str | None = None
+    sam3_config_path: str | None = None
 
 
 class SegmentPoint(BaseModel):
