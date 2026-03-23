@@ -34,6 +34,41 @@ describe('App shell', () => {
     expect(screen.getByRole('region', { name: 'Property inspector' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Layer panel' })).toBeInTheDocument()
     expect(screen.getByRole('contentinfo', { name: 'Status bar' })).toBeInTheDocument()
+    expect(screen.getByText('Getting started')).toBeInTheDocument()
+    expect(screen.getByText('Choose image か Load sample image で画像を開くと、中央キャンバスで編集できます。')).toBeInTheDocument()
+  })
+
+  it('renders an actual image preview after choosing an image file', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        sam3_loaded: true,
+        nudenet_loaded: true,
+        gpu_available: false,
+      }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const objectUrl = 'blob:uploaded-preview'
+    const createObjectURL = vi.fn(() => objectUrl)
+    vi.stubGlobal('URL', {
+      createObjectURL,
+      revokeObjectURL: vi.fn(),
+    })
+
+    const user = userEvent.setup()
+    render(<App />)
+
+    const input = screen.getByLabelText('Open image file')
+    await user.upload(input, new File(['image-data'], 'uploaded.png', { type: 'image/png' }))
+
+    expect(await screen.findByAltText('Canvas image preview: uploaded.png')).toHaveAttribute(
+      'src',
+      'data:image/png;base64,aW1hZ2UtZGF0YQ==',
+    )
+
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('loads backend model status into the sidebar', async () => {

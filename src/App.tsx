@@ -35,6 +35,7 @@ import {
   toolLabels,
   useWorkspaceStore,
 } from './stores/workspaceStore'
+import type { Tool } from './stores/workspaceStore'
 
 const EXPORT_HISTORY_STORAGE_KEY = 'creators-coco.export-history'
 const BACKEND_SETTINGS_STORAGE_KEY = 'creators-coco.backend-settings'
@@ -193,6 +194,24 @@ const getBackendMaskPreviewUrl = (value: Record<string, unknown> | null | undefi
 }
 
 const getPageBackendImageSource = (page: { sourceUrl?: string | null; src?: string | null }) => page.src ?? page.sourceUrl ?? ''
+
+const TOOL_ICON_BY_ID: Record<Tool, string> = {
+  select: '◎',
+  text: 'Aa',
+  'message-window': '談',
+  bubble: '◌',
+  mosaic: '▒',
+  overlay: '▭',
+}
+
+const TOOL_LABEL_JA_BY_ID: Record<Tool, string> = {
+  select: '選択',
+  text: '文字',
+  'message-window': '会話枠',
+  bubble: '吹き出し',
+  mosaic: 'モザイク',
+  overlay: 'オーバーレイ',
+}
 
 type ExportHistoryEntry = {
   format: 'PNG' | 'PDF' | 'ZIP'
@@ -1066,6 +1085,11 @@ function App() {
     [updateActiveBackendReviewState],
   )
   const image = selectActiveImage({ pages, activePageId })
+  const shouldFitBaseImagePreview =
+    imageTransform?.x === 0 &&
+    imageTransform?.y === 0 &&
+    imageTransform?.width === 960 &&
+    imageTransform?.height === 540
   const activeTextLayer =
     image && selectedLayerId && selectedLayerId !== 'base-image'
       ? image.textLayers.find((layer) => layer.id === selectedLayerId) ?? null
@@ -1264,6 +1288,13 @@ function App() {
         : activeWatermarkLayer
           ? 'Watermark layer'
           : 'None'
+  const editorHintMessage = !image
+    ? 'Choose image か Load sample image で画像を開くと、中央キャンバスで編集できます。'
+    : selectedLayerCount > 1
+      ? `${selectedLayerCount} selected layers are active. Right-side Inspector and Layers show the current editable selection.`
+      : selectedLayerId
+        ? `${selectionLabel} is selected. Edit it from the canvas or the right-side Inspector and Layers panels.`
+        : 'Add text layer などでレイヤーを追加すると、中央キャンバスと右側の Layers / Inspector に反映されます。'
   const positionLabel =
     selectedLayerId === 'base-image' && imageTransform
       ? `Position ${imageTransform.x}, ${imageTransform.y}`
@@ -4213,7 +4244,7 @@ function App() {
         </div>
         <DakiniWordmark />
         <label className="project-name-field">
-          <span>Project</span>
+          <span>プロジェクト</span>
           <input
             aria-label="Project name"
             type="text"
@@ -4225,12 +4256,12 @@ function App() {
           />
         </label>
         <nav aria-label="Primary navigation">
-          <button type="button">File</button>
-          <button type="button">Edit</button>
-          <button type="button">View</button>
-          <button type="button">Tools</button>
-          <button type="button" onClick={() => setIsHelpOpen(true)}>
-            Help
+          <button type="button" aria-label="File">ファイル</button>
+          <button type="button" aria-label="Edit">編集</button>
+          <button type="button" aria-label="View">表示</button>
+          <button type="button" aria-label="Tools">ツール</button>
+          <button type="button" aria-label="Help" onClick={() => setIsHelpOpen(true)}>
+            ヘルプ
           </button>
         </nav>
       </header>
@@ -4644,187 +4675,421 @@ function App() {
       ) : null}
 
       <div className="workspace-grid">
-        <aside aria-label="Tool palette" className="tool-palette">
-          <div className="panel-title">Tools</div>
-          <div className="tool-stack" role="toolbar" aria-label="Tool palette">
-            {toolLabels.map((tool) => (
-              <button
-                key={tool.id}
-                type="button"
-                className={tool.id === activeTool ? 'tool-button active' : 'tool-button'}
-                aria-pressed={tool.id === activeTool}
-                onClick={() => setActiveTool(tool.id)}
-              >
-                {tool.label}
-              </button>
-            ))}
-          </div>
-        </aside>
+        <div className="left-sidebar">
+          <aside aria-label="Tool palette" className="tool-palette">
+            <div className="panel-title">ツール</div>
+            <div className="tool-stack" role="toolbar" aria-label="Tool palette">
+              {toolLabels.map((tool) => (
+                <button
+                  key={tool.id}
+                  type="button"
+                  className={tool.id === activeTool ? 'tool-button active' : 'tool-button'}
+                  aria-label={tool.label}
+                  title={TOOL_LABEL_JA_BY_ID[tool.id]}
+                  aria-pressed={tool.id === activeTool}
+                  onClick={() => setActiveTool(tool.id)}
+                >
+                  <span className="tool-button-icon" aria-hidden="true">
+                    {TOOL_ICON_BY_ID[tool.id]}
+                  </span>
+                  <span className="tool-button-label">{TOOL_LABEL_JA_BY_ID[tool.id]}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <section className="sidebar-card action-sidebar" aria-label="Quick actions">
+            <div className="panel-title">クイック操作</div>
+
+            <div className="action-section">
+              <strong>読み込みと書き出し</strong>
+              <div className="action-grid">
+                <label className="file-picker action-button">
+                  <span>画像を選択</span>
+                  <input
+                    aria-label="Open image file"
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                    onChange={handleFileChange}
+                  />
+                </label>
+                <button type="button" aria-label="Load sample image" onClick={handleLoadSampleImage}>
+                  サンプル画像
+                </button>
+                <button type="button" aria-label="Save now" onClick={handleSaveNow} disabled={!isDirty}>
+                  今すぐ保存
+                </button>
+                <button type="button" aria-label="Export PNG" onClick={handleExportPng} disabled={!image}>
+                  PNG書き出し
+                </button>
+                <button type="button" aria-label="Export ZIP" onClick={handleExportZip} disabled={pages.length === 0}>
+                  ZIP書き出し
+                </button>
+                <button type="button" aria-label="Export PDF" onClick={handleExportPdf} disabled={!image}>
+                  PDF書き出し
+                </button>
+              </div>
+            </div>
+
+            <div className="action-section">
+              <strong>レイヤー追加</strong>
+              <div className="action-grid">
+                <button type="button" aria-label="Add text layer" onClick={addTextLayer} disabled={!image}>
+                  文字
+                </button>
+                <button
+                  type="button"
+                  aria-label="Add message window layer"
+                  onClick={addMessageWindowLayer}
+                  disabled={!image}
+                >
+                  会話枠
+                </button>
+                <button type="button" aria-label="Add bubble layer" onClick={addBubbleLayer} disabled={!image}>
+                  吹き出し
+                </button>
+                <button type="button" aria-label="Add mosaic layer" onClick={addMosaicLayer} disabled={!image}>
+                  モザイク
+                </button>
+                <button type="button" aria-label="Add overlay layer" onClick={addOverlayLayer} disabled={!image}>
+                  オーバーレイ
+                </button>
+                <button type="button" aria-label="Add watermark layer" onClick={addWatermarkLayer} disabled={!image}>
+                  透かし
+                </button>
+                <label className="file-picker action-button">
+                  <span>透かし画像</span>
+                  <input
+                    aria-label="Open watermark image"
+                    type="file"
+                    accept=".png,image/png"
+                    onChange={handleWatermarkFileChange}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="action-section">
+              <strong>選択と整列</strong>
+              <div className="action-grid compact">
+                <button type="button" aria-label="Select all visible layers" onClick={selectAllVisibleLayers} disabled={!image}>
+                  全表示
+                </button>
+                <button
+                  type="button"
+                  aria-label="Select text layers"
+                  onClick={() => selectVisibleLayersByType('text')}
+                  disabled={!image}
+                >
+                  文字選択
+                </button>
+                <button
+                  type="button"
+                  aria-label="Select message window layers"
+                  onClick={() => selectVisibleLayersByType('message-window')}
+                  disabled={!image}
+                >
+                  会話枠選択
+                </button>
+                <button
+                  type="button"
+                  aria-label="Select bubble layers"
+                  onClick={() => selectVisibleLayersByType('bubble')}
+                  disabled={!image}
+                >
+                  吹き出し選択
+                </button>
+                <button
+                  type="button"
+                  aria-label="Select mosaic layers"
+                  onClick={() => selectVisibleLayersByType('mosaic')}
+                  disabled={!image}
+                >
+                  モザイク選択
+                </button>
+                <button
+                  type="button"
+                  aria-label="Select overlay layers"
+                  onClick={() => selectVisibleLayersByType('overlay')}
+                  disabled={!image}
+                >
+                  オーバーレイ選択
+                </button>
+                <button
+                  type="button"
+                  aria-label="Select watermark layers"
+                  onClick={() => selectVisibleLayersByType('watermark')}
+                  disabled={!image}
+                >
+                  透かし選択
+                </button>
+                <button type="button" aria-label="Invert layer selection" onClick={invertLayerSelection} disabled={!image}>
+                  反転
+                </button>
+                <button type="button" aria-label="Clear layer selection" onClick={clearLayerSelection} disabled={!selectedLayerId}>
+                  解除
+                </button>
+                <button type="button" aria-label="Select base image layer" onClick={selectBaseImageLayer}>
+                  元画像
+                </button>
+                <button
+                  type="button"
+                  aria-label="Toggle selected layer visibility"
+                  onClick={toggleSelectedLayerVisibility}
+                  disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
+                >
+                  表示切替
+                </button>
+                <button
+                  type="button"
+                  aria-label="Toggle selected layer lock"
+                  onClick={toggleSelectedLayerLock}
+                  disabled={
+                    !activeTextLayer &&
+                    !activeMessageWindowLayer &&
+                    !activeBubbleLayer &&
+                    !activeMosaicLayer &&
+                    !activeOverlayLayer &&
+                    !activeWatermarkLayer
+                  }
+                >
+                  ロック切替
+                </button>
+                <button type="button" aria-label="Group selected layers" onClick={groupSelectedLayers} disabled={selectedLayerCount < 2}>
+                  グループ化
+                </button>
+                <button type="button" aria-label="Select grouped layers" onClick={selectGroupedLayers} disabled={!activeLayerGroupId}>
+                  グループ選択
+                </button>
+                <button
+                  type="button"
+                  aria-label="Ungroup selected layers"
+                  onClick={ungroupSelectedLayers}
+                  disabled={!activeLayerGroupId && selectedLayerCount < 2}
+                >
+                  グループ解除
+                </button>
+                <button
+                  type="button"
+                  aria-label="Duplicate selected layer"
+                  onClick={duplicateSelectedLayer}
+                  disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
+                >
+                  複製
+                </button>
+                <button
+                  type="button"
+                  aria-label="Center selected layer"
+                  onClick={centerSelectedLayer}
+                  disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
+                >
+                  中央
+                </button>
+                <button
+                  type="button"
+                  aria-label="Move selected layer backward"
+                  onClick={moveSelectedLayerBackward}
+                  disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
+                >
+                  背面へ
+                </button>
+                <button
+                  type="button"
+                  aria-label="Move selected layer forward"
+                  onClick={moveSelectedLayerForward}
+                  disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
+                >
+                  前面へ
+                </button>
+                <button
+                  type="button"
+                  aria-label="Delete selected layer"
+                  onClick={deleteSelectedLayer}
+                  disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
+                >
+                  削除
+                </button>
+                <button type="button" aria-label="Align selected layer left" onClick={() => alignSelectedLayer('left')}>
+                  左寄せ
+                </button>
+                <button type="button" aria-label="Align selected layer right" onClick={() => alignSelectedLayer('right')}>
+                  右寄せ
+                </button>
+                <button type="button" aria-label="Align selected layer top" onClick={() => alignSelectedLayer('top')}>
+                  上寄せ
+                </button>
+                <button type="button" aria-label="Align selected layer bottom" onClick={() => alignSelectedLayer('bottom')}>
+                  下寄せ
+                </button>
+                <button
+                  type="button"
+                  aria-label="Align selected layers center horizontally"
+                  onClick={() => alignSelectedLayersCenter('horizontal')}
+                >
+                  横中央
+                </button>
+                <button
+                  type="button"
+                  aria-label="Align selected layers center vertically"
+                  onClick={() => alignSelectedLayersCenter('vertical')}
+                >
+                  縦中央
+                </button>
+                <button
+                  type="button"
+                  aria-label="Distribute selected layers horizontally"
+                  onClick={() => distributeSelectedLayers('horizontal')}
+                >
+                  横均等
+                </button>
+                <button
+                  type="button"
+                  aria-label="Distribute selected layers vertically"
+                  onClick={() => distributeSelectedLayers('vertical')}
+                >
+                  縦均等
+                </button>
+                <button type="button" aria-label="Match selected layer widths" onClick={() => matchSelectedLayerSize('width')}>
+                  幅揃え
+                </button>
+                <button type="button" aria-label="Match selected layer heights" onClick={() => matchSelectedLayerSize('height')}>
+                  高さ揃え
+                </button>
+                <button type="button" aria-label="Move left" onClick={() => moveSelection(-32, 0)}>
+                  ←
+                </button>
+                <button type="button" aria-label="Move right" onClick={() => moveSelection(32, 0)}>
+                  →
+                </button>
+                <button type="button" aria-label="Move up" onClick={() => moveSelection(0, -32)}>
+                  ↑
+                </button>
+                <button type="button" aria-label="Move down" onClick={() => moveSelection(0, 32)}>
+                  ↓
+                </button>
+                <button type="button" aria-label="Scale down" onClick={() => scaleSelection(0.9)}>
+                  縮小
+                </button>
+                <button type="button" aria-label="Scale up" onClick={() => scaleSelection(1.125)}>
+                  拡大
+                </button>
+              </div>
+            </div>
+
+            <div className="action-section">
+              <strong>ページ操作</strong>
+              <div className="action-grid">
+                <button type="button" aria-label="Delete active page" onClick={deleteActivePage} disabled={!image}>
+                  現在ページ削除
+                </button>
+                <button type="button" aria-label="Duplicate active page" onClick={duplicateActivePage} disabled={!image}>
+                  現在ページ複製
+                </button>
+                <button type="button" aria-label="Move active page up" onClick={moveActivePageUp} disabled={!image}>
+                  ページ上へ
+                </button>
+                <button type="button" aria-label="Move active page down" onClick={moveActivePageDown} disabled={!image}>
+                  ページ下へ
+                </button>
+                <button
+                  type="button"
+                  aria-label="Save page as template"
+                  onClick={saveCurrentPageAsTemplate}
+                  disabled={!image}
+                >
+                  テンプレ保存
+                </button>
+                <button
+                  type="button"
+                  aria-label="Save page as reusable asset"
+                  onClick={saveCurrentPageAsReusableAsset}
+                  disabled={!image}
+                >
+                  再利用素材化
+                </button>
+                <label className="text-layer-field">
+                  <span>差し替え文字</span>
+                  <input
+                    aria-label="Duplicate page text swap"
+                    type="text"
+                    value={duplicatePageTextDraft}
+                    onChange={(event) => {
+                      setDuplicatePageTextDraft(event.target.value)
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  aria-label="Duplicate page with text swap"
+                  onClick={() => duplicateActivePageWithTextSwap(duplicatePageTextDraft)}
+                  disabled={!image}
+                >
+                  文字差し替え複製
+                </button>
+                <label className="text-layer-field">
+                  <span>差し替え候補</span>
+                  <textarea
+                    aria-label="Duplicate page variant batch"
+                    value={variantBatchDraft}
+                    onChange={(event) => {
+                      setVariantBatchDraft(event.target.value)
+                    }}
+                    rows={3}
+                  />
+                </label>
+                <label className="text-layer-field">
+                  <span>バリアント名</span>
+                  <input
+                    aria-label="Active page variant label"
+                    type="text"
+                    value={image?.variantLabel ?? ''}
+                    onChange={(event) => {
+                      setActivePageVariantLabel(event.target.value)
+                    }}
+                    disabled={!image}
+                  />
+                </label>
+                <button
+                  type="button"
+                  aria-label="Duplicate page as batch variants"
+                  onClick={() => duplicateActivePageWithTextVariants(variantBatchDraft.split('\n'))}
+                  disabled={!image}
+                >
+                  一括複製
+                </button>
+              </div>
+            </div>
+
+            <div className="action-section">
+              <strong>履歴と表示</strong>
+              <div className="action-grid compact">
+                <button type="button" aria-label="Zoom out" onClick={zoomOut}>
+                  縮小表示
+                </button>
+                <button type="button" aria-label="Zoom in" onClick={zoomIn}>
+                  拡大表示
+                </button>
+                <button type="button" aria-label="Undo" onClick={undo} disabled={undoStack.length === 0}>
+                  元に戻す
+                </button>
+                <button type="button" aria-label="Redo" onClick={redo} disabled={redoStack.length === 0}>
+                  やり直し
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
 
         <main aria-label="Canvas workspace" className="canvas-panel">
           <div className="panel-header">
             <div>
-              <div className="panel-title">Main canvas</div>
-              <div className="panel-subtitle">Phase 1 canvas MVP</div>
+              <div className="panel-title">メインキャンバス</div>
+              <div className="panel-subtitle">画像を大きく見ながら編集する作業エリア</div>
             </div>
-            <div className="canvas-controls">
-              <label className="file-picker">
-                <span>Choose image</span>
-                <input
-                  aria-label="Open image file"
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                  onChange={handleFileChange}
-                />
-              </label>
-              <button type="button" onClick={handleLoadSampleImage}>
-                Load sample image
-              </button>
-              <button type="button" onClick={selectAllVisibleLayers} disabled={!image}>
-                Select all visible layers
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('text')} disabled={!image}>
-                Select text layers
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('message-window')} disabled={!image}>
-                Select message window layers
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('bubble')} disabled={!image}>
-                Select bubble layers
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('mosaic')} disabled={!image}>
-                Select mosaic layers
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('overlay')} disabled={!image}>
-                Select overlay layers
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('watermark')} disabled={!image}>
-                Select watermark layers
-              </button>
-              <button type="button" onClick={invertLayerSelection} disabled={!image}>
-                Invert layer selection
-              </button>
-              <button type="button" onClick={clearLayerSelection} disabled={!selectedLayerId}>
-                Clear layer selection
-              </button>
-              <button type="button" onClick={addTextLayer} disabled={!image}>
-                Add text layer
-              </button>
-              <button type="button" onClick={addMessageWindowLayer} disabled={!image}>
-                Add message window layer
-              </button>
-              <button type="button" onClick={addWatermarkLayer} disabled={!image}>
-                Add watermark layer
-              </button>
-              <label className="file-picker">
-                <span>Watermark asset</span>
-                <input
-                  aria-label="Open watermark image"
-                  type="file"
-                  accept=".png,image/png"
-                  onChange={handleWatermarkFileChange}
-                />
-              </label>
-              <button type="button" onClick={addBubbleLayer} disabled={!image}>
-                Add bubble layer
-              </button>
-              <button type="button" onClick={addMosaicLayer} disabled={!image}>
-                Add mosaic layer
-              </button>
-              <button type="button" onClick={addOverlayLayer} disabled={!image}>
-                Add overlay layer
-              </button>
-              <button type="button" onClick={zoomOut}>
-                Zoom out
-              </button>
-              <button type="button" onClick={zoomIn}>
-                Zoom in
-              </button>
-              <button type="button" onClick={undo} disabled={undoStack.length === 0}>
-                Undo
-              </button>
-              <button type="button" onClick={redo} disabled={redoStack.length === 0}>
-                Redo
-              </button>
-              <button type="button" onClick={handleSaveNow} disabled={!isDirty}>
-                Save now
-              </button>
-              <button type="button" onClick={saveCurrentPageAsTemplate} disabled={!image}>
-                Save page as template
-              </button>
-              <button type="button" onClick={saveCurrentPageAsReusableAsset} disabled={!image}>
-                Save page as reusable asset
-              </button>
-              <button type="button" onClick={handleExportPng} disabled={!image}>
-                Export PNG
-              </button>
-              <button type="button" onClick={handleExportZip} disabled={pages.length === 0}>
-                Export ZIP
-              </button>
-              <button type="button" onClick={handleExportPdf} disabled={!image}>
-                Export PDF
-              </button>
-              <button type="button" onClick={deleteActivePage} disabled={!image}>
-                Delete active page
-              </button>
-              <button type="button" onClick={duplicateActivePage} disabled={!image}>
-                Duplicate active page
-              </button>
-              <label className="text-layer-field">
-                <span>Variant text</span>
-                <input
-                  aria-label="Duplicate page text swap"
-                  type="text"
-                  value={duplicatePageTextDraft}
-                  onChange={(event) => {
-                    setDuplicatePageTextDraft(event.target.value)
-                  }}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => duplicateActivePageWithTextSwap(duplicatePageTextDraft)}
-                disabled={!image}
-              >
-                Duplicate page with text swap
-              </button>
-              <label className="text-layer-field">
-                <span>Variant batch</span>
-                <textarea
-                  aria-label="Duplicate page variant batch"
-                  value={variantBatchDraft}
-                  onChange={(event) => {
-                    setVariantBatchDraft(event.target.value)
-                  }}
-                  rows={3}
-                />
-              </label>
-              <label className="text-layer-field">
-                <span>Variant label</span>
-                <input
-                  aria-label="Active page variant label"
-                  type="text"
-                  value={image?.variantLabel ?? ''}
-                  onChange={(event) => {
-                    setActivePageVariantLabel(event.target.value)
-                  }}
-                  disabled={!image}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={() => duplicateActivePageWithTextVariants(variantBatchDraft.split('\n'))}
-                disabled={!image}
-              >
-                Duplicate page as batch variants
-              </button>
-              <button type="button" onClick={moveActivePageUp} disabled={!image}>
-                Move active page up
-              </button>
-              <button type="button" onClick={moveActivePageDown} disabled={!image}>
-                Move active page down
-              </button>
-            </div>
+          </div>
+          <div className="editor-hint" aria-label="Editor guidance">
+            <strong>{image ? '編集中の対象' : 'Getting started'}</strong>
+            <span>{editorHintMessage}</span>
           </div>
           <div className="canvas-surface">
             {image ? (
@@ -4836,6 +5101,31 @@ function App() {
                   onMouseMove={handleCanvasMouseMove}
                   onMouseUp={handleCanvasMouseUp}
                 >
+                  {getPageBackendImageSource(image) ? (
+                    <img
+                      alt={`Canvas image preview: ${image.name}`}
+                      className="canvas-base-image"
+                      src={getPageBackendImageSource(image)}
+                      style={
+                        imageTransform
+                          ? shouldFitBaseImagePreview
+                            ? {
+                                left: '0%',
+                                top: '0%',
+                                width: '100%',
+                                height: '100%',
+                              }
+                            : {
+                                left: `${(imageTransform.x / outputSettings.width) * 100}%`,
+                                top: `${(imageTransform.y / outputSettings.height) * 100}%`,
+                                width: `${(imageTransform.width / outputSettings.width) * 100}%`,
+                                height: `${(imageTransform.height / outputSettings.height) * 100}%`,
+                              }
+                          : undefined
+                      }
+                    />
+                  ) : null}
+                  <div className="canvas-frame-meta">
                   <span>{image.name}</span>
                   <strong>
                     {selectedLayerId === 'base-image'
@@ -4851,6 +5141,7 @@ function App() {
                       {imageTransform.y}
                     </span>
                   ) : null}
+                  </div>
                   {image.textLayers.filter((layer) => layer.visible).map((layer) => (
                     <button
                       key={layer.id}
@@ -5230,168 +5521,6 @@ function App() {
                   ) : null}
                 </div>
 
-                <div className="selection-controls" role="group" aria-label="Selection controls">
-                  <button type="button" onClick={selectBaseImageLayer}>
-                    Select base image layer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleSelectedLayerVisibility}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Toggle selected layer visibility
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleSelectedLayerLock}
-                    disabled={
-                      !activeTextLayer &&
-                      !activeMessageWindowLayer &&
-                      !activeBubbleLayer &&
-                      !activeMosaicLayer &&
-                      !activeOverlayLayer &&
-                      !activeWatermarkLayer
-                    }
-                  >
-                    Toggle selected layer lock
-                  </button>
-                  <button type="button" onClick={groupSelectedLayers} disabled={selectedLayerCount < 2}>
-                    Group selected layers
-                  </button>
-                  <button type="button" onClick={selectGroupedLayers} disabled={!activeLayerGroupId}>
-                    Select grouped layers
-                  </button>
-                  <button
-                    type="button"
-                    onClick={ungroupSelectedLayers}
-                    disabled={!activeLayerGroupId && selectedLayerCount < 2}
-                  >
-                    Ungroup selected layers
-                  </button>
-                  <button
-                    type="button"
-                    onClick={duplicateSelectedLayer}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Duplicate selected layer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={centerSelectedLayer}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Center selected layer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={moveSelectedLayerBackward}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Move selected layer backward
-                  </button>
-                  <button
-                    type="button"
-                    onClick={moveSelectedLayerForward}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Move selected layer forward
-                  </button>
-                  <button
-                    type="button"
-                    onClick={deleteSelectedLayer}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Delete selected layer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayer('left')}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Align selected layer left
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayer('right')}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Align selected layer right
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayer('top')}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Align selected layer top
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayer('bottom')}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Align selected layer bottom
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayersCenter('horizontal')}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Align selected layers center horizontally
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayersCenter('vertical')}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Align selected layers center vertically
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => distributeSelectedLayers('horizontal')}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Distribute selected layers horizontally
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => distributeSelectedLayers('vertical')}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Distribute selected layers vertically
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => matchSelectedLayerSize('width')}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Match selected layer widths
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => matchSelectedLayerSize('height')}
-                    disabled={!activeTextLayer && !activeBubbleLayer && !activeMosaicLayer && !activeOverlayLayer}
-                  >
-                    Match selected layer heights
-                  </button>
-                  <button type="button" onClick={() => moveSelection(-32, 0)}>
-                    Move left
-                  </button>
-                  <button type="button" onClick={() => moveSelection(32, 0)}>
-                    Move right
-                  </button>
-                  <button type="button" onClick={() => moveSelection(0, -32)}>
-                    Move up
-                  </button>
-                  <button type="button" onClick={() => moveSelection(0, 32)}>
-                    Move down
-                  </button>
-                  <button type="button" onClick={() => scaleSelection(0.9)}>
-                    Scale down
-                  </button>
-                  <button type="button" onClick={() => scaleSelection(1.125)}>
-                    Scale up
-                  </button>
-                </div>
                 {activeTextLayer ? (
                   <div className="selection-controls text-controls" role="group" aria-label="Text layer controls">
                     <label className="text-layer-field">
@@ -5948,7 +6077,7 @@ function App() {
                 onDrop={handleCanvasDrop}
               >
                 <strong>Drop or choose an image to begin</strong>
-                <span>Zoom / pan controls are active for the current page.</span>
+                <span>読み込みやレイヤー追加は左側のクイック操作から行えます。</span>
                 {loadError ? <span className="error-text">{loadError}</span> : null}
               </button>
             )}
@@ -5957,7 +6086,7 @@ function App() {
 
         <div className="right-sidebar">
           <aside aria-label="Page list" className="sidebar-card">
-            <div className="panel-title">Pages</div>
+            <div className="panel-title">ページ</div>
             <div className="page-list">
               {pages.length === 0 ? (
                 <div className="page-card current empty">
@@ -5993,7 +6122,7 @@ function App() {
           </aside>
 
           <section aria-label="Property inspector" className="sidebar-card">
-            <div className="panel-title">Inspector</div>
+            <div className="panel-title">インスペクター</div>
             <dl className="inspector-grid">
               <div>
                 <dt>Selection</dt>
@@ -6275,7 +6404,7 @@ function App() {
           </section>
 
           <section aria-label="Layer panel" className="sidebar-card">
-            <div className="panel-title">Layers</div>
+            <div className="panel-title">レイヤー</div>
             <ul className="layer-list">
               <li className={selectedLayerId === 'base-image' ? 'selected-layer' : undefined}>
                 <span className="layer-visibility" aria-hidden="true">
@@ -6409,7 +6538,7 @@ function App() {
           </section>
 
           <section aria-label="Backend status" className="sidebar-card">
-            <div className="panel-title">Backend status</div>
+            <div className="panel-title">バックエンド状態</div>
             {backendStatusError ? (
               <div className="page-list">
                 <div className="page-card empty">
@@ -7097,7 +7226,7 @@ function App() {
           </section>
 
           <section aria-label="Preset library" className="sidebar-card">
-            <div className="panel-title">Preset library</div>
+            <div className="panel-title">プリセット</div>
             <div className="page-list">
               <div className="page-card">
                 <strong>{`${messageWindowPresets.length} message presets`}</strong>
@@ -7497,7 +7626,7 @@ function App() {
           </section>
 
           <section aria-label="Page templates" className="sidebar-card">
-            <div className="panel-title">Templates</div>
+            <div className="panel-title">テンプレート</div>
             <div className="page-list">
               {(presetLibraryFilter === 'all' || presetLibraryFilter === 'template') && templates.length === 0 ? (
                 <div className="page-card empty">
@@ -7580,7 +7709,7 @@ function App() {
           </section>
 
           <section aria-label="Reusable assets" className="sidebar-card">
-            <div className="panel-title">Reusable assets</div>
+            <div className="panel-title">再利用素材</div>
             <div className="page-list">
               {(presetLibraryFilter === 'all' || presetLibraryFilter === 'asset') && reusableAssets.length === 0 ? (
                 <div className="page-card empty">
@@ -7641,7 +7770,7 @@ function App() {
           </section>
 
           <section aria-label="Export settings" className="sidebar-card">
-            <div className="panel-title">Export settings</div>
+            <div className="panel-title">書き出し設定</div>
             <div className="page-list">
               {outputPresets.map((preset) => (
                 <button
