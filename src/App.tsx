@@ -1264,6 +1264,13 @@ function App() {
         : activeWatermarkLayer
           ? 'Watermark layer'
           : 'None'
+  const editorHintMessage = !image
+    ? 'Choose image か Load sample image で画像を開くと、中央キャンバスで編集できます。'
+    : selectedLayerCount > 1
+      ? `${selectedLayerCount} selected layers are active. Right-side Inspector and Layers show the current editable selection.`
+      : selectedLayerId
+        ? `${selectionLabel} is selected. Edit it from the canvas or the right-side Inspector and Layers panels.`
+        : 'Add text layer などでレイヤーを追加すると、中央キャンバスと右側の Layers / Inspector に反映されます。'
   const positionLabel =
     selectedLayerId === 'base-image' && imageTransform
       ? `Position ${imageTransform.x}, ${imageTransform.y}`
@@ -4826,6 +4833,10 @@ function App() {
               </button>
             </div>
           </div>
+          <div className="editor-hint" aria-label="Editor guidance">
+            <strong>{image ? 'Editing target' : 'Getting started'}</strong>
+            <span>{editorHintMessage}</span>
+          </div>
           <div className="canvas-surface">
             {image ? (
               <div className="canvas-stack">
@@ -4836,6 +4847,24 @@ function App() {
                   onMouseMove={handleCanvasMouseMove}
                   onMouseUp={handleCanvasMouseUp}
                 >
+                  {getPageBackendImageSource(image) ? (
+                    <img
+                      alt={`Canvas image preview: ${image.name}`}
+                      className="canvas-base-image"
+                      src={getPageBackendImageSource(image)}
+                      style={
+                        imageTransform
+                          ? {
+                              left: `${(imageTransform.x / outputSettings.width) * 100}%`,
+                              top: `${(imageTransform.y / outputSettings.height) * 100}%`,
+                              width: `${(imageTransform.width / outputSettings.width) * 100}%`,
+                              height: `${(imageTransform.height / outputSettings.height) * 100}%`,
+                            }
+                          : undefined
+                      }
+                    />
+                  ) : null}
+                  <div className="canvas-frame-meta">
                   <span>{image.name}</span>
                   <strong>
                     {selectedLayerId === 'base-image'
@@ -4851,6 +4880,7 @@ function App() {
                       {imageTransform.y}
                     </span>
                   ) : null}
+                  </div>
                   {image.textLayers.filter((layer) => layer.visible).map((layer) => (
                     <button
                       key={layer.id}

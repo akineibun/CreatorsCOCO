@@ -41,8 +41,10 @@ button {
 
 .app-shell {
   min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  overflow: hidden;
 }
 
 .menu-bar {
@@ -146,6 +148,7 @@ button {
   gap: 16px;
   padding: 16px;
   min-height: 0;
+  overflow: hidden;
 }
 
 .tool-palette,
@@ -159,6 +162,7 @@ button {
 
 .tool-palette {
   padding: 16px 10px;
+  overflow: auto;
 }
 
 .tool-stack {
@@ -194,6 +198,8 @@ button {
   display: flex;
   flex-direction: column;
   padding: 18px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .panel-header {
@@ -208,6 +214,30 @@ button {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  max-height: 176px;
+  overflow: auto;
+  align-content: flex-start;
+  padding-right: 4px;
+}
+
+.editor-hint {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(215, 180, 138, 0.2);
+  background: rgba(243, 239, 230, 0.05);
+}
+
+.editor-hint strong {
+  color: #f3efe6;
+  font-size: 0.88rem;
+}
+
+.editor-hint span {
+  color: rgba(243, 239, 230, 0.72);
+  font-size: 0.85rem;
 }
 
 .file-picker {
@@ -242,6 +272,8 @@ button {
     12px -12px,
     -12px 0;
   min-height: 480px;
+  min-width: 0;
+  overflow: auto;
 }
 
 .canvas-stack {
@@ -267,6 +299,28 @@ button {
   gap: 8px;
   text-align: center;
   cursor: crosshair;
+}
+
+.canvas-base-image {
+  position: absolute;
+  object-fit: fill;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.16);
+  pointer-events: none;
+}
+
+.canvas-frame-meta {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  background: rgba(244, 237, 227, 0.78);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
 }
 
 .canvas-frame.loaded {
@@ -610,12 +664,16 @@ button {
 
 .right-sidebar {
   display: grid;
-  grid-template-rows: 1fr 1fr 1fr;
+  grid-template-rows: minmax(140px, auto) minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar-card {
   padding: 16px;
+  min-height: 0;
+  overflow: auto;
 }
 
 .page-card {
@@ -631,6 +689,7 @@ button {
 .page-list {
   display: grid;
   gap: 10px;
+  overflow: auto;
 }
 
 .page-button {
