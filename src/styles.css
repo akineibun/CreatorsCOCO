@@ -144,11 +144,18 @@ button {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 320px;
+  grid-template-columns: 280px minmax(0, 1fr) 320px;
   gap: 16px;
   padding: 16px;
   min-height: 0;
   overflow: hidden;
+}
+
+.left-sidebar {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 16px;
 }
 
 .tool-palette,
@@ -161,23 +168,76 @@ button {
 }
 
 .tool-palette {
-  padding: 16px 10px;
-  overflow: auto;
+  padding: 16px 14px;
+  overflow: hidden;
 }
 
 .tool-stack {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
 .tool-button {
-  min-height: 56px;
+  min-height: 76px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  align-content: center;
+  padding: 10px 8px;
 }
 
 .tool-button.active {
   background: linear-gradient(135deg, #bf8f52, #7d5a37);
   border-color: rgba(255, 225, 191, 0.32);
+}
+
+.tool-button-icon {
+  font-size: 1.28rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tool-button-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.action-sidebar {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.action-section {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.action-section strong {
+  color: rgba(243, 239, 230, 0.94);
+  font-size: 0.9rem;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.action-grid.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.action-grid button,
+.action-button {
+  width: 100%;
+  min-height: 44px;
+}
+
+.action-sidebar .text-layer-field {
+  min-width: 0;
 }
 
 .panel-title {
@@ -197,27 +257,17 @@ button {
 .canvas-panel {
   display: flex;
   flex-direction: column;
-  padding: 18px;
+  padding: 20px;
   min-height: 0;
   overflow: hidden;
 }
 
 .panel-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: flex-start;
   gap: 16px;
   margin-bottom: 12px;
-}
-
-.canvas-controls {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  max-height: 176px;
-  overflow: auto;
-  align-content: flex-start;
-  padding-right: 4px;
 }
 
 .editor-hint {
@@ -257,7 +307,7 @@ button {
 .canvas-surface {
   flex: 1;
   display: grid;
-  place-items: center;
+  place-items: start center;
   border-radius: 18px;
   background:
     linear-gradient(45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%),
@@ -279,52 +329,52 @@ button {
 .canvas-stack {
   width: 100%;
   display: grid;
-  justify-items: center;
+  justify-items: stretch;
   gap: 16px;
 }
 
 .canvas-frame {
   position: relative;
   overflow: hidden;
-  width: min(72%, 720px);
+  width: min(94%, 1180px);
   aspect-ratio: 16 / 9;
   border-radius: 24px;
   border: 1px solid rgba(243, 239, 230, 0.1);
   background: linear-gradient(180deg, #f4ede3 0%, #d6c4af 100%);
   color: #241b15;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-align: center;
   cursor: crosshair;
 }
 
 .canvas-base-image {
   position: absolute;
+  top: 0;
+  left: 0;
   object-fit: fill;
-  border-radius: 20px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.16);
+  border-radius: 0;
   pointer-events: none;
 }
 
 .canvas-frame-meta {
-  position: relative;
+  position: absolute;
+  top: 18px;
+  left: 18px;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 8px;
-  padding: 14px 18px;
+  max-width: min(50%, 320px);
+  padding: 10px 12px;
   border-radius: 18px;
-  background: rgba(244, 237, 227, 0.78);
+  background: rgba(244, 237, 227, 0.82);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+  text-align: left;
+  pointer-events: none;
 }
 
 .canvas-frame.loaded {
-  transform: scale(0.98);
+  transform: none;
 }
 
 .canvas-frame.selected {
@@ -465,13 +515,14 @@ button {
 .selection-controls {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
 }
 
 .text-controls {
-  width: min(72%, 720px);
+  width: 100%;
   align-items: center;
+  padding: 0 6px 4px;
 }
 
 .text-layer-field {
@@ -483,11 +534,15 @@ button {
 }
 
 .text-layer-field input,
+.text-layer-field textarea,
+.text-layer-field select,
 .layer-select-button {
   font: inherit;
 }
 
-.text-layer-field input {
+.text-layer-field input,
+.text-layer-field textarea,
+.text-layer-field select {
   width: 100%;
   color: inherit;
   background: rgba(243, 239, 230, 0.04);
@@ -668,6 +723,16 @@ button {
   gap: 16px;
   min-height: 0;
   overflow: hidden;
+}
+
+@media (max-width: 1400px) {
+  .workspace-grid {
+    grid-template-columns: 240px minmax(0, 1fr) 300px;
+  }
+
+  .action-grid.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .sidebar-card {
