@@ -23,6 +23,12 @@ export type ResizeBackgroundMode = 'white' | 'black' | 'blurred-art'
 export type ResizeFitMode = 'contain' | 'cover' | 'stretch'
 export type ExportQualityMode = 'high' | 'medium' | 'low' | 'platform'
 
+export type RubyAnnotation = {
+  start: number
+  end: number
+  text: string
+}
+
 export type CanvasTextLayer = {
   id: string
   name?: string | null
@@ -42,6 +48,7 @@ export type CanvasTextLayer = {
   strokeWidth: number
   strokeColor: string
   shadowEnabled: boolean
+  ruby?: RubyAnnotation[]
   visible: boolean
   locked: boolean
 }
@@ -386,6 +393,7 @@ type WorkspaceState = {
   toggleSelectedTextLayerVertical: () => void
   changeSelectedTextLayerOutlineWidth: (delta: number) => void
   toggleSelectedTextLayerShadow: () => void
+  setSelectedTextLayerRuby: (ruby: RubyAnnotation[]) => void
   saveSelectedTextStylePreset: () => void
   applyTextStylePreset: (presetId: string) => void
   renameTextStylePreset: (presetId: string, name: string) => void
@@ -3332,6 +3340,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             layer.id === activeTextLayer.id
               ? { ...layer, shadowEnabled: !layer.shadowEnabled }
               : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedTextLayerRuby: (ruby) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) {
+        return state
+      }
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id ? { ...layer, ruby } : layer,
           ),
         })),
         loadError: null,

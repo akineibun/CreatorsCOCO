@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent } from 'react'
+import { KonvaCanvas } from './components/KonvaCanvas'
 import {
   downloadBackendModel,
   getBackendModelProgress,
@@ -377,6 +378,8 @@ function App() {
   const [numberPaddingDraft, setNumberPaddingDraft] = useState('2')
   const [duplicatePageTextDraft, setDuplicatePageTextDraft] = useState('Variant line')
   const [variantBatchDraft, setVariantBatchDraft] = useState('Variant A\nVariant B')
+  // Ruby editor state: "start,end,rubyText"  (comma-separated shorthand)
+  const [rubyDraft, setRubyDraft] = useState('')
   const [presetLibraryFilter, setPresetLibraryFilter] = useState<'all' | 'text' | 'message' | 'watermark' | 'bubble' | 'overlay' | 'mosaic' | 'template' | 'asset'>('all')
   const [presetLibrarySearch, setPresetLibrarySearch] = useState('')
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null)
@@ -456,6 +459,7 @@ function App() {
     toggleSelectedTextLayerVertical,
     changeSelectedTextLayerOutlineWidth,
     toggleSelectedTextLayerShadow,
+    setSelectedTextLayerRuby,
     saveSelectedTextStylePreset,
     applyTextStylePreset,
     renameTextStylePreset,
@@ -2710,376 +2714,40 @@ function App() {
           <div className="canvas-surface">
             {image ? (
               <div className="canvas-stack">
-                <div
-                  aria-label="Canvas frame"
+                <KonvaCanvas
+                  image={image}
+                  imageTransform={imageTransform}
+                  selectedLayerId={selectedLayerId}
+                  selectedLayerIds={selectedLayerIds}
+                  onSelectLayers={(ids, additive) => setSelectedLayerIds(ids, additive)}
+                  onMoveSelectedLayers={(dx, dy) => moveSelectedLayersByDelta(dx, dy)}
+                  onResizeSelectedLayers={(dx, dy, handle, preserveAspectRatio) =>
+                    resizeSelectedLayersByDelta(dx, dy, handle, preserveAspectRatio)
+                  }
+                  sam3ReviewCandidates={previewSam3ReviewCandidates}
+                  nsfwReviewCandidates={previewNsfwReviewCandidates}
+                  manualSegmentPoints={previewBackendManualSegmentPoints}
+                  backendManualPointPickingMode={backendManualPointPickingMode}
+                  selectedBackendManualSegmentPointIndex={selectedBackendManualSegmentPointIndex}
+                  onSam3ReviewCandidateClick={(index) => setActiveFocusedSam3ReviewCandidateIndex(index)}
+                  onNsfwReviewCandidateClick={(index) => setActiveFocusedNsfwReviewCandidateIndex(index)}
+                  onManualSegmentPointClick={(index) => setSelectedBackendManualSegmentPointIndex(index)}
+                  onManualSegmentPointDragEnd={(index, x, y) => {
+                    setBackendManualSegmentPoints((current) =>
+                      current.map((pt, i) => (i === index ? { ...pt, x, y } : pt)),
+                    )
+                    setSelectedBackendManualSegmentPointIndex(index)
+                  }}
+                  onCanvasPointerUp={(x, y) => {
+                    addBackendManualSegmentPointAtCoordinates(
+                      x,
+                      y,
+                      backendManualPointPickingMode === 'negative' ? 0 : 1,
+                    )
+                    setBackendManualPointPickingMode('off')
+                  }}
                   className={selectedLayerId === 'base-image' ? 'canvas-frame loaded selected' : 'canvas-frame loaded'}
-                  onMouseDown={handleCanvasMouseDown}
-                  onMouseMove={handleCanvasMouseMove}
-                  onMouseUp={handleCanvasMouseUp}
-                >
-                  <span>{image.name}</span>
-                  <strong>
-                    {selectedLayerId === 'base-image'
-                      ? 'Selected base image'
-                      : 'Image ready for canvas placement'}
-                  </strong>
-                  <span>
-                    {image.width} x {image.height}
-                  </span>
-                  {imageTransform ? (
-                    <span className="transform-chip">
-                      {imageTransform.width} x {imageTransform.height} at {imageTransform.x},{' '}
-                      {imageTransform.y}
-                    </span>
-                  ) : null}
-                  {image.textLayers.filter((layer) => layer.visible).map((layer) => (
-                    <button
-                      key={layer.id}
-                      type="button"
-                      className={selectedLayerId === layer.id ? 'text-layer-chip selected' : 'text-layer-chip'}
-                      style={{
-                        left: `${layer.x / 10}%`,
-                        top: `${layer.y / 10}%`,
-                        fontSize: `${Math.max(14, Math.round(layer.fontSize * 0.65))}px`,
-                        color: layer.fillMode === 'gradient' ? 'transparent' : layer.color,
-                        backgroundImage:
-                          layer.fillMode === 'gradient'
-                            ? `linear-gradient(135deg, ${layer.gradientFrom}, ${layer.gradientTo})`
-                            : undefined,
-                        backgroundClip: layer.fillMode === 'gradient' ? 'text' : undefined,
-                        WebkitBackgroundClip: layer.fillMode === 'gradient' ? 'text' : undefined,
-                        writingMode: layer.isVertical ? 'vertical-rl' : 'horizontal-tb',
-                        lineHeight: String(layer.lineHeight),
-                        letterSpacing: `${layer.letterSpacing}px`,
-                        maxWidth: `${Math.max(80, Math.round(layer.maxWidth * 0.24))}px`,
-                        whiteSpace: 'pre-wrap',
-                        overflowWrap: 'anywhere',
-                        WebkitTextStroke: layer.strokeWidth > 0 ? `${layer.strokeWidth}px ${layer.strokeColor}` : undefined,
-                        textShadow: layer.shadowEnabled ? '3px 3px 10px rgba(0, 0, 0, 0.35)' : undefined,
-                      }}
-                      onClick={(event) => selectTextLayer(layer.id, isAdditiveSelection(event))}
-                      onMouseDown={(event) => handleLayerMouseDown(event, layer.id)}
-                      aria-label={`Select text layer: ${layer.text}`}
-                    >
-                      {layer.text}
-                    </button>
-                  ))}
-                  {image.messageWindowLayers.map((layer) => (
-                    <button
-                      key={layer.id}
-                      type="button"
-                      className={selectedLayerId === layer.id ? 'overlay-layer-chip message-window-chip selected' : 'overlay-layer-chip message-window-chip'}
-                      style={{
-                        left: `${layer.x / 19.2}%`,
-                        top: `${layer.y / 10.8}%`,
-                        width: `${Math.max(140, Math.round(layer.width * 0.24))}px`,
-                        minHeight: `${Math.max(80, Math.round(layer.height * 0.2))}px`,
-                        opacity: layer.opacity,
-                        border:
-                          layer.frameStyle === 'neon'
-                            ? '2px solid rgba(118, 255, 244, 0.95)'
-                            : layer.frameStyle === 'soft'
-                              ? '2px solid rgba(255, 244, 214, 0.7)'
-                              : '2px solid rgba(243, 239, 230, 0.9)',
-                        background:
-                          layer.assetName
-                            ? 'linear-gradient(90deg, rgba(255,255,255,0.16) 0 12%, transparent 12% 88%, rgba(255,255,255,0.16) 88% 100%), linear-gradient(180deg, rgba(255,255,255,0.14) 0 18%, transparent 18% 82%, rgba(255,255,255,0.14) 82% 100%), linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.06)), linear-gradient(180deg, rgba(28,22,18,0.96), rgba(45,31,26,0.9))'
-                            : layer.frameStyle === 'neon'
-                              ? 'linear-gradient(135deg, rgba(5, 51, 64, 0.96), rgba(18, 22, 54, 0.92))'
-                              : layer.frameStyle === 'soft'
-                                ? 'linear-gradient(180deg, rgba(73, 55, 44, 0.92), rgba(43, 31, 27, 0.86))'
-                                : 'linear-gradient(180deg, rgba(28, 22, 18, 0.94), rgba(20, 16, 13, 0.88))',
-                        boxShadow:
-                          layer.frameStyle === 'neon'
-                            ? '0 0 0 1px rgba(118,255,244,0.5), 0 0 22px rgba(118,255,244,0.28)'
-                            : layer.assetName
-                              ? 'inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 0 0 10px rgba(255,244,214,0.06), 0 18px 30px rgba(0,0,0,0.24)'
-                              : undefined,
-                      }}
-                      onClick={() => selectMessageWindowLayer(layer.id)}
-                      aria-label={`Select message window layer: ${layer.speaker}`}
-                    >
-                      <strong>{layer.speaker}</strong>
-                      <span>{layer.body}</span>
-                      {layer.assetName ? <small>9-slice asset</small> : null}
-                      {layer.assetName ? <small>{`Asset ${layer.assetName}`}</small> : null}
-                    </button>
-                  ))}
-                  {image.bubbleLayers.filter((layer) => layer.visible).map((layer) => (
-                    <button
-                      key={layer.id}
-                      type="button"
-                      className={selectedLayerId === layer.id ? 'bubble-layer-chip selected' : 'bubble-layer-chip'}
-                      style={{
-                        left: `${layer.x / 10}%`,
-                        top: `${layer.y / 10}%`,
-                        width: `${Math.max(120, Math.round(layer.width * 0.3))}px`,
-                        minHeight: `${Math.max(72, Math.round(layer.height * 0.3))}px`,
-                        borderRadius:
-                          (layer.bubbleShape ?? 'round') === 'rounded-rect'
-                            ? '22px'
-                            : (layer.bubbleShape ?? 'round') === 'round'
-                              ? '999px'
-                              : layer.stylePreset === 'thought'
-                                ? '40%'
-                                : '12px',
-                        clipPath: getBubbleClipPath(layer.bubbleShape ?? 'round', layer.shapeSeed ?? 0),
-                        background: layer.fillColor,
-                        borderColor: layer.borderColor,
-                      }}
-                      onClick={(event) => selectBubbleLayer(layer.id, isAdditiveSelection(event))}
-                      onMouseDown={(event) => handleLayerMouseDown(event, layer.id)}
-                      aria-label={`Select bubble layer: ${layer.text}`}
-                    >
-                      {layer.text}
-                      <small>{`${getBubbleShapeLabel(layer.bubbleShape ?? 'round')} v${getBubbleShapeVariantNumber(layer.shapeSeed ?? 0)}`}</small>
-                    </button>
-                  ))}
-                  {image.mosaicLayers.filter((layer) => layer.visible).map((layer) => (
-                    <button
-                      key={layer.id}
-                      type="button"
-                      className={selectedLayerId === layer.id ? 'mosaic-layer-chip selected' : 'mosaic-layer-chip'}
-                      style={{
-                        left: `${layer.x / 10}%`,
-                        top: `${layer.y / 10}%`,
-                        width: `${Math.max(64, Math.round(layer.width * 0.3))}px`,
-                        minHeight: `${Math.max(64, Math.round(layer.height * 0.3))}px`,
-                        background:
-                          layer.style === 'blur'
-                            ? 'rgba(255, 215, 177, 0.72)'
-                            : layer.style === 'noise'
-                              ? 'repeating-linear-gradient(45deg, rgba(255, 215, 177, 0.84), rgba(255, 215, 177, 0.84) 6px, rgba(36, 27, 21, 0.1) 6px, rgba(36, 27, 21, 0.1) 12px)'
-                              : 'repeating-linear-gradient(90deg, rgba(255, 215, 177, 0.82), rgba(255, 215, 177, 0.82) 8px, rgba(36, 27, 21, 0.12) 8px, rgba(36, 27, 21, 0.12) 16px)',
-                        backgroundSize:
-                          layer.style === 'blur'
-                            ? '100% 100%'
-                            : `${Math.max(6, layer.intensity)}px ${Math.max(6, layer.intensity)}px`,
-                        filter: layer.style === 'blur' ? 'blur(5px)' : undefined,
-                      }}
-                      onClick={(event) => selectMosaicLayer(layer.id, isAdditiveSelection(event))}
-                      onMouseDown={(event) => handleLayerMouseDown(event, layer.id)}
-                      aria-label={`Select mosaic layer ${layer.intensity}`}
-                    >
-                      {layer.style === 'pixelate' ? 'Mosaic' : layer.style === 'blur' ? 'Blur' : 'Noise'}
-                    </button>
-                  ))}
-                  {image.overlayLayers.filter((layer) => layer.visible).map((layer) => (
-                    <button
-                      key={layer.id}
-                      type="button"
-                      className={selectedLayerId === layer.id ? 'overlay-layer-chip selected' : 'overlay-layer-chip'}
-                      style={{
-                        left: `${layer.x / 10}%`,
-                        top: `${layer.y / 10}%`,
-                        width: `${Math.max(96, Math.round(layer.width * 0.3))}px`,
-                        minHeight: `${Math.max(64, Math.round(layer.height * 0.3))}px`,
-                        background:
-                          layer.fillMode === 'gradient'
-                            ? `linear-gradient(${layer.gradientDirection === 'vertical' ? '180deg' : layer.gradientDirection === 'horizontal' ? '90deg' : '135deg'}, ${layer.gradientFrom}, ${layer.gradientTo})`
-                            : layer.color,
-                        opacity: layer.opacity,
-                      }}
-                      onClick={(event) => selectOverlayLayer(layer.id, isAdditiveSelection(event))}
-                      onMouseDown={(event) => handleLayerMouseDown(event, layer.id)}
-                      aria-label={`Select overlay layer ${layer.opacity}`}
-                    >
-                      Overlay
-                    </button>
-                  ))}
-                  {previewSam3ReviewCandidates.map((candidate) => (
-                    <button
-                      key={`sam3-review-preview-${candidate.index}`}
-                      type="button"
-                      className={
-                        candidate.focused
-                          ? candidate.selected
-                            ? 'backend-review-preview sam3 selected focused'
-                            : 'backend-review-preview sam3 focused'
-                          : candidate.selected
-                            ? 'backend-review-preview sam3 selected'
-                            : 'backend-review-preview sam3'
-                      }
-                      style={{
-                        left: `${(candidate.x / 1920) * 100}%`,
-                        top: `${(candidate.y / 1080) * 100}%`,
-                        width: `${(candidate.width / 1920) * 100}%`,
-                        height: `${(candidate.height / 1080) * 100}%`,
-                        background:
-                          candidate.style === 'blur'
-                            ? 'rgba(255, 215, 177, 0.38)'
-                            : candidate.style === 'noise'
-                              ? 'repeating-linear-gradient(45deg, rgba(255, 215, 177, 0.36), rgba(255, 215, 177, 0.36) 6px, rgba(36, 27, 21, 0.1) 6px, rgba(36, 27, 21, 0.1) 12px)'
-                              : 'repeating-linear-gradient(90deg, rgba(255, 215, 177, 0.34), rgba(255, 215, 177, 0.34) 8px, rgba(36, 27, 21, 0.08) 8px, rgba(36, 27, 21, 0.08) 16px)',
-                        backgroundSize: `${Math.max(6, candidate.intensity)}px ${Math.max(6, candidate.intensity)}px`,
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setActiveFocusedSam3ReviewCandidateIndex(candidate.index)
-                      }}
-                      aria-label={`SAM3 review preview ${candidate.index + 1}: ${candidate.selected ? 'selected' : 'skipped'}${candidate.focused ? ' focused' : ''}`}
-                      data-style={candidate.style}
-                      data-intensity={String(candidate.intensity)}
-                    >
-                      <span>{`SAM3 ${candidate.index + 1} ${candidate.style}`}</span>
-                    </button>
-                  ))}
-                  {previewNsfwReviewCandidates.map((candidate) => (
-                    <button
-                      key={`nsfw-review-preview-${candidate.index}`}
-                      type="button"
-                      className={
-                        candidate.focused
-                          ? candidate.selected
-                            ? 'backend-review-preview nsfw selected focused'
-                            : 'backend-review-preview nsfw focused'
-                          : candidate.selected
-                            ? 'backend-review-preview nsfw selected'
-                            : 'backend-review-preview nsfw'
-                      }
-                      style={{
-                        left: `${(candidate.x / 1920) * 100}%`,
-                        top: `${(candidate.y / 1080) * 100}%`,
-                        width: `${(candidate.width / 1920) * 100}%`,
-                        height: `${(candidate.height / 1080) * 100}%`,
-                        borderColor: candidate.color,
-                        background: `${candidate.color}22`,
-                        opacity: candidate.opacity,
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setActiveFocusedNsfwReviewCandidateIndex(candidate.index)
-                      }}
-                      aria-label={`NSFW review preview ${candidate.index + 1}: ${candidate.selected ? 'selected' : 'skipped'}${candidate.focused ? ' focused' : ''}`}
-                      data-color={candidate.color}
-                      data-opacity={candidate.opacity.toFixed(1)}
-                    >
-                      <span>{`NSFW ${candidate.index + 1}`}</span>
-                    </button>
-                  ))}
-                  {image.watermarkLayers.map((layer) => (
-                    <button
-                      key={layer.id}
-                      type="button"
-                      className={selectedLayerId === layer.id ? 'watermark-layer-chip selected' : 'watermark-layer-chip'}
-                      style={{
-                        left: `${(layer.x / 1920) * 100}%`,
-                        top: `${(layer.y / 1080) * 100}%`,
-                        opacity: layer.opacity,
-                        color: layer.color,
-                        transform: `translate(-50%, -50%) rotate(${layer.angle}deg) scale(${layer.scale})`,
-                        letterSpacing: `${0.08 * layer.density}em`,
-                        width: layer.tiled ? '74%' : 'auto',
-                      }}
-                      onClick={() => selectWatermarkLayer(layer.id)}
-                      aria-label={`Select watermark layer: ${layer.assetName ?? layer.text}`}
-                    >
-                      {layer.mode === 'image'
-                        ? `[${layer.assetName ?? 'watermark.png'}]`
-                        : layer.repeated
-                        ? Array.from({ length: Math.max(3, layer.density + 2) }, () => layer.text).join(' • ')
-                        : layer.text}
-                    </button>
-                  ))}
-                  {previewBackendManualSegmentPoints.map((point, index) => (
-                    <button
-                      key={`manual-point-${index}-${point.label}`}
-                      type="button"
-                      className={
-                        index === selectedBackendManualSegmentPointIndex
-                          ? 'manual-segment-point selected'
-                          : 'manual-segment-point'
-                      }
-                      style={{
-                        left: `${(point.x / 1920) * 100}%`,
-                        top: `${(point.y / 1080) * 100}%`,
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setSelectedBackendManualSegmentPointIndex(index)
-                      }}
-                      onMouseDown={(event) => handleManualSegmentPointMouseDown(event, index)}
-                      aria-label={`Select manual segment point ${index + 1}: ${
-                        point.label === 0 ? 'negative' : 'positive'
-                      }`}
-                    >
-                      {index + 1}
-                    </button>
-                  ))}
-                  {marqueeBounds ? (
-                    <div
-                      aria-label="Marquee selection"
-                      className="marquee-selection"
-                      style={{
-                        left: `${(marqueeBounds.left / 1920) * 100}%`,
-                        top: `${(marqueeBounds.top / 1080) * 100}%`,
-                        width: `${((marqueeBounds.right - marqueeBounds.left) / 1920) * 100}%`,
-                        height: `${((marqueeBounds.bottom - marqueeBounds.top) / 1080) * 100}%`,
-                      }}
-                    />
-                  ) : null}
-                  {selectionBounds ? (
-                    <div
-                      aria-label="Selection bounds"
-                      className="selection-bounds"
-                      style={{
-                        left: `${(selectionBounds.left / 1920) * 100}%`,
-                        top: `${(selectionBounds.top / 1080) * 100}%`,
-                        width: `${((selectionBounds.right - selectionBounds.left) / 1920) * 100}%`,
-                        height: `${((selectionBounds.bottom - selectionBounds.top) / 1080) * 100}%`,
-                      }}
-                    >
-                      <button
-                        type="button"
-                        aria-label="Resize selected layers top left"
-                        className="selection-handle selection-handle-top-left"
-                        onMouseDown={(event) => handleSelectionResizeMouseDown(event, 'top-left')}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Resize selected layers top"
-                        className="selection-handle selection-handle-top"
-                        onMouseDown={(event) => handleSelectionResizeMouseDown(event, 'top')}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Resize selected layers top right"
-                        className="selection-handle selection-handle-top-right"
-                        onMouseDown={(event) => handleSelectionResizeMouseDown(event, 'top-right')}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Resize selected layers left"
-                        className="selection-handle selection-handle-left"
-                        onMouseDown={(event) => handleSelectionResizeMouseDown(event, 'left')}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Resize selected layers right"
-                        className="selection-handle selection-handle-right"
-                        onMouseDown={(event) => handleSelectionResizeMouseDown(event, 'right')}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Resize selected layers bottom left"
-                        className="selection-handle selection-handle-bottom-left"
-                        onMouseDown={(event) => handleSelectionResizeMouseDown(event, 'bottom-left')}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Resize selected layers bottom"
-                        className="selection-handle selection-handle-bottom"
-                        onMouseDown={(event) => handleSelectionResizeMouseDown(event, 'bottom')}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Resize selected layers"
-                        className="selection-handle selection-handle-bottom-right"
-                        onMouseDown={(event) => handleSelectionResizeMouseDown(event, 'bottom-right')}
-                      />
-                    </div>
-                  ) : null}
-                </div>
+                />
 
                 <div className="selection-controls" role="group" aria-label="Selection controls">
                   <button type="button" onClick={selectBaseImageLayer}>
@@ -3329,6 +2997,40 @@ function App() {
                     </button>
                     <button type="button" onClick={toggleSelectedTextLayerShadow}>
                       Toggle text shadow
+                    </button>
+                    <label className="text-layer-field">
+                      <span>Ruby (start,end,text)</span>
+                      <input
+                        aria-label="Add ruby annotation"
+                        type="text"
+                        placeholder="e.g. 0,2,ふりがな"
+                        value={rubyDraft}
+                        onChange={(e) => setRubyDraft(e.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const parts = rubyDraft.split(',')
+                        if (parts.length < 3) return
+                        const start = parseInt(parts[0].trim(), 10)
+                        const end = parseInt(parts[1].trim(), 10)
+                        const text = parts.slice(2).join(',').trim()
+                        if (isNaN(start) || isNaN(end) || !text) return
+                        const existing = activeTextLayer?.ruby ?? []
+                        setSelectedTextLayerRuby([...existing, { start, end, text }])
+                        setRubyDraft('')
+                      }}
+                      disabled={!activeTextLayer}
+                    >
+                      Add ruby
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTextLayerRuby([])}
+                      disabled={!activeTextLayer || !(activeTextLayer?.ruby?.length)}
+                    >
+                      Clear ruby
                     </button>
                     <button type="button" onClick={saveSelectedTextStylePreset}>
                       Save text preset
