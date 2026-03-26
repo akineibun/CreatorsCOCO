@@ -227,13 +227,21 @@ export const exportPageAsPng = async (
   }
 
   image.textLayers.filter((layer) => layer.visible).forEach((layer) => {
+    const layerRotation = layer.rotation ?? 0
+    if (layerRotation !== 0) {
+      context.save()
+      context.translate(mapX(layer.x), mapY(layer.y))
+      context.rotate((layerRotation * Math.PI) / 180)
+      context.translate(-mapX(layer.x), -mapY(layer.y))
+    }
     context.textAlign = 'left'
     context.lineJoin = 'round'
     context.shadowColor = layer.shadowEnabled ? 'rgba(0, 0, 0, 0.35)' : 'transparent'
     context.shadowBlur = layer.shadowEnabled ? 12 : 0
     context.shadowOffsetX = layer.shadowEnabled ? 3 : 0
     context.shadowOffsetY = layer.shadowEnabled ? 3 : 0
-    context.font = `${Math.max(12, Math.round(mapSize(layer.fontSize)))}px Segoe UI`
+    const layerFontStr = `${Math.max(12, Math.round(mapSize(layer.fontSize)))}px "${layer.fontFamily ?? 'Segoe UI'}", Segoe UI, sans-serif`
+    context.font = layerFontStr
     const approxCharWidth = Math.max(1, layer.fontSize * 0.55 + layer.letterSpacing)
     const maxCharsPerLine = Math.max(1, Math.floor(layer.maxWidth / approxCharWidth))
     const wrappedLines = wrapText(layer.text, maxCharsPerLine)
@@ -257,25 +265,84 @@ export const exportPageAsPng = async (
       context.strokeStyle = layer.strokeColor
     }
 
+    const ruby = layer.ruby ?? []
+    const rubyFontSize = Math.max(8, Math.round(mapSize(layer.fontSize) * 0.5))
+
     if (layer.isVertical) {
+      const charStep = layer.fontSize * layer.lineHeight + 4 + layer.letterSpacing
+      let globalIdx = 0
       layer.text.split('').forEach((character, index) => {
-        const y = mapY(layer.y + index * (layer.fontSize * layer.lineHeight + 4 + layer.letterSpacing))
+        const x = mapX(layer.x)
+        const y = mapY(layer.y + index * charStep)
         if (layer.strokeWidth > 0) {
-          context.strokeText(character, mapX(layer.x), y)
+          context.strokeText(character, x, y)
         }
-        context.fillText(character, mapX(layer.x), y)
+        context.fillText(character, x, y)
+
+        // Ruby to the right of character
+        for (const ann of ruby) {
+          if (globalIdx >= ann.start && globalIdx < ann.end) {
+            context.save()
+            context.font = `${rubyFontSize}px Segoe UI`
+            context.fillStyle = layer.color
+            const ri = globalIdx - ann.start
+            const rubyCharH = mapSize(charStep * (ann.end - ann.start)) / ann.text.length
+            context.fillText(ann.text[ri] ?? '', x + mapSize(layer.fontSize) + 2, y + ri * rubyCharH)
+            context.restore()
+            context.font = `${Math.max(12, Math.round(mapSize(layer.fontSize)))}px Segoe UI`
+            if (layer.fillMode !== 'gradient') context.fillStyle = layer.color
+          }
+        }
+        globalIdx++
       })
     } else {
-      wrappedLines.forEach((line, index) => {
-        const y = mapY(layer.y + index * layer.fontSize * layer.lineHeight)
+      const rubyReserve = ruby.length > 0 ? rubyFontSize + 2 : 0
+      let globalCharIndex = 0
+      wrappedLines.forEach((line, lineIndex) => {
+        const baseY = mapY(layer.y + lineIndex * layer.fontSize * layer.lineHeight) + rubyReserve
         const x = mapX(layer.x)
+
+        // Compute per-char x positions
+        const charPositions: number[] = []
+        let cx = x
+        for (const ch of line) {
+          charPositions.push(cx)
+          cx += context.measureText(ch).width + mapSize(layer.letterSpacing)
+        }
+
         const lineText =
           layer.letterSpacing > 0 ? line.split('').join(' '.repeat(Math.max(1, Math.round(layer.letterSpacing / 2)))) : line
         if (layer.strokeWidth > 0) {
-          context.strokeText(lineText, x, y)
+          context.strokeText(lineText, x, baseY)
         }
-        context.fillText(lineText, x, y)
+        context.fillText(lineText, x, baseY)
+
+        // Ruby above this line
+        for (const ann of ruby) {
+          const localStart = ann.start - globalCharIndex
+          const localEnd = ann.end - globalCharIndex
+          const cs = Math.max(0, localStart)
+          const ce = Math.min(line.length, localEnd)
+          if (cs >= ce) continue
+
+          const xLeft = charPositions[cs] ?? x
+          const xRight = ce < charPositions.length ? charPositions[ce] ?? cx : cx
+          context.save()
+          context.font = `${rubyFontSize}px Segoe UI`
+          context.fillStyle = layer.color
+          context.shadowColor = 'transparent'
+          const rw = context.measureText(ann.text).width
+          context.fillText(ann.text, xLeft + (xRight - xLeft - rw) / 2, baseY - rubyFontSize - 2)
+          context.restore()
+          context.font = `${Math.max(12, Math.round(mapSize(layer.fontSize)))}px Segoe UI`
+          if (layer.fillMode !== 'gradient') context.fillStyle = layer.color
+        }
+
+        globalCharIndex += line.length
       })
+    }
+    if (layerRotation !== 0) {
+      context.restore()
     }
   })
 

@@ -23,6 +23,12 @@ export type ResizeBackgroundMode = 'white' | 'black' | 'blurred-art'
 export type ResizeFitMode = 'contain' | 'cover' | 'stretch'
 export type ExportQualityMode = 'high' | 'medium' | 'low' | 'platform'
 
+export type RubyAnnotation = {
+  start: number
+  end: number
+  text: string
+}
+
 export type CanvasTextLayer = {
   id: string
   name?: string | null
@@ -39,9 +45,12 @@ export type CanvasTextLayer = {
   gradientFrom: string
   gradientTo: string
   isVertical: boolean
+  fontFamily: string
+  rotation: number
   strokeWidth: number
   strokeColor: string
   shadowEnabled: boolean
+  ruby?: RubyAnnotation[]
   visible: boolean
   locked: boolean
 }
@@ -374,6 +383,7 @@ type WorkspaceState = {
   deleteTemplate: (templateId: string) => void
   applyTemplateToActivePage: (templateId: string) => void
   applyTemplateToAllPages: (templateId: string) => void
+  applyTemplatePreservingText: (templateId: string) => void
   saveCurrentPageAsReusableAsset: () => void
   renameReusableAsset: (assetId: string, name: string) => void
   duplicateReusableAsset: (assetId: string) => void
@@ -397,6 +407,10 @@ type WorkspaceState = {
   toggleSelectedTextLayerVertical: () => void
   changeSelectedTextLayerOutlineWidth: (delta: number) => void
   toggleSelectedTextLayerShadow: () => void
+  setSelectedTextLayerRuby: (ruby: RubyAnnotation[]) => void
+  setSelectedTextLayerFontFamily: (fontFamily: string) => void
+  setSelectedTextLayerRotation: (rotation: number) => void
+  changeSelectedTextLayerRotation: (delta: number) => void
   saveSelectedTextStylePreset: () => void
   applyTextStylePreset: (presetId: string) => void
   renameTextStylePreset: (presetId: string, name: string) => void
@@ -545,6 +559,8 @@ type WorkspaceState = {
   ) => void
   toggleSelectedLayerVisibility: () => void
   toggleSelectedLayerLock: () => void
+  toggleLayerVisibilityById: (layerId: string) => void
+  toggleLayerLockById: (layerId: string) => void
   groupSelectedLayers: () => void
   ungroupSelectedLayers: () => void
   duplicateSelectedLayer: () => void
@@ -812,6 +828,8 @@ const createTextLayer = (): CanvasTextLayer => ({
   gradientFrom: '#ffffff',
   gradientTo: '#ff9a6b',
   isVertical: false,
+  fontFamily: 'sans-serif',
+  rotation: 0,
   strokeWidth: 0,
   strokeColor: '#241b15',
   shadowEnabled: false,
@@ -1262,6 +1280,8 @@ const readProjectFromStorage = (): PersistedProject | null => {
                   gradientFrom: layer.gradientFrom ?? layer.color ?? '#ffffff',
                   gradientTo: layer.gradientTo ?? '#ff9a6b',
                   isVertical: layer.isVertical ?? false,
+                  fontFamily: layer.fontFamily ?? 'sans-serif',
+                  rotation: layer.rotation ?? 0,
                   strokeWidth: layer.strokeWidth ?? 0,
                   strokeColor: layer.strokeColor ?? '#241b15',
                   shadowEnabled: layer.shadowEnabled ?? false,
@@ -2688,6 +2708,55 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  applyTemplatePreservingText: (templateId) =>
+    set((state) => {
+      const page = selectActiveImage(state)
+      const template = state.templates.find((entry) => entry.id === templateId)
+      if (!page || !template || !state.activePageId) {
+        return state
+      }
+
+      // Apply template layers but carry over existing text content (by index)
+      const textLayers = template.textLayers.map((tLayer, i) => ({
+        ...cloneTextLayer(tLayer),
+        text: page.textLayers[i]?.text ?? tLayer.text,
+      }))
+      const messageWindowLayers = template.messageWindowLayers.map((tLayer, i) => ({
+        ...cloneMessageWindowLayer(tLayer),
+        speaker: page.messageWindowLayers[i]?.speaker ?? tLayer.speaker,
+        body: page.messageWindowLayers[i]?.body ?? tLayer.body,
+      }))
+      const bubbleLayers = template.bubbleLayers.map((tLayer, i) => ({
+        ...cloneBubbleLayer(tLayer),
+        text: page.bubbleLayers[i]?.text ?? tLayer.text,
+      }))
+      const mosaicLayers = template.mosaicLayers.map(cloneMosaicLayer)
+      const overlayLayers = template.overlayLayers.map(cloneOverlayLayer)
+      const watermarkLayers = template.watermarkLayers.map(cloneWatermarkLayer)
+      const nextSelectedLayerId =
+        messageWindowLayers[0]?.id ??
+        textLayers[0]?.id ??
+        bubbleLayers[0]?.id ??
+        mosaicLayers[0]?.id ??
+        overlayLayers[0]?.id ??
+        watermarkLayers[0]?.id ??
+        null
+
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (entry) => ({
+          ...entry,
+          textLayers,
+          messageWindowLayers,
+          bubbleLayers,
+          mosaicLayers,
+          overlayLayers,
+          watermarkLayers,
+        })),
+        selectedLayerId: nextSelectedLayerId,
+        selectedLayerIds: nextSelectedLayerId ? [nextSelectedLayerId] : [],
+        loadError: null,
+      })
+    }),
   saveCurrentPageAsReusableAsset: () =>
     set((state) => {
       const page = selectActiveImage(state)
@@ -3440,6 +3509,69 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
             layer.id === activeTextLayer.id
               ? { ...layer, shadowEnabled: !layer.shadowEnabled }
               : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedTextLayerRuby: (ruby) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) {
+        return state
+      }
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id ? { ...layer, ruby } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedTextLayerFontFamily: (fontFamily) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) {
+        return state
+      }
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id ? { ...layer, fontFamily } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  setSelectedTextLayerRotation: (rotation) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) return state
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id
+              ? { ...layer, rotation: ((rotation % 360) + 360) % 360 }
+              : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
+  changeSelectedTextLayerRotation: (delta) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) return state
+      const nextRotation = (((activeTextLayer.rotation ?? 0) + delta) % 360 + 360) % 360
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id ? { ...layer, rotation: nextRotation } : layer,
           ),
         })),
         loadError: null,
@@ -5236,6 +5368,38 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
       return state
     }),
+  toggleLayerVisibilityById: (layerId) =>
+    set((state) => {
+      if (!state.activePageId) return state
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((l) => l.id === layerId ? { ...l, visible: !l.visible } : l),
+          messageWindowLayers: page.messageWindowLayers.map((l) => l.id === layerId ? { ...l, visible: !l.visible } : l),
+          bubbleLayers: page.bubbleLayers.map((l) => l.id === layerId ? { ...l, visible: !l.visible } : l),
+          mosaicLayers: page.mosaicLayers.map((l) => l.id === layerId ? { ...l, visible: !l.visible } : l),
+          overlayLayers: page.overlayLayers.map((l) => l.id === layerId ? { ...l, visible: !l.visible } : l),
+          watermarkLayers: page.watermarkLayers.map((l) => l.id === layerId ? { ...l, visible: !l.visible } : l),
+        })),
+        loadError: null,
+      })
+    }),
+  toggleLayerLockById: (layerId) =>
+    set((state) => {
+      if (!state.activePageId) return state
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((l) => l.id === layerId ? { ...l, locked: !l.locked } : l),
+          messageWindowLayers: page.messageWindowLayers.map((l) => l.id === layerId ? { ...l, locked: !l.locked } : l),
+          bubbleLayers: page.bubbleLayers.map((l) => l.id === layerId ? { ...l, locked: !l.locked } : l),
+          mosaicLayers: page.mosaicLayers.map((l) => l.id === layerId ? { ...l, locked: !l.locked } : l),
+          overlayLayers: page.overlayLayers.map((l) => l.id === layerId ? { ...l, locked: !l.locked } : l),
+          watermarkLayers: page.watermarkLayers.map((l) => l.id === layerId ? { ...l, locked: !l.locked } : l),
+        })),
+        loadError: null,
+      })
+    }),
   groupSelectedLayers: () =>
     set((state) => {
       if (!state.activePageId) {
@@ -6030,6 +6194,32 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           pages: updateActivePage(state.pages, state.activePageId, (page) => ({
             ...page,
             overlayLayers: page.overlayLayers.filter((layer) => layer.id !== overlayLayer.id),
+          })),
+          selectedLayerId: null,
+          selectedLayerIds: [],
+          loadError: null,
+        })
+      }
+
+      const messageWindowLayer = selectActiveMessageWindowLayer(state)
+      if (messageWindowLayer) {
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+            ...page,
+            messageWindowLayers: page.messageWindowLayers.filter((layer) => layer.id !== messageWindowLayer.id),
+          })),
+          selectedLayerId: null,
+          selectedLayerIds: [],
+          loadError: null,
+        })
+      }
+
+      const watermarkLayer = selectActiveWatermarkLayer(state)
+      if (watermarkLayer) {
+        return withHistory(state, {
+          pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+            ...page,
+            watermarkLayers: page.watermarkLayers.filter((layer) => layer.id !== watermarkLayer.id),
           })),
           selectedLayerId: null,
           selectedLayerIds: [],
