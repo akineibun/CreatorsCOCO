@@ -15,6 +15,7 @@ import type {
   ResizeHandle,
   RubyAnnotation,
 } from '../stores/workspaceStore'
+import { useBackendStore, parseBackendLayerSuggestion } from '../stores/backendStore'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -51,13 +52,13 @@ const drawHorizontalText = (
   layer: CanvasTextLayer,
   lines: string[],
 ) => {
-  const { fontSize, color, lineHeight, letterSpacing, fillMode, gradientFrom, gradientTo, strokeWidth, strokeColor, shadowEnabled } = layer
+  const { fontSize, fontFamily = 'sans-serif', color, lineHeight, letterSpacing, fillMode, gradientFrom, gradientTo, strokeWidth, strokeColor, shadowEnabled } = layer
   const ruby = layer.ruby ?? []
   const rubyFontSize = Math.max(8, Math.round(fontSize * 0.5))
   const rubyReserve = ruby.length > 0 ? rubyFontSize + 2 : 0
 
   ctx.save()
-  ctx.font = `${fontSize}px sans-serif`
+  ctx.font = `${fontSize}px "${fontFamily}", sans-serif`
   ctx.textBaseline = 'top'
 
   if (shadowEnabled) {
@@ -139,7 +140,7 @@ const drawHorizontalText = (
       ctx.restore()
 
       // Restore main font
-      ctx.font = `${fontSize}px sans-serif`
+      ctx.font = `${fontSize}px "${fontFamily}", sans-serif`
     }
 
     globalCharIndex += text.length
@@ -153,13 +154,13 @@ const drawVerticalText = (
   ctx: CanvasRenderingContext2D,
   layer: CanvasTextLayer,
 ) => {
-  const { text, fontSize, color, lineHeight, letterSpacing, fillMode, gradientFrom, gradientTo, strokeWidth, strokeColor, shadowEnabled } = layer
+  const { text, fontSize, fontFamily = 'sans-serif', color, lineHeight, letterSpacing, fillMode, gradientFrom, gradientTo, strokeWidth, strokeColor, shadowEnabled } = layer
   const ruby = layer.ruby ?? []
   const rubyFontSize = Math.max(7, Math.round(fontSize * 0.45))
   const rubyColW = ruby.length > 0 ? rubyFontSize + 3 : 0
 
   ctx.save()
-  ctx.font = `${fontSize}px sans-serif`
+  ctx.font = `${fontSize}px "${fontFamily}", sans-serif`
   ctx.textBaseline = 'top'
   ctx.textAlign = 'center'
 
@@ -250,7 +251,7 @@ const drawVerticalText = (
       }
       ctx.restore()
 
-      ctx.font = `${fontSize}px sans-serif`
+      ctx.font = `${fontSize}px "${fontFamily}", sans-serif`
       ctx.textAlign = 'center'
     }
 
@@ -532,18 +533,6 @@ export type KonvaCanvasProps = {
   onMoveSelectedLayers: (dx: number, dy: number) => void
   onResizeSelectedLayers: (dx: number, dy: number, handle: ResizeHandle, preserveAspectRatio: boolean) => void
 
-  // Backend review
-  sam3ReviewCandidates: Sam3ReviewCandidate[]
-  nsfwReviewCandidates: NsfwReviewCandidate[]
-  manualSegmentPoints: ManualSegmentPointPreview[]
-  backendManualPointPickingMode: 'off' | 'positive' | 'negative'
-  selectedBackendManualSegmentPointIndex: number
-  onSam3ReviewCandidateClick: (index: number) => void
-  onNsfwReviewCandidateClick: (index: number) => void
-  onManualSegmentPointClick: (index: number) => void
-  onManualSegmentPointDragEnd: (index: number, x: number, y: number) => void
-  onCanvasPointerUp: (x: number, y: number) => void
-
   // Container styling
   className?: string
 }
@@ -558,18 +547,88 @@ export function KonvaCanvas({
   onSelectLayers,
   onMoveSelectedLayers,
   onResizeSelectedLayers,
-  sam3ReviewCandidates,
-  nsfwReviewCandidates,
-  manualSegmentPoints,
-  backendManualPointPickingMode,
-  selectedBackendManualSegmentPointIndex,
-  onSam3ReviewCandidateClick,
-  onNsfwReviewCandidateClick,
-  onManualSegmentPointClick,
-  onManualSegmentPointDragEnd,
-  onCanvasPointerUp,
   className,
 }: KonvaCanvasProps) {
+  const {
+    backendManualPointPickingMode,
+    backendManualSegmentPoints,
+    selectedBackendManualSegmentPointIndex,
+    backendReviewStateByPage,
+    setBackendManualPointPickingMode,
+    setBackendManualSegmentPoints,
+    setSelectedBackendManualSegmentPointIndex,
+    updateBackendReviewStateByPage,
+  } = useBackendStore()
+
+  // Derive active page review state for canvas overlays.
+  // In practice only one page has candidates at a time; use the last entry.
+  const allReviewStates = Object.values(backendReviewStateByPage)
+  const activeReviewState = allReviewStates[allReviewStates.length - 1]
+
+  const sam3AutoMosaic = activeReviewState?.backendActionResults.sam3AutoMosaic ?? []
+  const nsfwDetections = activeReviewState?.backendActionResults.nsfwDetections ?? []
+  const focusedSam3Index = activeReviewState?.focusedSam3ReviewCandidateIndex ?? null
+  const focusedNsfwIndex = activeReviewState?.focusedNsfwReviewCandidateIndex ?? null
+
+  const sam3ReviewCandidates: Sam3ReviewCandidate[] = sam3AutoMosaic.map((mask, index) => ({
+    ...parseBackendLayerSuggestion(mask, index),
+    index,
+    selected: activeReviewState?.backendActionResults.sam3AutoMosaicSelection[index] !== false,
+    focused: focusedSam3Index === index,
+    label: activeReviewState?.backendActionResults.sam3AutoMosaicLabel[index]?.trim() || `SAM3 candidate ${index + 1}`,
+    style: activeReviewState?.backendActionResults.sam3AutoMosaicStyle[index] ?? 'pixelate',
+    intensity: activeReviewState?.backendActionResults.sam3AutoMosaicIntensity[index] ?? 16,
+  }))
+
+  const nsfwReviewCandidates: NsfwReviewCandidate[] = nsfwDetections.map((detection, index) => ({
+    ...parseBackendLayerSuggestion(detection, index),
+    index,
+    selected: activeReviewState?.backendActionResults.nsfwDetectionSelection[index] !== false,
+    focused: focusedNsfwIndex === index,
+    label: activeReviewState?.backendActionResults.nsfwDetectionLabel[index]?.trim() || `NSFW candidate ${index + 1}`,
+    color: activeReviewState?.backendActionResults.nsfwDetectionColor[index] ?? '#ff4d6d',
+    opacity: activeReviewState?.backendActionResults.nsfwDetectionOpacity[index] ?? 0.4,
+  }))
+
+  // Manual segment points: local drag state (manualPtDragState below) overrides
+  // the display position in render, so we pass the raw points here.
+  const manualSegmentPoints: ManualSegmentPointPreview[] = backendManualSegmentPoints
+
+  const onSam3ReviewCandidateClick = (index: number) => {
+    updateBackendReviewStateByPage((byPage) => {
+      const keys = Object.keys(byPage)
+      const key = keys[keys.length - 1]
+      if (!key) return byPage
+      return { ...byPage, [key]: { ...byPage[key]!, focusedSam3ReviewCandidateIndex: index } }
+    })
+  }
+
+  const onNsfwReviewCandidateClick = (index: number) => {
+    updateBackendReviewStateByPage((byPage) => {
+      const keys = Object.keys(byPage)
+      const key = keys[keys.length - 1]
+      if (!key) return byPage
+      return { ...byPage, [key]: { ...byPage[key]!, focusedNsfwReviewCandidateIndex: index } }
+    })
+  }
+
+  const onManualSegmentPointClick = (index: number) => {
+    setSelectedBackendManualSegmentPointIndex(index)
+  }
+
+  const onManualSegmentPointDragEnd = (index: number, x: number, y: number) => {
+    setBackendManualSegmentPoints((current) =>
+      current.map((pt, i) => (i === index ? { ...pt, x, y } : pt)),
+    )
+    setSelectedBackendManualSegmentPointIndex(index)
+  }
+
+  const onCanvasPointerUp = (x: number, y: number) => {
+    const label: 1 | 0 = backendManualPointPickingMode === 'negative' ? 0 : 1
+    setBackendManualSegmentPoints((current) => [...current, { x, y, label }])
+    setSelectedBackendManualSegmentPointIndex(backendManualSegmentPoints.length)
+    setBackendManualPointPickingMode('off')
+  }
   const containerRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<Konva.Stage>(null)
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
@@ -1125,6 +1184,7 @@ function HorizontalTextNode({ layer, x, y, selected, onPointerDown, onClick }: N
       y={y}
       width={layer.maxWidth}
       height={totalH}
+      rotation={layer.rotation ?? 0}
       sceneFunc={(ctx) => {
         drawHorizontalText(ctx as unknown as CanvasRenderingContext2D, layer, lines)
       }}
@@ -1157,6 +1217,7 @@ function VerticalTextNode({ layer, x, y, selected, onPointerDown, onClick }: Nod
       y={y}
       width={totalW}
       height={totalH}
+      rotation={layer.rotation ?? 0}
       sceneFunc={(ctx) => {
         drawVerticalText(ctx as unknown as CanvasRenderingContext2D, layer)
       }}
