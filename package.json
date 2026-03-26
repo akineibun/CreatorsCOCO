@@ -6,9 +6,18 @@
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on tcp:5173 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "vite build",
+    "build:app": "npm run build && npm run backend:build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "backend:test": "python -m unittest discover -s python-backend/tests -p \"test_*.py\"",
+    "backend:install-native": "powershell -ExecutionPolicy Bypass -File ./python-backend/install-native-backends.ps1",
+    "backend:setup-sam3-native": "powershell -ExecutionPolicy Bypass -File ./python-backend/setup-native-sam3.ps1",
+    "backend:build": "powershell -ExecutionPolicy Bypass -File ./python-backend/build-backend.ps1",
+    "smoke:portable": "powershell -ExecutionPolicy Bypass -File ./scripts/portable-smoke.ps1",
+    "dist:dir": "npm run build:app && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
+    "dist:win": "npm run build:app && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win portable",
+    "dist:nsis": "npm run build:app && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis"
   },
   "repository": {
     "type": "git",
@@ -23,7 +32,6 @@
   },
   "homepage": "https://github.com/akineibun/CreatorsCOCO#readme",
   "dependencies": {
-    "electron": "^41.0.3",
     "jszip": "^3.10.1",
     "konva": "^10.2.3",
     "react": "^19.2.4",
@@ -40,10 +48,54 @@
     "@vitejs/plugin-react": "^5.0.4",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
+    "electron": "^41.0.3",
+    "electron-builder": "^26.0.12",
     "jsdom": "^29.0.1",
     "typescript": "^5.9.3",
     "vite": "^7.1.7",
     "vitest": "^4.1.0",
     "wait-on": "^9.0.4"
+  },
+  "build": {
+    "appId": "com.creatorscoco.app",
+    "productName": "CreatorsCOCO",
+    "icon": "assets/app-icon.ico",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "python-backend/dist",
+        "to": "python-backend/dist",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asarUnpack": [
+      "python-backend/dist/**"
+    ],
+    "win": {
+      "icon": "assets/app-icon.ico",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

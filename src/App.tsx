@@ -21,8 +21,26 @@ import { EXPORT_METADATA_POLICY_LABEL } from './lib/export/metadata'
 import { exportPageAsPdf } from './lib/export/pdfExporter'
 import { exportPageAsPng } from './lib/export/pngExporter'
 import { exportPagesAsZip } from './lib/export/zipExporter'
-import type { ResizeHandle } from './stores/workspaceStore'
+import type { ResizeHandle, Tool } from './stores/workspaceStore'
 import { outputPresets, selectActiveImage, toolLabels, useWorkspaceStore } from './stores/workspaceStore'
+
+const TOOL_ICON_BY_ID: Record<Tool, string> = {
+  select: '◎',
+  text: 'Aa',
+  'message-window': '談',
+  bubble: '◌',
+  mosaic: '▒',
+  overlay: '▭',
+}
+
+const TOOL_LABEL_JA_BY_ID: Record<Tool, string> = {
+  select: '選択',
+  text: '文字',
+  'message-window': '会話枠',
+  bubble: '吹き出し',
+  mosaic: 'モザイク',
+  overlay: 'オーバーレイ',
+}
 
 const EXPORT_HISTORY_STORAGE_KEY = 'creators-coco.export-history'
 
@@ -1034,17 +1052,20 @@ function App() {
 
       <div className="workspace-grid">
         <aside aria-label="Tool palette" className="tool-palette">
-          <div className="panel-title">Tools</div>
+          <div className="panel-title">ツール</div>
           <div className="tool-stack" role="toolbar" aria-label="Tool palette">
             {toolLabels.map((tool) => (
               <button
                 key={tool.id}
                 type="button"
                 className={tool.id === activeTool ? 'tool-button active' : 'tool-button'}
+                aria-label={tool.label}
+                title={TOOL_LABEL_JA_BY_ID[tool.id]}
                 aria-pressed={tool.id === activeTool}
                 onClick={() => setActiveTool(tool.id)}
               >
-                {tool.label}
+                <span className="tool-button-icon" aria-hidden="true">{TOOL_ICON_BY_ID[tool.id]}</span>
+                <span className="tool-button-label">{TOOL_LABEL_JA_BY_ID[tool.id]}</span>
               </button>
             ))}
           </div>

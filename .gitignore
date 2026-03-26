@@ -1,2 +1,14 @@
 node_modules/
 dist/
+release/
+python-backend/build/
+python-backend/dist/
+python-backend/.venv/
+python-backend/.venv312/
+python-backend/models/**/*.pt
+python-backend/models/**/*.pth
+python-backend/models/**/*.ckpt
+python-backend/models/**/*.yaml
+python-backend/models/**/*.yml
+**/__pycache__/
+*.pyc

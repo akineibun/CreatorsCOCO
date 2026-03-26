@@ -277,6 +277,7 @@ export type ResizeHandle =
   | 'left'
 
 type PersistedProject = {
+  schemaVersion: number
   id: string
   name: string
   pages: CanvasImage[]
@@ -293,6 +294,16 @@ type PersistedProject = {
   mosaicStylePresets: MosaicStylePreset[]
   templates: PageTemplate[]
   reusableAssets: ReusablePageAsset[]
+}
+
+type StoredProjectSnapshot = Partial<PersistedProject> & {
+  schemaVersion?: number
+}
+
+export type ProjectSchemaMigration = {
+  fromVersion: number
+  toVersion: number
+  label: string
 }
 
 export type RecentProjectEntry = {
@@ -503,7 +514,35 @@ type WorkspaceState = {
       name?: string | null
     }>,
   ) => void
+  addBackendMosaicLayersToPage: (
+    pageId: string,
+    layers: Array<{
+      x: number
+      y: number
+      width: number
+      height: number
+      intensity: number
+      style: CanvasMosaicLayer['style']
+      name?: string | null
+    }>,
+  ) => void
   addBackendOverlayLayers: (
+    layers: Array<{
+      x: number
+      y: number
+      width: number
+      height: number
+      color: string
+      opacity: number
+      fillMode?: CanvasOverlayLayer['fillMode']
+      gradientFrom?: string
+      gradientTo?: string
+      gradientDirection?: CanvasOverlayLayer['gradientDirection']
+      name?: string | null
+    }>,
+  ) => void
+  addBackendOverlayLayersToPage: (
+    pageId: string,
     layers: Array<{
       x: number
       y: number
@@ -577,6 +616,15 @@ const clampZoom = (value: number) => Math.max(25, Math.min(400, value))
 const supportedExtensions = ['png', 'jpg', 'jpeg', 'webp']
 export const PROJECT_STORAGE_KEY = 'creators-coco.project'
 export const RECENT_PROJECTS_STORAGE_KEY = 'creators-coco.recent-projects'
+export const PERFORMANCE_METRICS_STORAGE_KEY = 'creators-coco.performance-metrics'
+export const CURRENT_PROJECT_SCHEMA_VERSION = 1
+export const PROJECT_SCHEMA_MIGRATIONS: ProjectSchemaMigration[] = [
+  {
+    fromVersion: 0,
+    toVersion: 1,
+    label: 'v0 -> v1',
+  },
+]
 export const outputPresets: OutputSettings[] = [
   {
     presetId: 'hd-landscape',
@@ -1037,6 +1085,7 @@ const serializeProject = (
     | 'reusableAssets'
   >,
 ): PersistedProject => ({
+  schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
   id: state.projectId !== 'project-default' ? state.projectId : state.pages[0]?.id ? `project-${state.pages[0].id}` : 'project-default',
   name:
     state.projectName !== 'Untitled project'
@@ -1067,6 +1116,51 @@ const serializeProject = (
   templates: state.templates.map(cloneTemplate),
   reusableAssets: state.reusableAssets.map(cloneReusableAsset),
 })
+
+const shouldRewriteStoredProject = (project: StoredProjectSnapshot) =>
+  project.schemaVersion !== CURRENT_PROJECT_SCHEMA_VERSION ||
+  !project.outputSettings ||
+  project.outputSettings.resizeFitMode == null ||
+  project.outputSettings.resizeBackgroundMode == null ||
+  project.outputSettings.qualityMode == null
+
+const getStoredProjectSchemaVersion = (project: StoredProjectSnapshot) =>
+  typeof project.schemaVersion === 'number' && Number.isFinite(project.schemaVersion) ? project.schemaVersion : 0
+
+const migrateStoredProjectSnapshot = (project: StoredProjectSnapshot): StoredProjectSnapshot => {
+  let currentProject: StoredProjectSnapshot = { ...project }
+  let currentVersion = getStoredProjectSchemaVersion(currentProject)
+
+  while (currentVersion < CURRENT_PROJECT_SCHEMA_VERSION) {
+    const migration = PROJECT_SCHEMA_MIGRATIONS.find((entry) => entry.fromVersion === currentVersion)
+    if (!migration) {
+      break
+    }
+
+    if (migration.fromVersion === 0 && migration.toVersion === 1) {
+      currentProject = {
+        ...currentProject,
+        schemaVersion: 1,
+        outputSettings: currentProject.outputSettings
+          ? {
+              ...currentProject.outputSettings,
+              resizeFitMode: currentProject.outputSettings.resizeFitMode ?? 'contain',
+              resizeBackgroundMode: currentProject.outputSettings.resizeBackgroundMode ?? 'white',
+              qualityMode: currentProject.outputSettings.qualityMode ?? 'high',
+            }
+          : {
+              ...outputPresets[0],
+            },
+      }
+      currentVersion = migration.toVersion
+      continue
+    }
+
+    break
+  }
+
+  return currentProject
+}
 
 const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
 
@@ -1130,7 +1224,8 @@ const readProjectFromStorage = (): PersistedProject | null => {
   }
 
   try {
-    const parsedProject = JSON.parse(storedProject) as PersistedProject
+    const rawParsedProject = JSON.parse(storedProject) as StoredProjectSnapshot
+    const parsedProject = migrateStoredProjectSnapshot(rawParsedProject)
     const storedPreset = outputPresets.find(
       (preset) => preset.presetId === parsedProject.outputSettings?.presetId,
     )
@@ -1163,7 +1258,8 @@ const readProjectFromStorage = (): PersistedProject | null => {
       parsedProject.outputSettings?.resizeBackgroundMode ?? 'white',
     )
 
-    return {
+    const normalizedProject: PersistedProject = {
+      schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
       id: parsedProject.id ?? 'project-default',
       name: parsedProject.name ?? 'Untitled project',
       pages: Array.isArray(parsedProject.pages)
@@ -1311,6 +1407,12 @@ const readProjectFromStorage = (): PersistedProject | null => {
           }))
         : [],
     }
+
+    if (shouldRewriteStoredProject(rawParsedProject)) {
+      writeProjectToStorage(normalizedProject)
+    }
+
+    return normalizedProject
   } catch {
     window.localStorage.removeItem(PROJECT_STORAGE_KEY)
     return null
@@ -1323,6 +1425,12 @@ const updateActivePage = (
   updater: (page: CanvasImage) => CanvasImage,
 ) =>
   pages.map((page) => (page.id === activePageId ? updater(page) : page))
+
+const updatePageById = (
+  pages: CanvasImage[],
+  pageId: string,
+  updater: (page: CanvasImage) => CanvasImage,
+) => pages.map((page) => (page.id === pageId ? updater(page) : page))
 
 const selectActiveTextLayer = (
   state: Pick<WorkspaceState, 'pages' | 'activePageId' | 'selectedLayerId'>,
@@ -4945,6 +5053,31 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  addBackendMosaicLayersToPage: (pageId, layers) =>
+    set((state) => {
+      if (!pageId || layers.length === 0) {
+        return state
+      }
+
+      const nextLayers = layers.map((layer, index) => ({
+        ...createMosaicLayer(),
+        x: layer.x,
+        y: layer.y,
+        width: layer.width,
+        height: layer.height,
+        intensity: layer.intensity,
+        style: layer.style,
+        name: layer.name?.trim() || `Backend mosaic ${index + 1}`,
+      }))
+
+      return withHistory(state, {
+        pages: updatePageById(state.pages, pageId, (page) => ({
+          ...page,
+          mosaicLayers: [...page.mosaicLayers, ...nextLayers],
+        })),
+        loadError: null,
+      })
+    }),
   addBackendOverlayLayers: (layers) =>
     set((state) => {
       if (!state.activePageId || layers.length === 0) {
@@ -4975,6 +5108,35 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         })),
         selectedLayerId: lastLayer?.id ?? state.selectedLayerId,
         selectedLayerIds: lastLayer ? [lastLayer.id] : state.selectedLayerIds,
+        loadError: null,
+      })
+    }),
+  addBackendOverlayLayersToPage: (pageId, layers) =>
+    set((state) => {
+      if (!pageId || layers.length === 0) {
+        return state
+      }
+
+      const nextLayers = layers.map((layer, index) => ({
+        ...createOverlayLayer(),
+        x: layer.x,
+        y: layer.y,
+        width: layer.width,
+        height: layer.height,
+        color: layer.color,
+        opacity: layer.opacity,
+        fillMode: layer.fillMode ?? 'solid',
+        gradientFrom: layer.gradientFrom ?? layer.color,
+        gradientTo: layer.gradientTo ?? '#111111',
+        gradientDirection: layer.gradientDirection ?? 'vertical',
+        name: layer.name?.trim() || `Backend overlay ${index + 1}`,
+      }))
+
+      return withHistory(state, {
+        pages: updatePageById(state.pages, pageId, (page) => ({
+          ...page,
+          overlayLayers: [...page.overlayLayers, ...nextLayers],
+        })),
         loadError: null,
       })
     }),

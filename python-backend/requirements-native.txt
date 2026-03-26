@@ -1,0 +1,8 @@
+# Optional native backend dependencies for local experimentation.
+# SAM3 is maintained in the official GitHub repository and may still require
+# checkpoint access / authentication depending on your environment.
+
+torch>=2.7,<3.0
+torchvision>=0.22,<1.0
+torchaudio>=2.7,<3.0
+nudenet>=3.4,<4.0
