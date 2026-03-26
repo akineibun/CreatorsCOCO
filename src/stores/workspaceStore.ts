@@ -325,6 +325,7 @@ type WorkspaceState = {
   zoomPercent: number
   pages: CanvasImage[]
   activePageId: string | null
+  pageThumbnails: Record<string, string>
   loadError: string | null
   selectedLayerId: string | null
   selectedLayerIds: string[]
@@ -584,6 +585,9 @@ type WorkspaceState = {
   deleteActivePage: () => void
   moveActivePageUp: () => void
   moveActivePageDown: () => void
+  movePageToIndex: (pageId: string, targetIndex: number) => void
+  moveLayerToIndex: (layerId: string, targetIndex: number) => void
+  setPageThumbnail: (pageId: string, dataUrl: string) => void
   selectBaseImageLayer: () => void
   moveSelection: (dx: number, dy: number) => void
   scaleSelection: (factor: number) => void
@@ -955,6 +959,7 @@ const createInitialState = () => ({
   zoomPercent: 100,
   pages: [] as CanvasImage[],
   activePageId: null as string | null,
+  pageThumbnails: {} as Record<string, string>,
   loadError: null as string | null,
   selectedLayerId: null as string | null,
   selectedLayerIds: [] as string[],
@@ -6601,6 +6606,44 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       ;[nextPages[index], nextPages[index + 1]] = [nextPages[index + 1], nextPages[index]]
       return withHistory(state, { pages: nextPages })
     }),
+  movePageToIndex: (pageId, targetIndex) =>
+    set((state) => {
+      const index = state.pages.findIndex((page) => page.id === pageId)
+      if (index === -1 || index === targetIndex) return state
+      const nextPages = [...state.pages]
+      const [removed] = nextPages.splice(index, 1)
+      nextPages.splice(targetIndex, 0, removed)
+      return withHistory(state, { pages: nextPages })
+    }),
+  moveLayerToIndex: (layerId, targetIndex) =>
+    set((state) => {
+      if (!state.activePageId) return state
+      const pageIndex = state.pages.findIndex((p) => p.id === state.activePageId)
+      if (pageIndex === -1) return state
+      const page = state.pages[pageIndex]
+
+      // Find which layer array contains this layer
+      const layerArrays: (keyof Pick<CanvasImage, 'textLayers' | 'messageWindowLayers' | 'bubbleLayers' | 'mosaicLayers' | 'overlayLayers' | 'watermarkLayers'>)[] = [
+        'textLayers', 'messageWindowLayers', 'bubbleLayers', 'mosaicLayers', 'overlayLayers', 'watermarkLayers',
+      ]
+      for (const key of layerArrays) {
+        const arr = page[key] as Array<{ id: string }>
+        const idx = arr.findIndex((l) => l.id === layerId)
+        if (idx === -1) continue
+        if (idx === targetIndex) return state
+        const nextArr = [...arr]
+        const [removed] = nextArr.splice(idx, 1)
+        nextArr.splice(targetIndex, 0, removed)
+        const nextPages = [...state.pages]
+        nextPages[pageIndex] = { ...page, [key]: nextArr }
+        return withHistory(state, { pages: nextPages })
+      }
+      return state
+    }),
+  setPageThumbnail: (pageId, dataUrl) =>
+    set((state) => ({
+      pageThumbnails: { ...state.pageThumbnails, [pageId]: dataUrl },
+    })),
   selectPage: (pageId) =>
     set((state) => {
       const page = state.pages.find((entry) => entry.id === pageId)

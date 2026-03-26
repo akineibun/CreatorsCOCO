@@ -782,6 +782,42 @@ button {
   border: 1px solid rgba(243, 239, 230, 0.08);
 }
 
+.page-card-dnd {
+  cursor: grab;
+  padding: 8px;
+}
+
+.page-card-dnd:active {
+  cursor: grabbing;
+  opacity: 0.6;
+}
+
+.page-card-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  overflow: hidden;
+}
+
+.page-card-info strong {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-card-info small {
+  opacity: 0.6;
+  font-size: 0.7em;
+  shrink: 0;
+}
+
 .page-card.empty {
   opacity: 0.8;
 }

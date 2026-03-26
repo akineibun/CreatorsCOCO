@@ -1,9 +1,12 @@
 import type { MouseEvent } from 'react'
+import { useRef } from 'react'
 import type React from 'react'
-import { Eye, EyeOff, Lock, Unlock, ImageIcon, Type, MessageSquare, MessageCircle, Grid2X2, Layers, Stamp } from 'lucide-react'
+import { Eye, EyeOff, Lock, Unlock, ImageIcon, Type, MessageSquare, MessageCircle, Grid2X2, Layers, Stamp, GripVertical } from 'lucide-react'
 import { useWorkspaceStore, selectActiveImage } from '../../stores/workspaceStore'
 
 export function LayersPanel() {
+  const dragLayerId = useRef<string | null>(null)
+
   const {
     pages,
     activePageId,
@@ -17,6 +20,7 @@ export function LayersPanel() {
     selectBaseImageLayer,
     toggleLayerVisibilityById,
     toggleLayerLockById,
+    moveLayerToIndex,
   } = useWorkspaceStore()
 
   const image = selectActiveImage({ pages, activePageId })
@@ -91,13 +95,23 @@ export function LayersPanel() {
             {image ? 'ベース画像' : '画像なし'}
           </button>
         </li>
-        {allLayers.map((layer) => {
+        {allLayers.map((layer, index) => {
           const isSelected = selectedLayerId === layer.id
           const isVisible = layer.visible !== false
           return (
             <li
               key={layer.id}
               className={isSelected ? 'selected-layer' : undefined}
+              draggable
+              onDragStart={() => { dragLayerId.current = layer.id }}
+              onDragOver={(e) => { e.preventDefault() }}
+              onDrop={(e) => {
+                e.preventDefault()
+                if (dragLayerId.current && dragLayerId.current !== layer.id) {
+                  moveLayerToIndex(dragLayerId.current, index)
+                  dragLayerId.current = null
+                }
+              }}
             >
               <button
                 type="button"
@@ -125,6 +139,9 @@ export function LayersPanel() {
               </button>
               <span className="layer-visibility text-[rgba(215,180,138,0.8)]">
                 {TYPE_ICON[layer.type]}
+              </span>
+              <span className="layer-visibility opacity-30 cursor-grab" aria-hidden="true">
+                <GripVertical className="w-3 h-3" />
               </span>
               <button
                 type="button"

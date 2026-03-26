@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent } from 'react'
 import {
   MousePointer2,
@@ -22,8 +22,10 @@ import {
   Copy,
   FolderOpen,
   Stamp,
+  GripVertical,
 } from 'lucide-react'
 import { KonvaCanvas } from './components/KonvaCanvas'
+import { PageThumb } from './components/PageThumb'
 import { StatusBar } from './components/StatusBar'
 import { TemplateThumb } from './components/TemplateThumb'
 import { TextLayerPanel } from './components/panels/TextLayerPanel'
@@ -262,6 +264,7 @@ function App() {
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null)
   const [layerDragState, setLayerDragState] = useState<LayerDragState | null>(null)
   const [layerResizeState, setLayerResizeState] = useState<LayerResizeState | null>(null)
+  const dragPageId = useRef<string | null>(null)
   const {
     activeTool,
     zoomPercent,
@@ -465,6 +468,8 @@ function App() {
     scaleSelection,
     zoomIn,
     zoomOut,
+    pageThumbnails,
+    movePageToIndex,
   } = useWorkspaceStore()
   const image = selectActiveImage({ pages, activePageId })
   const activeTextLayer =
@@ -1490,18 +1495,34 @@ function App() {
                   const isActive = page.id === activePageId
 
                   return (
-                    <button
+                    <div
                       key={page.id}
-                      type="button"
-                      className={isActive ? 'page-card current page-button' : 'page-card page-button'}
-                      aria-pressed={isActive}
-                      onClick={() => selectPage(page.id)}
-                      aria-label={`Open page ${pageNumber}: ${page.name}`}
+                      className={isActive ? 'page-card current page-card-dnd' : 'page-card page-card-dnd'}
+                      draggable
+                      onDragStart={() => { dragPageId.current = page.id }}
+                      onDragOver={(e) => { e.preventDefault() }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        if (dragPageId.current && dragPageId.current !== page.id) {
+                          movePageToIndex(dragPageId.current, index)
+                          dragPageId.current = null
+                        }
+                      }}
                     >
-                      <span>{pageNumber}</span>
-                      <strong>{page.name}</strong>
-                      {page.variantLabel ? <small>{`Variant ${page.variantLabel}`}</small> : null}
-                    </button>
+                      <PageThumb page={page} isActive={isActive} className="mb-1" />
+                      <button
+                        type="button"
+                        className="page-card-info page-button"
+                        aria-pressed={isActive}
+                        onClick={() => selectPage(page.id)}
+                        aria-label={`Open page ${pageNumber}: ${page.name}`}
+                      >
+                        <GripVertical className="w-3 h-3 opacity-30 shrink-0" />
+                        <span>{pageNumber}</span>
+                        <strong className="truncate">{page.name}</strong>
+                        {page.variantLabel ? <small>{`V${page.variantLabel}`}</small> : null}
+                      </button>
+                    </div>
                   )
                 })
               )}
