@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { Button } from '../ui/button'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs'
 import {
   downloadBackendModel,
   getBackendModelProgress,
@@ -824,211 +826,258 @@ export function BackendPanel() {
 
   return (
     <section aria-label="Backend status" className="sidebar-card">
-      <div className="panel-title">Backend status</div>
+      <div className="panel-title">Backend</div>
+
+      {/* Status bar */}
       {backendStatusError ? (
-        <div className="page-list">
-          <div className="page-card empty"><strong>{backendStatusError}</strong></div>
-          <button type="button" className="page-card page-button" onClick={() => void loadBackendStatus()}>
-            Retry backend status
-          </button>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="error-text text-sm flex-1">{backendStatusError}</span>
+          <Button size="sm" variant="outline" onClick={() => void loadBackendStatus()}>再試行</Button>
         </div>
       ) : backendStatus ? (
-        <div className="page-list">
-          <div className="page-card">
-            <strong>{backendStatus.sam3_loaded ? 'SAM3 Ready' : 'SAM3 Loading'}</strong>
-            <span>{getBackendModelStatusDetail('sam3')}</span>
-          </div>
-          <div className="page-card">
-            <strong>{backendStatus.nudenet_loaded ? 'NudeNet Ready' : 'NudeNet Loading'}</strong>
-            <span>{getBackendModelStatusDetail('nudenet')}</span>
-          </div>
-          <div className="page-card">
-            <strong>{backendStatus.gpu_available ? 'GPU Available' : 'GPU Unavailable'}</strong>
-          </div>
-          <label className="text-layer-field">
-            <span>SAM3 model size</span>
-            <select aria-label="SAM3 model size" value={backendSam3ModelSize} onChange={(e) => setBackendSam3ModelSize(e.target.value === 'large' ? 'large' : 'base')}>
-              <option value="base">base</option>
-              <option value="large">large</option>
-            </select>
-          </label>
-          <div className="page-card"><strong>{`SAM3 model size: ${backendSam3ModelSize}`}</strong></div>
-          <label className="text-layer-field">
-            <span>Auto mosaic strength</span>
-            <select aria-label="Auto mosaic strength" value={backendAutoMosaicStrength} onChange={(e) => { const v = e.target.value; setBackendAutoMosaicStrength(v === 'light' || v === 'strong' ? v : 'medium') }}>
-              <option value="light">light</option>
-              <option value="medium">medium</option>
-              <option value="strong">strong</option>
-            </select>
-          </label>
-          <div className="page-card"><strong>{`Auto mosaic strength: ${backendAutoMosaicStrength}`}</strong></div>
-          <label className="text-layer-field">
-            <span>NSFW threshold</span>
-            <input aria-label="NSFW threshold" type="number" min="0.1" max="0.99" step="0.01" value={backendNsfwThreshold} onChange={(e) => setBackendNsfwThreshold(e.target.value)} />
-          </label>
-          <button type="button" className="page-card page-button" onClick={() => void startBackendModelDownload('sam3')} disabled={isBackendModelReady('sam3') || isBackendModelDownloading('sam3')}>
-            {getBackendModelButtonLabel('sam3')}
-          </button>
-          <button type="button" className="page-card page-button" onClick={() => void startBackendModelDownload('nudenet')} disabled={isBackendModelReady('nudenet') || isBackendModelDownloading('nudenet')}>
-            {getBackendModelButtonLabel('nudenet')}
-          </button>
-          <button type="button" className="page-card page-button" onClick={() => void runBackendSam3AutoMosaic()} disabled={!hasActiveImage}>
-            Run SAM3 auto mosaic
-          </button>
-          <button type="button" className="page-card page-button" onClick={() => void runBackendNsfwDetection()} disabled={!hasActiveImage}>
-            Run NSFW detection
-          </button>
-          {backendActionResults.sam3AutoMosaic.length > 0 ? (
-            <>
-              <div className="page-card">
-                <strong>{`SAM3 review candidates: ${backendActionResults.sam3AutoMosaic.length}`}</strong>
-                <span>{`${backendActionResults.sam3AutoMosaicSelection.filter(Boolean).length} selected for apply`}</span>
-              </div>
-              <div className="page-card">
-                <strong>{`Focused SAM3 candidate: ${focusedSam3ReviewCandidateIndex === null ? 'none' : focusedSam3ReviewCandidateIndex + 1}`}</strong>
-                <span>{`Label ${focusedSam3ReviewCandidateIndex === null ? 'none' : getSam3CandidateCardLabel(focusedSam3ReviewCandidateIndex)}`}</span>
-                <span>{`Note ${focusedSam3ReviewCandidateIndex === null ? 'none' : getSam3CandidateCardNote(focusedSam3ReviewCandidateIndex)}`}</span>
-                <span>{`Priority ${focusedSam3ReviewCandidateIndex === null ? 'none' : getSam3CandidatePriority(focusedSam3ReviewCandidateIndex)}`}</span>
-                <span>{`Style ${focusedSam3ReviewCandidateIndex === null ? 'none' : backendActionResults.sam3AutoMosaicStyle[focusedSam3ReviewCandidateIndex] ?? 'pixelate'}`}</span>
-                <span>{`Intensity ${focusedSam3ReviewCandidateIndex === null ? 'none' : backendActionResults.sam3AutoMosaicIntensity[focusedSam3ReviewCandidateIndex] ?? 16}`}</span>
-              </div>
-              <label className="text-layer-field">
-                <span>Focused SAM3 label</span>
-                <input aria-label="Focused SAM3 candidate label" type="text" value={focusedSam3ReviewCandidateIndex === null ? '' : getSam3CandidateInputLabel(focusedSam3ReviewCandidateIndex)} onChange={(e) => renameFocusedBackendSam3Candidate(e.target.value)} disabled={focusedSam3ReviewCandidateIndex === null} />
-              </label>
-              <label className="text-layer-field">
-                <span>Focused SAM3 note</span>
-                <input aria-label="Focused SAM3 candidate note" type="text" value={focusedSam3ReviewCandidateIndex === null ? '' : getSam3CandidateInputNote(focusedSam3ReviewCandidateIndex)} onChange={(e) => updateFocusedBackendSam3CandidateNote(e.target.value)} disabled={focusedSam3ReviewCandidateIndex === null} />
-              </label>
-              <div className="selection-controls">
-                <button type="button" className="page-card page-button" onClick={() => setAllBackendSam3AutoMosaicSelection(true)}>Select all SAM3 candidates</button>
-                <button type="button" className="page-card page-button" onClick={() => setAllBackendSam3AutoMosaicSelection(false)}>Clear SAM3 candidates</button>
-                <button type="button" className="page-card page-button" onClick={cycleFocusedBackendSam3AutoMosaicStyle} disabled={focusedSam3ReviewCandidateIndex === null}>Cycle focused SAM3 style</button>
-                <button type="button" className="page-card page-button" onClick={increaseFocusedBackendSam3AutoMosaicIntensity} disabled={focusedSam3ReviewCandidateIndex === null}>Increase focused SAM3 intensity</button>
-                <button type="button" className="page-card page-button" onClick={cycleFocusedBackendSam3Priority} disabled={focusedSam3ReviewCandidateIndex === null}>Cycle focused SAM3 priority</button>
-                <button type="button" className="page-card page-button" onClick={applyFocusedBackendSam3SettingsToSelected} disabled={focusedSam3ReviewCandidateIndex === null}>Apply focused SAM3 settings to selected</button>
-                <button type="button" className="page-card page-button" onClick={() => selectBackendSam3CandidatesByPriority('high')}>Select high priority SAM3 candidates</button>
-              </div>
-              {backendActionResults.sam3AutoMosaic.map((mask, index) => {
-                const bounds = parseBackendLayerSuggestion(mask, index)
-                const selected = backendActionResults.sam3AutoMosaicSelection[index] !== false
-                return (
-                  <button key={`sam3-candidate-${index}`} type="button" className="page-card page-button" onClick={() => toggleBackendSam3AutoMosaicSelection(index)} aria-pressed={selected} aria-label={`Toggle SAM3 candidate ${index + 1}`}>
-                    <strong>{`${getSam3CandidateCardLabel(index)} ${selected ? 'selected' : 'skipped'}`}</strong>
-                    <span>{`Note ${getSam3CandidateCardNote(index)}`}</span>
-                    <span>{`Priority ${getSam3CandidatePriority(index)}`}</span>
-                    <span>{`Style ${backendActionResults.sam3AutoMosaicStyle[index] ?? 'pixelate'}`}</span>
-                    <span>{`Intensity ${backendActionResults.sam3AutoMosaicIntensity[index] ?? 16}`}</span>
-                    <span>{`${Math.round(bounds.width)} x ${Math.round(bounds.height)} at ${Math.round(bounds.x)}, ${Math.round(bounds.y)}`}</span>
-                  </button>
-                )
-              })}
-              <button type="button" className="page-card page-button" onClick={applyBackendSam3AutoMosaicToCanvas} disabled={!hasActiveImage || backendActionResults.sam3AutoMosaicSelection.every((s) => !s)}>
-                Apply SAM3 auto mosaic to canvas
-              </button>
-            </>
-          ) : null}
-          {backendActionResults.nsfwDetections.length > 0 ? (
-            <>
-              <div className="page-card">
-                <strong>{`NSFW review candidates: ${backendActionResults.nsfwDetections.length}`}</strong>
-                <span>{`${backendActionResults.nsfwDetectionSelection.filter(Boolean).length} selected for apply`}</span>
-              </div>
-              <div className="page-card">
-                <strong>{`Focused NSFW candidate: ${focusedNsfwReviewCandidateIndex === null ? 'none' : focusedNsfwReviewCandidateIndex + 1}`}</strong>
-                <span>{`Label ${focusedNsfwReviewCandidateIndex === null ? 'none' : getNsfwCandidateCardLabel(focusedNsfwReviewCandidateIndex)}`}</span>
-                <span>{`Note ${focusedNsfwReviewCandidateIndex === null ? 'none' : getNsfwCandidateCardNote(focusedNsfwReviewCandidateIndex)}`}</span>
-                <span>{`Priority ${focusedNsfwReviewCandidateIndex === null ? 'none' : getNsfwCandidatePriority(focusedNsfwReviewCandidateIndex)}`}</span>
-                <span>{`Color ${focusedNsfwReviewCandidateIndex === null ? 'none' : backendActionResults.nsfwDetectionColor[focusedNsfwReviewCandidateIndex] ?? '#ff4d6d'}`}</span>
-                <span>{`Opacity ${focusedNsfwReviewCandidateIndex === null ? 'none' : (backendActionResults.nsfwDetectionOpacity[focusedNsfwReviewCandidateIndex] ?? 0.4).toFixed(1)}`}</span>
-              </div>
-              <label className="text-layer-field">
-                <span>Focused NSFW label</span>
-                <input aria-label="Focused NSFW candidate label" type="text" value={focusedNsfwReviewCandidateIndex === null ? '' : getNsfwCandidateInputLabel(focusedNsfwReviewCandidateIndex)} onChange={(e) => renameFocusedBackendNsfwCandidate(e.target.value)} disabled={focusedNsfwReviewCandidateIndex === null} />
-              </label>
-              <label className="text-layer-field">
-                <span>Focused NSFW note</span>
-                <input aria-label="Focused NSFW candidate note" type="text" value={focusedNsfwReviewCandidateIndex === null ? '' : getNsfwCandidateInputNote(focusedNsfwReviewCandidateIndex)} onChange={(e) => updateFocusedBackendNsfwCandidateNote(e.target.value)} disabled={focusedNsfwReviewCandidateIndex === null} />
-              </label>
-              <div className="selection-controls">
-                <button type="button" className="page-card page-button" onClick={() => setAllBackendNsfwDetectionSelection(true)}>Select all NSFW candidates</button>
-                <button type="button" className="page-card page-button" onClick={() => setAllBackendNsfwDetectionSelection(false)}>Clear NSFW candidates</button>
-                <button type="button" className="page-card page-button" onClick={cycleFocusedBackendNsfwDetectionColor} disabled={focusedNsfwReviewCandidateIndex === null}>Cycle focused NSFW color</button>
-                <button type="button" className="page-card page-button" onClick={increaseFocusedBackendNsfwDetectionOpacity} disabled={focusedNsfwReviewCandidateIndex === null}>Increase focused NSFW opacity</button>
-                <button type="button" className="page-card page-button" onClick={cycleFocusedBackendNsfwPriority} disabled={focusedNsfwReviewCandidateIndex === null}>Cycle focused NSFW priority</button>
-                <button type="button" className="page-card page-button" onClick={applyFocusedBackendNsfwSettingsToSelected} disabled={focusedNsfwReviewCandidateIndex === null}>Apply focused NSFW settings to selected</button>
-                <button type="button" className="page-card page-button" onClick={() => selectBackendNsfwCandidatesByPriority('high')}>Select high priority NSFW candidates</button>
-              </div>
-              {backendActionResults.nsfwDetections.map((detection, index) => {
-                const bounds = parseBackendLayerSuggestion(detection, index)
-                const selected = backendActionResults.nsfwDetectionSelection[index] !== false
-                return (
-                  <button key={`nsfw-candidate-${index}`} type="button" className="page-card page-button" onClick={() => toggleBackendNsfwDetectionSelection(index)} aria-pressed={selected} aria-label={`Toggle NSFW candidate ${index + 1}`}>
-                    <strong>{`${getNsfwCandidateCardLabel(index)} ${selected ? 'selected' : 'skipped'}`}</strong>
-                    <span>{`Note ${getNsfwCandidateCardNote(index)}`}</span>
-                    <span>{`Priority ${getNsfwCandidatePriority(index)}`}</span>
-                    <span>{`Color ${backendActionResults.nsfwDetectionColor[index] ?? '#ff4d6d'}`}</span>
-                    <span>{`Opacity ${(backendActionResults.nsfwDetectionOpacity[index] ?? 0.4).toFixed(1)}`}</span>
-                    <span>{`${Math.round(bounds.width)} x ${Math.round(bounds.height)} at ${Math.round(bounds.x)}, ${Math.round(bounds.y)}`}</span>
-                  </button>
-                )
-              })}
-              <button type="button" className="page-card page-button" onClick={applyBackendNsfwDetectionsToCanvas} disabled={!hasActiveImage || backendActionResults.nsfwDetectionSelection.every((s) => !s)}>
-                Apply NSFW detections to canvas
-              </button>
-            </>
-          ) : null}
-          <button type="button" className="page-card page-button" onClick={addBackendManualSegmentPoint} disabled={!hasActiveImage}>Add manual segment point</button>
-          <button type="button" className="page-card page-button" onClick={addNegativeBackendManualSegmentPoint} disabled={!hasActiveImage}>Add negative manual segment point</button>
-          <button type="button" className="page-card page-button" onClick={() => setBackendManualPointPickingMode('positive')} disabled={!hasActiveImage}>Enable positive point picking</button>
-          <button type="button" className="page-card page-button" onClick={() => setBackendManualPointPickingMode('negative')} disabled={!hasActiveImage}>Enable negative point picking</button>
-          {backendManualPointPickingMode !== 'off' ? (
-            <button type="button" className="page-card page-button" onClick={() => setBackendManualPointPickingMode('off')} disabled={!hasActiveImage}>Cancel manual point picking</button>
-          ) : null}
-          <button type="button" className="page-card page-button" onClick={resetBackendManualSegmentPoints} disabled={!hasActiveImage}>Reset manual segment points</button>
-          <button type="button" className="page-card page-button" onClick={toggleLastBackendManualSegmentPointLabel} disabled={!hasActiveImage || backendManualSegmentPoints.length === 0}>Toggle last manual point label</button>
-          <button type="button" className="page-card page-button" onClick={moveLastBackendManualSegmentPoint} disabled={!hasActiveImage || backendManualSegmentPoints.length === 0}>Move last manual point</button>
-          <button type="button" className="page-card page-button" onClick={removeLastBackendManualSegmentPoint} disabled={!hasActiveImage || backendManualSegmentPoints.length <= DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length}>Remove last manual point</button>
-          <button type="button" className="page-card page-button" onClick={toggleSelectedBackendManualSegmentPointLabel} disabled={!hasActiveImage || selectedBackendManualSegmentPoint === null}>Toggle selected manual point label</button>
-          <button type="button" className="page-card page-button" onClick={moveSelectedBackendManualSegmentPoint} disabled={!hasActiveImage || selectedBackendManualSegmentPoint === null}>Move selected manual point</button>
-          <button type="button" className="page-card page-button" onClick={removeSelectedBackendManualSegmentPoint} disabled={!hasActiveImage || selectedBackendManualSegmentPoint === null || backendManualSegmentPoints.length <= DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length}>Remove selected manual point</button>
-          <div className="page-card"><strong>{`Manual segment points: ${backendManualSegmentPoints.length}`}</strong></div>
-          <div className="page-card"><strong>{`Selected manual point: ${selectedBackendManualSegmentPointIndex + 1} of ${backendManualSegmentPoints.length}`}</strong></div>
-          <div className="page-card"><strong>{`Selected manual point label: ${selectedBackendManualSegmentPoint?.label === 0 ? 'negative' : 'positive'}`}</strong></div>
-          <div className="page-card"><strong>{`Selected manual point coordinates: ${selectedBackendManualSegmentPoint?.x ?? 0}, ${selectedBackendManualSegmentPoint?.y ?? 0}`}</strong></div>
-          <div className="page-card"><strong>{`Last manual point label: ${backendManualSegmentPoints[backendManualSegmentPoints.length - 1]?.label === 0 ? 'negative' : 'positive'}`}</strong></div>
-          <div className="page-card"><strong>{`Last manual point: ${backendManualSegmentPoints[backendManualSegmentPoints.length - 1]?.x ?? 0}, ${backendManualSegmentPoints[backendManualSegmentPoints.length - 1]?.y ?? 0}`}</strong></div>
-          <div className="page-card"><strong>{`Manual point picking: ${backendManualPointPickingMode}`}</strong></div>
-          <button type="button" className="page-card page-button" onClick={() => void runBackendSam3ManualSegment()} disabled={!hasActiveImage}>Run SAM3 manual segment</button>
-          {backendActionResults.sam3ManualSegmentMaskReady ? (
-            <>
-              <div className="page-card">
-                <strong>SAM3 manual segment review ready</strong>
-                <span>{`${backendManualSegmentPoints.filter((p) => p.label === 1).length} positive / ${backendManualSegmentPoints.filter((p) => p.label === 0).length} negative points`}</span>
-              </div>
-              <button type="button" className="page-card page-button" onClick={applyBackendSam3ManualSegmentToCanvas} disabled={!hasActiveImage}>Apply manual segment to canvas</button>
-            </>
-          ) : null}
-          {backendDownloads.sam3 ? <div className="page-card"><strong>{backendDownloads.sam3}</strong></div> : null}
-          {backendDownloads.nudenet ? <div className="page-card"><strong>{backendDownloads.nudenet}</strong></div> : null}
-          {backendActions.sam3AutoMosaic ? <div className="page-card"><strong>{backendActions.sam3AutoMosaic}</strong></div> : null}
-          {backendActions.nsfwDetection ? <div className="page-card"><strong>{backendActions.nsfwDetection}</strong></div> : null}
-          {backendActions.sam3ManualSegment ? <div className="page-card"><strong>{backendActions.sam3ManualSegment}</strong></div> : null}
-          <button type="button" className="page-card page-button" onClick={() => void rerunLastBackendAction()} disabled={!hasActiveImage || backendActionHistory.length === 0}>Run last backend action again</button>
-          <button type="button" className="page-card page-button" onClick={clearBackendActionHistory} disabled={backendActionHistory.length === 0}>Clear backend action history</button>
-          <div className="page-card">
-            <strong>Recent backend actions</strong>
-            <span>{backendActionHistory.length === 0 ? 'No backend actions yet' : backendActionHistory[0].label}</span>
-          </div>
-          {backendActionHistory.map((entry, index) => (
-            <div key={entry.id} className="page-card">
-              {index > 0 ? <span>{entry.label}</span> : null}
-              <button type="button" className="page-button" onClick={() => void rerunBackendAction(entry)} disabled={!hasActiveImage} aria-label={`Run backend action again: ${entry.label}`}>Run again</button>
-            </div>
-          ))}
+        <div className="flex items-center gap-2 mb-3 text-xs text-[rgba(243,239,230,0.66)]">
+          <span className={backendStatus.sam3_loaded ? 'text-[#74c4ff]' : 'text-[rgba(243,239,230,0.44)]'}>SAM3 {backendStatus.sam3_loaded ? '●' : '○'}</span>
+          <span className={backendStatus.nudenet_loaded ? 'text-[#74c4ff]' : 'text-[rgba(243,239,230,0.44)]'}>NudeNet {backendStatus.nudenet_loaded ? '●' : '○'}</span>
+          <span className={backendStatus.gpu_available ? 'text-[#74c4ff]' : 'text-[rgba(243,239,230,0.44)]'}>GPU {backendStatus.gpu_available ? '●' : '○'}</span>
         </div>
       ) : (
-        <div className="page-card empty"><strong>Checking backend status...</strong></div>
+        <div className="page-card empty mb-3"><strong>バックエンド接続中...</strong></div>
+      )}
+
+      {backendStatus && (
+        <Tabs defaultValue="models">
+          <TabsList className="w-full mb-3">
+            <TabsTrigger value="models">モデル</TabsTrigger>
+            <TabsTrigger value="sam3">SAM3</TabsTrigger>
+            <TabsTrigger value="nsfw">NSFW</TabsTrigger>
+            <TabsTrigger value="manual">手動</TabsTrigger>
+          </TabsList>
+
+          {/* ── Models tab ─────────────────────────────────────── */}
+          <TabsContent value="models">
+            <div className="page-list">
+              <div className="page-card">
+                <strong>{backendStatus.sam3_loaded ? 'SAM3 Ready' : 'SAM3 Loading'}</strong>
+                <span>{getBackendModelStatusDetail('sam3')}</span>
+              </div>
+              <div className="page-card">
+                <strong>{backendStatus.nudenet_loaded ? 'NudeNet Ready' : 'NudeNet Loading'}</strong>
+                <span>{getBackendModelStatusDetail('nudenet')}</span>
+              </div>
+              <label className="text-layer-field">
+                <span>SAM3 モデルサイズ</span>
+                <select aria-label="SAM3 model size" value={backendSam3ModelSize} onChange={(e) => setBackendSam3ModelSize(e.target.value === 'large' ? 'large' : 'base')}>
+                  <option value="base">base</option>
+                  <option value="large">large</option>
+                </select>
+              </label>
+              <label className="text-layer-field">
+                <span>自動モザイク強度</span>
+                <select aria-label="Auto mosaic strength" value={backendAutoMosaicStrength} onChange={(e) => { const v = e.target.value; setBackendAutoMosaicStrength(v === 'light' || v === 'strong' ? v : 'medium') }}>
+                  <option value="light">light</option>
+                  <option value="medium">medium</option>
+                  <option value="strong">strong</option>
+                </select>
+              </label>
+              <label className="text-layer-field">
+                <span>NSFW 閾値</span>
+                <input aria-label="NSFW threshold" type="number" min="0.1" max="0.99" step="0.01" value={backendNsfwThreshold} onChange={(e) => setBackendNsfwThreshold(e.target.value)} />
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => void startBackendModelDownload('sam3')} disabled={isBackendModelReady('sam3') || isBackendModelDownloading('sam3')}>
+                  {getBackendModelButtonLabel('sam3')}
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => void startBackendModelDownload('nudenet')} disabled={isBackendModelReady('nudenet') || isBackendModelDownloading('nudenet')}>
+                  {getBackendModelButtonLabel('nudenet')}
+                </Button>
+              </div>
+              {backendDownloads.sam3 && <div className="page-card"><strong>{backendDownloads.sam3}</strong></div>}
+              {backendDownloads.nudenet && <div className="page-card"><strong>{backendDownloads.nudenet}</strong></div>}
+            </div>
+          </TabsContent>
+
+          {/* ── SAM3 tab ───────────────────────────────────────── */}
+          <TabsContent value="sam3">
+            <div className="page-list">
+              <Button className="w-full" variant="default" size="sm" onClick={() => void runBackendSam3AutoMosaic()} disabled={!hasActiveImage}>
+                SAM3 自動モザイク実行
+              </Button>
+              {backendActions.sam3AutoMosaic && <div className="page-card"><strong>{backendActions.sam3AutoMosaic}</strong></div>}
+              {backendActionResults.sam3AutoMosaic.length > 0 && (
+                <>
+                  <div className="page-card">
+                    <strong>{`候補: ${backendActionResults.sam3AutoMosaic.length} 件`}</strong>
+                    <span>{`${backendActionResults.sam3AutoMosaicSelection.filter(Boolean).length} 件を適用選択中`}</span>
+                  </div>
+                  {focusedSam3ReviewCandidateIndex !== null && (
+                    <div className="page-card">
+                      <strong>{`注目: ${getSam3CandidateCardLabel(focusedSam3ReviewCandidateIndex)}`}</strong>
+                      <span>{`優先度: ${getSam3CandidatePriority(focusedSam3ReviewCandidateIndex)}`}</span>
+                      <span>{`スタイル: ${backendActionResults.sam3AutoMosaicStyle[focusedSam3ReviewCandidateIndex] ?? 'pixelate'}`}</span>
+                      <span>{`強度: ${backendActionResults.sam3AutoMosaicIntensity[focusedSam3ReviewCandidateIndex] ?? 16}`}</span>
+                    </div>
+                  )}
+                  {focusedSam3ReviewCandidateIndex !== null && (
+                    <>
+                      <label className="text-layer-field">
+                        <span>ラベル</span>
+                        <input aria-label="SAM3 candidate label" type="text" value={getSam3CandidateInputLabel(focusedSam3ReviewCandidateIndex)} onChange={(e) => renameFocusedBackendSam3Candidate(e.target.value)} />
+                      </label>
+                      <label className="text-layer-field">
+                        <span>メモ</span>
+                        <input aria-label="SAM3 candidate note" type="text" value={getSam3CandidateInputNote(focusedSam3ReviewCandidateIndex)} onChange={(e) => updateFocusedBackendSam3CandidateNote(e.target.value)} />
+                      </label>
+                    </>
+                  )}
+                  <div className="flex gap-1 flex-wrap">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setAllBackendSam3AutoMosaicSelection(true)}>全選択</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setAllBackendSam3AutoMosaicSelection(false)}>選択解除</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={cycleFocusedBackendSam3AutoMosaicStyle} disabled={focusedSam3ReviewCandidateIndex === null}>スタイル</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={cycleFocusedBackendSam3Priority} disabled={focusedSam3ReviewCandidateIndex === null}>優先度</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => selectBackendSam3CandidatesByPriority('high')}>高優先のみ</Button>
+                  </div>
+                  {backendActionResults.sam3AutoMosaic.map((mask, index) => {
+                    const bounds = parseBackendLayerSuggestion(mask, index)
+                    const selected = backendActionResults.sam3AutoMosaicSelection[index] !== false
+                    return (
+                      <button key={`sam3-candidate-${index}`} type="button" className="page-card page-button" onClick={() => toggleBackendSam3AutoMosaicSelection(index)} aria-pressed={selected} aria-label={`Toggle SAM3 candidate ${index + 1}`}>
+                        <strong>{`${getSam3CandidateCardLabel(index)} ${selected ? '✓' : '—'}`}</strong>
+                        <span>{`優先度: ${getSam3CandidatePriority(index)} | ${backendActionResults.sam3AutoMosaicStyle[index] ?? 'pixelate'} x${backendActionResults.sam3AutoMosaicIntensity[index] ?? 16}`}</span>
+                        <span>{`${Math.round(bounds.width)} × ${Math.round(bounds.height)} @ ${Math.round(bounds.x)}, ${Math.round(bounds.y)}`}</span>
+                      </button>
+                    )
+                  })}
+                  <Button className="w-full" variant="default" size="sm" onClick={applyBackendSam3AutoMosaicToCanvas} disabled={!hasActiveImage || backendActionResults.sam3AutoMosaicSelection.every((s) => !s)}>
+                    キャンバスに適用
+                  </Button>
+                </>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* ── NSFW tab ───────────────────────────────────────── */}
+          <TabsContent value="nsfw">
+            <div className="page-list">
+              <Button className="w-full" variant="default" size="sm" onClick={() => void runBackendNsfwDetection()} disabled={!hasActiveImage}>
+                NSFW 検出実行
+              </Button>
+              {backendActions.nsfwDetection && <div className="page-card"><strong>{backendActions.nsfwDetection}</strong></div>}
+              {backendActionResults.nsfwDetections.length > 0 && (
+                <>
+                  <div className="page-card">
+                    <strong>{`検出: ${backendActionResults.nsfwDetections.length} 件`}</strong>
+                    <span>{`${backendActionResults.nsfwDetectionSelection.filter(Boolean).length} 件を適用選択中`}</span>
+                  </div>
+                  {focusedNsfwReviewCandidateIndex !== null && (
+                    <div className="page-card">
+                      <strong>{`注目: ${getNsfwCandidateCardLabel(focusedNsfwReviewCandidateIndex)}`}</strong>
+                      <span>{`優先度: ${getNsfwCandidatePriority(focusedNsfwReviewCandidateIndex)}`}</span>
+                    </div>
+                  )}
+                  {focusedNsfwReviewCandidateIndex !== null && (
+                    <>
+                      <label className="text-layer-field">
+                        <span>ラベル</span>
+                        <input aria-label="NSFW candidate label" type="text" value={getNsfwCandidateInputLabel(focusedNsfwReviewCandidateIndex)} onChange={(e) => renameFocusedBackendNsfwCandidate(e.target.value)} />
+                      </label>
+                      <label className="text-layer-field">
+                        <span>メモ</span>
+                        <input aria-label="NSFW candidate note" type="text" value={getNsfwCandidateInputNote(focusedNsfwReviewCandidateIndex)} onChange={(e) => updateFocusedBackendNsfwCandidateNote(e.target.value)} />
+                      </label>
+                    </>
+                  )}
+                  <div className="flex gap-1 flex-wrap">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setAllBackendNsfwDetectionSelection(true)}>全選択</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setAllBackendNsfwDetectionSelection(false)}>選択解除</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={cycleFocusedBackendNsfwDetectionColor} disabled={focusedNsfwReviewCandidateIndex === null}>色変更</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={cycleFocusedBackendNsfwPriority} disabled={focusedNsfwReviewCandidateIndex === null}>優先度</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => selectBackendNsfwCandidatesByPriority('high')}>高優先のみ</Button>
+                  </div>
+                  {backendActionResults.nsfwDetections.map((detection, index) => {
+                    const bounds = parseBackendLayerSuggestion(detection, index)
+                    const selected = backendActionResults.nsfwDetectionSelection[index] !== false
+                    return (
+                      <button key={`nsfw-candidate-${index}`} type="button" className="page-card page-button" onClick={() => toggleBackendNsfwDetectionSelection(index)} aria-pressed={selected} aria-label={`Toggle NSFW candidate ${index + 1}`}>
+                        <strong>{`${getNsfwCandidateCardLabel(index)} ${selected ? '✓' : '—'}`}</strong>
+                        <span>{`優先度: ${getNsfwCandidatePriority(index)} | 不透明度: ${(backendActionResults.nsfwDetectionOpacity[index] ?? 0.4).toFixed(1)}`}</span>
+                        <span>{`${Math.round(bounds.width)} × ${Math.round(bounds.height)} @ ${Math.round(bounds.x)}, ${Math.round(bounds.y)}`}</span>
+                      </button>
+                    )
+                  })}
+                  <Button className="w-full" variant="default" size="sm" onClick={applyBackendNsfwDetectionsToCanvas} disabled={!hasActiveImage || backendActionResults.nsfwDetectionSelection.every((s) => !s)}>
+                    キャンバスに適用
+                  </Button>
+                </>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* ── Manual tab ─────────────────────────────────────── */}
+          <TabsContent value="manual">
+            <div className="page-list">
+              <div className="page-card text-xs">
+                <strong>{`ポイント数: ${backendManualSegmentPoints.length}`}</strong>
+                <span>{`選択中: ${selectedBackendManualSegmentPointIndex + 1} / ${backendManualSegmentPoints.length}`}</span>
+                <span>{`選択ラベル: ${selectedBackendManualSegmentPoint?.label === 0 ? 'ネガティブ' : 'ポジティブ'}`}</span>
+                <span>{`ピッキング: ${backendManualPointPickingMode === 'off' ? 'オフ' : backendManualPointPickingMode === 'positive' ? 'ポジティブ' : 'ネガティブ'}`}</span>
+              </div>
+              <div className="flex gap-1 flex-wrap">
+                <Button size="sm" variant={backendManualPointPickingMode === 'positive' ? 'active' : 'outline'} className="flex-1"
+                  onClick={() => setBackendManualPointPickingMode(backendManualPointPickingMode === 'positive' ? 'off' : 'positive')} disabled={!hasActiveImage}>
+                  + ポジ
+                </Button>
+                <Button size="sm" variant={backendManualPointPickingMode === 'negative' ? 'active' : 'outline'} className="flex-1"
+                  onClick={() => setBackendManualPointPickingMode(backendManualPointPickingMode === 'negative' ? 'off' : 'negative')} disabled={!hasActiveImage}>
+                  − ネガ
+                </Button>
+              </div>
+              <div className="flex gap-1 flex-wrap">
+                <Button size="sm" variant="outline" className="flex-1" onClick={addBackendManualSegmentPoint} disabled={!hasActiveImage}>追加</Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={addNegativeBackendManualSegmentPoint} disabled={!hasActiveImage}>ネガ追加</Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={removeLastBackendManualSegmentPoint} disabled={!hasActiveImage || backendManualSegmentPoints.length <= DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length}>削除</Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={resetBackendManualSegmentPoints} disabled={!hasActiveImage}>リセット</Button>
+              </div>
+              <div className="flex gap-1 flex-wrap">
+                <Button size="sm" variant="outline" className="flex-1" onClick={toggleSelectedBackendManualSegmentPointLabel} disabled={!hasActiveImage || selectedBackendManualSegmentPoint === null}>ラベル切替</Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedBackendManualSegmentPoint} disabled={!hasActiveImage || selectedBackendManualSegmentPoint === null}>移動</Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={removeSelectedBackendManualSegmentPoint} disabled={!hasActiveImage || selectedBackendManualSegmentPoint === null || backendManualSegmentPoints.length <= DEFAULT_SAM3_MANUAL_SEGMENT_POINTS.length}>選択削除</Button>
+              </div>
+              <Button className="w-full" variant="default" size="sm" onClick={() => void runBackendSam3ManualSegment()} disabled={!hasActiveImage}>
+                SAM3 手動セグメント実行
+              </Button>
+              {backendActions.sam3ManualSegment && <div className="page-card"><strong>{backendActions.sam3ManualSegment}</strong></div>}
+              {backendActionResults.sam3ManualSegmentMaskReady && (
+                <>
+                  <div className="page-card">
+                    <strong>手動セグメント結果</strong>
+                    <span>{`${backendManualSegmentPoints.filter((p) => p.label === 1).length} ポジ / ${backendManualSegmentPoints.filter((p) => p.label === 0).length} ネガ`}</span>
+                  </div>
+                  <Button className="w-full" variant="default" size="sm" onClick={applyBackendSam3ManualSegmentToCanvas} disabled={!hasActiveImage}>
+                    キャンバスに適用
+                  </Button>
+                </>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {/* Action history */}
+      {backendActionHistory.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-[rgba(243,239,230,0.08)]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="panel-title" style={{ marginBottom: 0 }}>履歴</span>
+            <Button size="sm" variant="ghost" onClick={clearBackendActionHistory}>クリア</Button>
+          </div>
+          <div className="page-list">
+            {backendActionHistory.map((entry) => (
+              <div key={entry.id} className="page-card">
+                <span className="text-xs">{entry.label}</span>
+                <button type="button" className="page-button text-xs" onClick={() => void rerunBackendAction(entry)} disabled={!hasActiveImage}>再実行</button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </section>
   )

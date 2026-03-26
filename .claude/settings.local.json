@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\")",
+      "Bash(npm --version)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"const l = require\\(''./node_modules/lucide-react/dist/cjs/lucide-react.js''\\); console.log\\([''Stamp'',''Droplets'',''Grid2X2'',''MousePointer2'',''Type'',''MessageSquare'',''MessageCircle'',''Layers'',''Undo2'',''Redo2'',''Save'',''Download'',''FileImage'',''HelpCircle'',''ChevronLeft'',''ChevronRight'',''Plus'',''Trash2'',''Copy'',''FolderOpen''].filter\\(k => l[k]\\).join\\('', ''\\)\\)\")",
+      "Bash(node -e \"const l = require\\(''./node_modules/lucide-react/dist/cjs/lucide-react.js''\\); const icons=[''Stamp'',''Droplets'',''Grid2X2'',''MousePointer2'',''Type'',''MessageSquare'',''MessageCircle'',''Layers'',''Undo2'',''Redo2'',''Save'',''Download'',''FileImage'',''HelpCircle'',''ChevronLeft'',''ChevronRight'',''Plus'',''Trash2'',''Copy'',''FolderOpen'']; icons.forEach\\(k => console.log\\(k, !!l[k]\\)\\)\")",
+      "Bash(node node_modules/vite/bin/vite.js build)"
+    ]
+  }
+}

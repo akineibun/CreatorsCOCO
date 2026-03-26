@@ -1,4 +1,6 @@
 import type { MouseEvent } from 'react'
+import type React from 'react'
+import { Eye, EyeOff, Lock, Unlock, ImageIcon, Type, MessageSquare, MessageCircle, Grid2X2, Layers, Stamp } from 'lucide-react'
 import { useWorkspaceStore, selectActiveImage } from '../../stores/workspaceStore'
 
 export function LayersPanel() {
@@ -31,6 +33,15 @@ export function LayersPanel() {
     ...(image?.watermarkLayers ?? []).map(l => ({ ...l, type: 'watermark' as const })),
   ]
 
+  const TYPE_ICON: Record<string, React.ReactNode> = {
+    text: <Type className="w-3 h-3" />,
+    message: <MessageSquare className="w-3 h-3" />,
+    bubble: <MessageCircle className="w-3 h-3" />,
+    mosaic: <Grid2X2 className="w-3 h-3" />,
+    overlay: <Layers className="w-3 h-3" />,
+    watermark: <Stamp className="w-3 h-3" />,
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const TYPE_LABEL: Record<string, string> = {
     text: 'T',
     message: 'W',
@@ -66,19 +77,18 @@ export function LayersPanel() {
         <li className={selectedLayerId === 'base-image' ? 'selected-layer' : undefined}>
           <button
             type="button"
-            className="layer-visibility-btn"
-            aria-label="Base image visibility"
+            className="layer-visibility"
+            aria-label="Base image"
             onClick={() => selectBaseImageLayer()}
           >
-            👁
+            <ImageIcon className="w-3 h-3" />
           </button>
-          <span className="layer-type-badge">IMG</span>
           <button
             type="button"
             className="layer-select-button"
             onClick={() => selectBaseImageLayer()}
           >
-            {image ? 'Base image' : 'No image'}
+            {image ? 'ベース画像' : '画像なし'}
           </button>
         </li>
         {allLayers.map((layer) => {
@@ -91,32 +101,34 @@ export function LayersPanel() {
             >
               <button
                 type="button"
-                className={`layer-visibility-btn${isVisible ? '' : ' layer-hidden'}`}
+                className="layer-visibility"
                 aria-label={`Toggle visibility: ${getLabel(layer)}`}
-                title={isVisible ? 'Hide layer' : 'Show layer'}
+                title={isVisible ? 'レイヤーを隠す' : 'レイヤーを表示'}
                 onClick={(e) => {
                   e.stopPropagation()
                   toggleLayerVisibilityById(layer.id)
                 }}
               >
-                {isVisible ? '👁' : '🚫'}
+                {isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3 opacity-40" />}
               </button>
               <button
                 type="button"
-                className={`layer-lock-btn${layer.locked ? ' layer-locked' : ''}`}
+                className="layer-visibility"
                 aria-label={`Toggle lock: ${getLabel(layer)}`}
-                title={layer.locked ? 'Unlock layer' : 'Lock layer'}
+                title={layer.locked ? 'ロック解除' : 'レイヤーをロック'}
                 onClick={(e) => {
                   e.stopPropagation()
                   toggleLayerLockById(layer.id)
                 }}
               >
-                {layer.locked ? '🔒' : '🔓'}
+                {layer.locked ? <Lock className="w-3 h-3 text-[#d7b48a]" /> : <Unlock className="w-3 h-3 opacity-40" />}
               </button>
-              <span className="layer-type-badge">{TYPE_LABEL[layer.type]}</span>
+              <span className="layer-visibility text-[rgba(215,180,138,0.8)]">
+                {TYPE_ICON[layer.type]}
+              </span>
               <button
                 type="button"
-                className={`layer-select-button${isVisible ? '' : ' layer-name-hidden'}`}
+                className={`layer-select-button${isVisible ? '' : ' opacity-40'}`}
                 onClick={(e) => handleSelect(layer, e)}
                 aria-label={`Select ${layer.type} layer: ${getLabel(layer)}`}
               >

@@ -532,6 +532,7 @@ export type KonvaCanvasProps = {
   onSelectLayers: (ids: string[], additive: boolean) => void
   onMoveSelectedLayers: (dx: number, dy: number) => void
   onResizeSelectedLayers: (dx: number, dy: number, handle: ResizeHandle, preserveAspectRatio: boolean) => void
+  onCursorMove?: (x: number, y: number) => void
 
   // Container styling
   className?: string
@@ -547,6 +548,7 @@ export function KonvaCanvas({
   onSelectLayers,
   onMoveSelectedLayers,
   onResizeSelectedLayers,
+  onCursorMove,
   className,
 }: KonvaCanvasProps) {
   const {
@@ -799,6 +801,8 @@ export function KonvaCanvas({
     const pos = getStageCanvasPos()
     if (!pos) return
 
+    onCursorMove?.(pos.x, pos.y)
+
     if (manualPtDragState) {
       setManualPtDragState((s) => s ? { ...s, currentX: pos.x, currentY: pos.y } : s)
       return
@@ -814,7 +818,7 @@ export function KonvaCanvas({
     if (marqueeState) {
       setMarqueeState((s) => s ? { ...s, currentX: pos.x, currentY: pos.y } : s)
     }
-  }, [getStageCanvasPos, manualPtDragState, dragState, resizeState, marqueeState])
+  }, [getStageCanvasPos, onCursorMove, manualPtDragState, dragState, resizeState, marqueeState])
 
   const handleStagePointerUp = useCallback(
     (e: KonvaEventObject<MouseEvent>) => {

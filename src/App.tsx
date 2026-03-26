@@ -1,6 +1,30 @@
-import { useEffect, useState } from 'react'
+import * as React from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent } from 'react'
+import {
+  MousePointer2,
+  Type,
+  MessageSquare,
+  MessageCircle,
+  Grid2X2,
+  Layers,
+  Droplets,
+  Undo2,
+  Redo2,
+  Save,
+  Download,
+  FileImage,
+  HelpCircle,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Trash2,
+  Copy,
+  FolderOpen,
+  Stamp,
+} from 'lucide-react'
 import { KonvaCanvas } from './components/KonvaCanvas'
+import { StatusBar } from './components/StatusBar'
 import { TemplateThumb } from './components/TemplateThumb'
 import { TextLayerPanel } from './components/panels/TextLayerPanel'
 import { MessageWindowPanel } from './components/panels/MessageWindowPanel'
@@ -11,6 +35,8 @@ import { OverlayLayerPanel } from './components/panels/OverlayLayerPanel'
 import { LayersPanel } from './components/panels/LayersPanel'
 import { InspectorLayerDetails } from './components/panels/InspectorLayerDetails'
 import { BackendPanel } from './components/panels/BackendPanel'
+import { Button } from './components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip'
 import {
   createPdfExportName,
   createPngExportName,
@@ -24,13 +50,13 @@ import { exportPagesAsZip } from './lib/export/zipExporter'
 import type { ResizeHandle, Tool } from './stores/workspaceStore'
 import { outputPresets, selectActiveImage, toolLabels, useWorkspaceStore } from './stores/workspaceStore'
 
-const TOOL_ICON_BY_ID: Record<Tool, string> = {
-  select: '◎',
-  text: 'Aa',
-  'message-window': '談',
-  bubble: '◌',
-  mosaic: '▒',
-  overlay: '▭',
+const TOOL_ICON_BY_ID: Record<Tool, React.ReactNode> = {
+  select: <MousePointer2 className="w-5 h-5" />,
+  text: <Type className="w-5 h-5" />,
+  'message-window': <MessageSquare className="w-5 h-5" />,
+  bubble: <MessageCircle className="w-5 h-5" />,
+  mosaic: <Grid2X2 className="w-5 h-5" />,
+  overlay: <Layers className="w-5 h-5" />,
 }
 
 const TOOL_LABEL_JA_BY_ID: Record<Tool, string> = {
@@ -217,6 +243,12 @@ const getExportPreviewLayout = (
 function App() {
   const [exportMessage, setExportMessage] = useState('Export idle')
   const [recentExports, setRecentExports] = useState<ExportHistoryEntry[]>([])
+  const [cursorX, setCursorX] = useState(0)
+  const [cursorY, setCursorY] = useState(0)
+  const handleCursorMove = useCallback((x: number, y: number) => {
+    setCursorX(x)
+    setCursorY(y)
+  }, [])
   const [projectNameDraft, setProjectNameDraft] = useState('Untitled project')
   const [widthDraft, setWidthDraft] = useState('1920')
   const [heightDraft, setHeightDraft] = useState('1080')
@@ -1053,22 +1085,27 @@ function App() {
       <div className="workspace-grid">
         <aside aria-label="Tool palette" className="tool-palette">
           <div className="panel-title">ツール</div>
-          <div className="tool-stack" role="toolbar" aria-label="Tool palette">
-            {toolLabels.map((tool) => (
-              <button
-                key={tool.id}
-                type="button"
-                className={tool.id === activeTool ? 'tool-button active' : 'tool-button'}
-                aria-label={tool.label}
-                title={TOOL_LABEL_JA_BY_ID[tool.id]}
-                aria-pressed={tool.id === activeTool}
-                onClick={() => setActiveTool(tool.id)}
-              >
-                <span className="tool-button-icon" aria-hidden="true">{TOOL_ICON_BY_ID[tool.id]}</span>
-                <span className="tool-button-label">{TOOL_LABEL_JA_BY_ID[tool.id]}</span>
-              </button>
-            ))}
-          </div>
+          <TooltipProvider delayDuration={400}>
+            <div className="tool-stack" role="toolbar" aria-label="Tool palette">
+              {toolLabels.map((tool) => (
+                <Tooltip key={tool.id}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className={tool.id === activeTool ? 'tool-button active' : 'tool-button'}
+                      aria-label={tool.label}
+                      aria-pressed={tool.id === activeTool}
+                      onClick={() => setActiveTool(tool.id)}
+                    >
+                      <span className="tool-button-icon" aria-hidden="true">{TOOL_ICON_BY_ID[tool.id]}</span>
+                      <span className="tool-button-label">{TOOL_LABEL_JA_BY_ID[tool.id]}</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">{TOOL_LABEL_JA_BY_ID[tool.id]}</TooltipContent>
+                </Tooltip>
+              ))}
+            </div>
+          </TooltipProvider>
         </aside>
 
         <main aria-label="Canvas workspace" className="canvas-panel">
@@ -1249,6 +1286,7 @@ function App() {
                   onResizeSelectedLayers={(dx, dy, handle, preserveAspectRatio) =>
                     resizeSelectedLayersByDelta(dx, dy, handle, preserveAspectRatio)
                   }
+                  onCursorMove={handleCursorMove}
                   className={selectedLayerId === 'base-image' ? 'canvas-frame loaded selected' : 'canvas-frame loaded'}
                 />
 
@@ -2435,13 +2473,15 @@ function App() {
         </div>
       </div>
 
-      <footer aria-label="Status bar" className="status-bar">
-        <span>Zoom {zoomPercent}%</span>
-        <span>Image {image ? `${image.width} x ${image.height}` : 'No image loaded'}</span>
-        <span>{saveStatusLabel}</span>
-        <span>{exportMessage}</span>
-        <span>Cursor 0, 0</span>
-      </footer>
+      <StatusBar
+        zoomPercent={zoomPercent}
+        imageWidth={image?.width ?? null}
+        imageHeight={image?.height ?? null}
+        cursorX={cursorX}
+        cursorY={cursorY}
+        saveStatusLabel={saveStatusLabel}
+        exportMessage={exportMessage}
+      />
     </div>
   )
 }

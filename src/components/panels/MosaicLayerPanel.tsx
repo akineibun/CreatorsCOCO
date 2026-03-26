@@ -1,5 +1,6 @@
 import { useWorkspaceStore, selectActiveImage } from '../../stores/workspaceStore'
 import type { CanvasMosaicLayer } from '../../stores/workspaceStore'
+import { Button } from '../ui/button'
 
 export function MosaicLayerPanel() {
   const {
@@ -32,40 +33,74 @@ export function MosaicLayerPanel() {
 
   return (
     <div className="selection-controls text-controls" role="group" aria-label="Mosaic layer controls">
-      <label className="text-layer-field"><span>Layer name</span>
+      <label className="text-layer-field">
+        <span>レイヤー名</span>
         <input type="text" aria-label="Selected layer name" value={activeLayer.name ?? ''} onChange={e => renameSelectedLayer(e.target.value)} />
       </label>
-      <button type="button" onClick={() => moveSelectedMosaicLayer(-32, 0)}>Move mosaic left</button>
-      <button type="button" onClick={() => moveSelectedMosaicLayer(32, 0)}>Move mosaic right</button>
-      <button type="button" onClick={() => moveSelectedMosaicLayer(0, -32)}>Move mosaic up</button>
-      <button type="button" onClick={() => moveSelectedMosaicLayer(0, 32)}>Move mosaic down</button>
-      <button type="button" onClick={() => resizeSelectedMosaicLayer(-32, 0)}>Decrease mosaic width</button>
-      <button type="button" onClick={() => resizeSelectedMosaicLayer(32, 0)}>Increase mosaic width</button>
-      <button type="button" onClick={() => resizeSelectedMosaicLayer(0, -32)}>Decrease mosaic height</button>
-      <button type="button" onClick={() => resizeSelectedMosaicLayer(0, 32)}>Increase mosaic height</button>
-      <button type="button" onClick={() => changeSelectedMosaicIntensity(-4)}>Decrease mosaic intensity</button>
-      <button type="button" onClick={() => changeSelectedMosaicIntensity(4)}>Increase mosaic intensity</button>
-      <button type="button" onClick={() => setSelectedMosaicIntensity(8)}>Mosaic intensity Small</button>
-      <button type="button" onClick={() => setSelectedMosaicIntensity(16)}>Mosaic intensity Medium</button>
-      <button type="button" onClick={() => setSelectedMosaicIntensity(24)}>Mosaic intensity Large</button>
-      <button type="button" onClick={cycleSelectedMosaicStyle}>Cycle mosaic style</button>
-      <button type="button" onClick={() => setSelectedMosaicStyle('pixelate')}>Mosaic pixelate</button>
-      <button type="button" onClick={() => setSelectedMosaicStyle('blur')}>Mosaic blur</button>
-      <button type="button" onClick={() => setSelectedMosaicStyle('noise')}>Mosaic noise</button>
-      <button type="button" onClick={moveSelectedMosaicLayerBackward}>Send mosaic backward</button>
-      <button type="button" onClick={moveSelectedMosaicLayerForward}>Bring mosaic forward</button>
-      <button type="button" onClick={duplicateSelectedMosaicLayer}>Duplicate mosaic layer</button>
-      <button type="button" onClick={saveSelectedMosaicStylePreset}>Save mosaic preset</button>
+
+      {/* Style selector */}
+      <div className="flex gap-1 mt-2">
+        {(['pixelate', 'blur', 'noise'] as const).map(style => (
+          <Button
+            key={style}
+            size="sm"
+            variant={activeLayer.style === style ? 'active' : 'outline'}
+            className="flex-1"
+            onClick={() => setSelectedMosaicStyle(style)}
+          >
+            {style === 'pixelate' ? 'ピクセル' : style === 'blur' ? 'ぼかし' : 'ノイズ'}
+          </Button>
+        ))}
+      </div>
+
+      {/* Intensity */}
+      <div className="text-layer-field mt-2">
+        <span>強度</span>
+        <div className="flex gap-1 mt-1">
+          <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedMosaicIntensity(8)}>小</Button>
+          <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedMosaicIntensity(16)}>中</Button>
+          <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedMosaicIntensity(24)}>大</Button>
+          <Button size="sm" variant="outline" onClick={() => changeSelectedMosaicIntensity(-4)}>−</Button>
+          <Button size="sm" variant="outline" onClick={() => changeSelectedMosaicIntensity(4)}>+</Button>
+        </div>
+      </div>
+
+      {/* Move */}
+      <div className="grid grid-cols-3 gap-1 mt-2">
+        <div /><Button size="sm" variant="outline" onClick={() => moveSelectedMosaicLayer(0, -32)}>↑</Button><div />
+        <Button size="sm" variant="outline" onClick={() => moveSelectedMosaicLayer(-32, 0)}>←</Button>
+        <div />
+        <Button size="sm" variant="outline" onClick={() => moveSelectedMosaicLayer(32, 0)}>→</Button>
+        <div /><Button size="sm" variant="outline" onClick={() => moveSelectedMosaicLayer(0, 32)}>↓</Button><div />
+      </div>
+
+      {/* Resize */}
+      <div className="grid grid-cols-2 gap-1 mt-1">
+        <Button size="sm" variant="outline" onClick={() => resizeSelectedMosaicLayer(-32, 0)}>幅 −</Button>
+        <Button size="sm" variant="outline" onClick={() => resizeSelectedMosaicLayer(32, 0)}>幅 +</Button>
+        <Button size="sm" variant="outline" onClick={() => resizeSelectedMosaicLayer(0, -32)}>高 −</Button>
+        <Button size="sm" variant="outline" onClick={() => resizeSelectedMosaicLayer(0, 32)}>高 +</Button>
+      </div>
+
+      {/* Presets */}
       {mosaicStylePresets.length > 0 && (
-        <div className="selection-controls">
+        <div className="mt-2 pt-2 border-t border-[rgba(243,239,230,0.08)] grid gap-1">
+          <Button size="sm" variant="accent" className="w-full" onClick={saveSelectedMosaicStylePreset}>プリセット保存</Button>
           {mosaicStylePresets.map(preset => (
-            <button key={preset.id} type="button" onClick={() => applyMosaicStylePreset(preset.id)}>
-              {`Apply mosaic preset: ${preset.label}`}
-            </button>
+            <Button key={preset.id} size="sm" variant="outline" className="w-full" onClick={() => applyMosaicStylePreset(preset.id)}>
+              {preset.label}
+            </Button>
           ))}
         </div>
       )}
-      <button type="button" onClick={deleteSelectedMosaicLayer}>Delete mosaic layer</button>
+
+      {/* Layer order & delete */}
+      <div className="flex gap-2 mt-3 pt-3 border-t border-[rgba(243,239,230,0.08)]">
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedMosaicLayerBackward}>↓ 前面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedMosaicLayerForward}>↑ 背面</Button>
+        <Button size="sm" variant="outline" onClick={duplicateSelectedMosaicLayer}>複製</Button>
+        <Button size="sm" variant="destructive" onClick={deleteSelectedMosaicLayer}>削除</Button>
+      </div>
     </div>
   )
 }

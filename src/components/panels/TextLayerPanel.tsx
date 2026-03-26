@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useWorkspaceStore, selectActiveImage } from '../../stores/workspaceStore'
 import type { CanvasTextLayer } from '../../stores/workspaceStore'
 import { FontPicker } from '../FontPicker'
+import { Button } from '../ui/button'
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../ui/accordion'
 
 export function TextLayerPanel() {
   const [rubyDraft, setRubyDraft] = useState('')
@@ -57,77 +59,178 @@ export function TextLayerPanel() {
 
   return (
     <div className="selection-controls text-controls" role="group" aria-label="Text layer controls">
-      <label className="text-layer-field">
-        <span>Layer name</span>
-        <input type="text" aria-label="Selected layer name" value={activeLayer.name ?? ''} onChange={e => renameSelectedLayer(e.target.value)} />
-      </label>
-      <label className="text-layer-field">
-        <span>Text</span>
-        <input type="text" aria-label="Selected text content" value={activeLayer.text} onChange={e => updateSelectedTextLayerText(e.target.value)} />
-      </label>
-      <label className="text-layer-field color-field">
-        <span>Color</span>
-        <input type="color" aria-label="Selected text color" value={activeLayer.color} onChange={e => setSelectedTextLayerColor(e.target.value)} />
-      </label>
-      <label className="text-layer-field color-field">
-        <span>Gradient from</span>
-        <input type="color" aria-label="Selected text gradient from" value={activeLayer.gradientFrom} onChange={e => setSelectedTextLayerGradientFrom(e.target.value)} />
-      </label>
-      <label className="text-layer-field color-field">
-        <span>Gradient to</span>
-        <input type="color" aria-label="Selected text gradient to" value={activeLayer.gradientTo} onChange={e => setSelectedTextLayerGradientTo(e.target.value)} />
-      </label>
-      <label className="text-layer-field">
-        <span>Font</span>
-        <FontPicker value={activeLayer.fontFamily ?? 'sans-serif'} onChange={setSelectedTextLayerFontFamily} sampleText={activeLayer.text?.slice(0, 8) || 'あAaBb'} />
-      </label>
-      <button type="button" onClick={() => moveSelectedTextLayer(-32, 0)}>Move text left</button>
-      <button type="button" onClick={() => moveSelectedTextLayer(32, 0)}>Move text right</button>
-      <button type="button" onClick={() => moveSelectedTextLayer(0, -32)}>Move text up</button>
-      <button type="button" onClick={() => moveSelectedTextLayer(0, 32)}>Move text down</button>
-      <button type="button" onClick={() => changeSelectedTextLayerFontSize(-2)}>Decrease text size</button>
-      <button type="button" onClick={() => changeSelectedTextLayerFontSize(2)}>Increase text size</button>
-      <button type="button" onClick={() => changeSelectedTextLayerLineHeight(-0.1)}>Decrease line height</button>
-      <button type="button" onClick={() => changeSelectedTextLayerLineHeight(0.1)}>Increase line height</button>
-      <button type="button" onClick={() => changeSelectedTextLayerLetterSpacing(-1)}>Decrease letter spacing</button>
-      <button type="button" onClick={() => changeSelectedTextLayerLetterSpacing(1)}>Increase letter spacing</button>
-      <button type="button" onClick={() => changeSelectedTextLayerMaxWidth(-40)}>Narrow text wrap</button>
-      <button type="button" onClick={() => changeSelectedTextLayerMaxWidth(40)}>Widen text wrap</button>
-      <button type="button" onClick={toggleSelectedTextLayerFillMode}>Toggle gradient fill</button>
-      <button type="button" onClick={toggleSelectedTextLayerVertical}>Toggle vertical text</button>
-      <button type="button" onClick={() => changeSelectedTextLayerOutlineWidth(-1)}>Decrease outline</button>
-      <button type="button" onClick={() => changeSelectedTextLayerOutlineWidth(1)}>Increase outline</button>
-      <button type="button" onClick={toggleSelectedTextLayerShadow}>Toggle text shadow</button>
-      <label className="text-layer-field">
-        <span>Rotation (°)</span>
-        <input
-          type="number"
-          aria-label="Text rotation degrees"
-          value={activeLayer.rotation ?? 0}
-          min={0}
-          max={359}
-          step={15}
-          onChange={e => setSelectedTextLayerRotation(Number(e.target.value))}
-        />
-      </label>
-      <button type="button" onClick={() => changeSelectedTextLayerRotation(15)}>Rotate +15°</button>
-      <button type="button" onClick={() => changeSelectedTextLayerRotation(-15)}>Rotate −15°</button>
-      <button type="button" onClick={() => setSelectedTextLayerRotation(0)}>Reset rotation</button>
-      <label className="text-layer-field">
-        <span>Ruby (start,end,text)</span>
-        <input type="text" aria-label="Add ruby annotation" placeholder="e.g. 0,2,ふりがな" value={rubyDraft} onChange={e => setRubyDraft(e.target.value)} />
-      </label>
-      <button type="button" onClick={handleAddRuby}>Add ruby</button>
-      <button type="button" onClick={() => setSelectedTextLayerRuby([])} disabled={!(activeLayer.ruby?.length)}>Clear ruby</button>
-      <button type="button" onClick={saveSelectedTextStylePreset}>Save text preset</button>
-      {textStylePresets.map(preset => (
-        <button key={preset.id} type="button" onClick={() => applyTextStylePreset(preset.id)}>
-          {`Apply text preset: ${preset.label}`}
-        </button>
-      ))}
-      <button type="button" onClick={moveSelectedTextLayerBackward}>Send text backward</button>
-      <button type="button" onClick={moveSelectedTextLayerForward}>Bring text forward</button>
-      <button type="button" onClick={deleteSelectedTextLayer}>Delete text layer</button>
+      <Accordion type="multiple" defaultValue={['basic', 'style', 'position']}>
+
+        {/* Basic */}
+        <AccordionItem value="basic">
+          <AccordionTrigger>テキスト基本</AccordionTrigger>
+          <AccordionContent>
+            <div className="grid gap-3">
+              <label className="text-layer-field">
+                <span>レイヤー名</span>
+                <input type="text" aria-label="Selected layer name" value={activeLayer.name ?? ''} onChange={e => renameSelectedLayer(e.target.value)} />
+              </label>
+              <label className="text-layer-field">
+                <span>テキスト</span>
+                <input type="text" aria-label="Selected text content" value={activeLayer.text} onChange={e => updateSelectedTextLayerText(e.target.value)} />
+              </label>
+              <label className="text-layer-field">
+                <span>フォント</span>
+                <FontPicker value={activeLayer.fontFamily ?? 'sans-serif'} onChange={setSelectedTextLayerFontFamily} sampleText={activeLayer.text?.slice(0, 8) || 'あAaBb'} />
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="outline" className="flex-1" onClick={toggleSelectedTextLayerVertical}>
+                  {activeLayer.isVertical ? '横書き' : '縦書き'}
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={toggleSelectedTextLayerFillMode}>
+                  {activeLayer.fillMode === 'gradient' ? 'ソリッド' : 'グラデ'}
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={toggleSelectedTextLayerShadow}>
+                  {activeLayer.shadowEnabled ? 'シャドウOFF' : 'シャドウON'}
+                </Button>
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Style / color */}
+        <AccordionItem value="style">
+          <AccordionTrigger>色・スタイル</AccordionTrigger>
+          <AccordionContent>
+            <div className="grid gap-3">
+              <div className="grid grid-cols-3 gap-2">
+                <label className="text-layer-field color-field">
+                  <span>色</span>
+                  <input type="color" aria-label="Text color" value={activeLayer.color} onChange={e => setSelectedTextLayerColor(e.target.value)} />
+                </label>
+                <label className="text-layer-field color-field">
+                  <span>グラデ開始</span>
+                  <input type="color" aria-label="Gradient from" value={activeLayer.gradientFrom} onChange={e => setSelectedTextLayerGradientFrom(e.target.value)} />
+                </label>
+                <label className="text-layer-field color-field">
+                  <span>グラデ終了</span>
+                  <input type="color" aria-label="Gradient to" value={activeLayer.gradientTo} onChange={e => setSelectedTextLayerGradientTo(e.target.value)} />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="text-layer-field">
+                  <span>フォントサイズ</span>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerFontSize(-2)}>−</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerFontSize(2)}>+</Button>
+                  </div>
+                </div>
+                <div className="text-layer-field">
+                  <span>アウトライン</span>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerOutlineWidth(-1)}>−</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerOutlineWidth(1)}>+</Button>
+                  </div>
+                </div>
+                <div className="text-layer-field">
+                  <span>行間</span>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerLineHeight(-0.1)}>−</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerLineHeight(0.1)}>+</Button>
+                  </div>
+                </div>
+                <div className="text-layer-field">
+                  <span>字間</span>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerLetterSpacing(-1)}>−</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerLetterSpacing(1)}>+</Button>
+                  </div>
+                </div>
+                <div className="text-layer-field col-span-2">
+                  <span>折り返し幅</span>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerMaxWidth(-40)}>−40</Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerMaxWidth(40)}>+40</Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Position */}
+        <AccordionItem value="position">
+          <AccordionTrigger>位置・回転</AccordionTrigger>
+          <AccordionContent>
+            <div className="grid gap-3">
+              <div className="grid grid-cols-3 gap-1">
+                <div />
+                <Button size="sm" variant="outline" onClick={() => moveSelectedTextLayer(0, -32)}>↑</Button>
+                <div />
+                <Button size="sm" variant="outline" onClick={() => moveSelectedTextLayer(-32, 0)}>←</Button>
+                <div />
+                <Button size="sm" variant="outline" onClick={() => moveSelectedTextLayer(32, 0)}>→</Button>
+                <div />
+                <Button size="sm" variant="outline" onClick={() => moveSelectedTextLayer(0, 32)}>↓</Button>
+                <div />
+              </div>
+              <label className="text-layer-field">
+                <span>回転 (°)</span>
+                <input
+                  type="number"
+                  aria-label="Text rotation degrees"
+                  value={activeLayer.rotation ?? 0}
+                  min={0}
+                  max={359}
+                  step={15}
+                  onChange={e => setSelectedTextLayerRotation(Number(e.target.value))}
+                />
+              </label>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerRotation(-15)}>−15°</Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedTextLayerRotation(15)}>+15°</Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedTextLayerRotation(0)}>リセット</Button>
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Ruby */}
+        <AccordionItem value="ruby">
+          <AccordionTrigger>ルビ</AccordionTrigger>
+          <AccordionContent>
+            <div className="grid gap-2">
+              <label className="text-layer-field">
+                <span>ルビ (開始, 終了, テキスト)</span>
+                <input type="text" aria-label="Add ruby annotation" placeholder="例: 0,2,ふりがな" value={rubyDraft} onChange={e => setRubyDraft(e.target.value)} />
+              </label>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="flex-1" onClick={handleAddRuby}>追加</Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedTextLayerRuby([])} disabled={!(activeLayer.ruby?.length)}>クリア</Button>
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Presets */}
+        {textStylePresets.length > 0 && (
+          <AccordionItem value="presets">
+            <AccordionTrigger>プリセット</AccordionTrigger>
+            <AccordionContent>
+              <div className="grid gap-2">
+                <Button size="sm" variant="accent" className="w-full" onClick={saveSelectedTextStylePreset}>現在の設定を保存</Button>
+                {textStylePresets.map(preset => (
+                  <Button key={preset.id} size="sm" variant="outline" className="w-full" onClick={() => applyTextStylePreset(preset.id)}>
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
+      </Accordion>
+
+      {/* Layer order & delete */}
+      <div className="flex gap-2 mt-3 pt-3 border-t border-[rgba(243,239,230,0.08)]">
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedTextLayerBackward}>↓ 前面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedTextLayerForward}>↑ 背面</Button>
+        <Button size="sm" variant="destructive" onClick={deleteSelectedTextLayer}>削除</Button>
+      </div>
     </div>
   )
 }
