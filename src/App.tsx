@@ -23,6 +23,7 @@ import {
   FolderOpen,
   Stamp,
   GripVertical,
+  PenLine,
 } from 'lucide-react'
 import { KonvaCanvas } from './components/KonvaCanvas'
 import { PageThumb } from './components/PageThumb'
@@ -58,6 +59,7 @@ const TOOL_ICON_BY_ID: Record<Tool, React.ReactNode> = {
   'message-window': <MessageSquare className="w-5 h-5" />,
   bubble: <MessageCircle className="w-5 h-5" />,
   mosaic: <Grid2X2 className="w-5 h-5" />,
+  'freehand-mosaic': <PenLine className="w-5 h-5" />,
   overlay: <Layers className="w-5 h-5" />,
 }
 
@@ -67,6 +69,7 @@ const TOOL_LABEL_JA_BY_ID: Record<Tool, string> = {
   'message-window': '会話枠',
   bubble: '吹き出し',
   mosaic: 'モザイク',
+  'freehand-mosaic': '投げ縄',
   overlay: 'オーバーレイ',
 }
 

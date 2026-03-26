@@ -36,6 +36,7 @@ export function TextLayerPanel() {
     deleteSelectedTextLayer,
     setSelectedTextLayerRotation,
     changeSelectedTextLayerRotation,
+    setSelectedTextLayerBackgroundBand,
   } = useWorkspaceStore()
 
   const image = selectActiveImage({ pages, activePageId })
@@ -149,6 +150,66 @@ export function TextLayerPanel() {
                   </div>
                 </div>
               </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Background band */}
+        <AccordionItem value="band">
+          <AccordionTrigger>背景帯</AccordionTrigger>
+          <AccordionContent>
+            <div className="grid gap-2">
+              <Button
+                size="sm"
+                variant={activeLayer.backgroundBand?.enabled ? 'active' : 'outline'}
+                className="w-full"
+                onClick={() => setSelectedTextLayerBackgroundBand({
+                  enabled: !(activeLayer.backgroundBand?.enabled),
+                  color: activeLayer.backgroundBand?.color ?? '#000000',
+                  opacity: activeLayer.backgroundBand?.opacity ?? 0.6,
+                  paddingX: activeLayer.backgroundBand?.paddingX ?? 8,
+                  paddingY: activeLayer.backgroundBand?.paddingY ?? 4,
+                })}
+              >
+                {activeLayer.backgroundBand?.enabled ? '背景帯 ON' : '背景帯 OFF'}
+              </Button>
+              {activeLayer.backgroundBand?.enabled && (
+                <div className="grid gap-2">
+                  <label className="text-layer-field color-field">
+                    <span>背景色</span>
+                    <input
+                      type="color"
+                      aria-label="Background band color"
+                      value={activeLayer.backgroundBand.color}
+                      onChange={e => setSelectedTextLayerBackgroundBand({ ...activeLayer.backgroundBand!, color: e.target.value })}
+                    />
+                  </label>
+                  <div className="text-layer-field">
+                    <span>不透明度</span>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedTextLayerBackgroundBand({ ...activeLayer.backgroundBand!, opacity: Math.max(0, (activeLayer.backgroundBand?.opacity ?? 0.6) - 0.1) })}>−</Button>
+                      <span className="flex items-center px-2 text-xs">{Math.round((activeLayer.backgroundBand.opacity) * 100)}%</span>
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedTextLayerBackgroundBand({ ...activeLayer.backgroundBand!, opacity: Math.min(1, (activeLayer.backgroundBand?.opacity ?? 0.6) + 0.1) })}>+</Button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1">
+                    <div className="text-layer-field">
+                      <span>横P</span>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedTextLayerBackgroundBand({ ...activeLayer.backgroundBand!, paddingX: Math.max(0, (activeLayer.backgroundBand?.paddingX ?? 8) - 4) })}>−</Button>
+                        <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedTextLayerBackgroundBand({ ...activeLayer.backgroundBand!, paddingX: (activeLayer.backgroundBand?.paddingX ?? 8) + 4 })}>+</Button>
+                      </div>
+                    </div>
+                    <div className="text-layer-field">
+                      <span>縦P</span>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedTextLayerBackgroundBand({ ...activeLayer.backgroundBand!, paddingY: Math.max(0, (activeLayer.backgroundBand?.paddingY ?? 4) - 4) })}>−</Button>
+                        <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedTextLayerBackgroundBand({ ...activeLayer.backgroundBand!, paddingY: (activeLayer.backgroundBand?.paddingY ?? 4) + 4 })}>+</Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </AccordionContent>
         </AccordionItem>

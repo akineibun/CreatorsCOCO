@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { BubbleShape } from '../lib/bubbleShapes'
 
-export type Tool = 'select' | 'text' | 'message-window' | 'bubble' | 'mosaic' | 'overlay'
+export type Tool = 'select' | 'text' | 'message-window' | 'bubble' | 'mosaic' | 'freehand-mosaic' | 'overlay'
 
 export type CanvasImage = {
   id: string
@@ -51,6 +51,13 @@ export type CanvasTextLayer = {
   strokeColor: string
   shadowEnabled: boolean
   ruby?: RubyAnnotation[]
+  backgroundBand?: {
+    enabled: boolean
+    color: string
+    opacity: number
+    paddingX: number
+    paddingY: number
+  }
   visible: boolean
   locked: boolean
 }
@@ -87,6 +94,7 @@ export type CanvasMessageWindowLayer = {
   opacity: number
   frameStyle: 'classic' | 'soft' | 'neon'
   assetName: string | null
+  assetDataUrl: string | null
   visible: boolean
   locked: boolean
 }
@@ -122,6 +130,8 @@ export type CanvasMosaicLayer = {
   height: number
   intensity: number
   style: 'pixelate' | 'blur' | 'noise'
+  shape: 'rect' | 'freehand'
+  path?: Array<{ x: number; y: number }>
   visible: boolean
   locked: boolean
 }
@@ -409,6 +419,7 @@ type WorkspaceState = {
   changeSelectedTextLayerOutlineWidth: (delta: number) => void
   toggleSelectedTextLayerShadow: () => void
   setSelectedTextLayerRuby: (ruby: RubyAnnotation[]) => void
+  setSelectedTextLayerBackgroundBand: (band: CanvasTextLayer['backgroundBand']) => void
   setSelectedTextLayerFontFamily: (fontFamily: string) => void
   setSelectedTextLayerRotation: (rotation: number) => void
   changeSelectedTextLayerRotation: (delta: number) => void
@@ -468,6 +479,7 @@ type WorkspaceState = {
   setSelectedBubbleFillColor: (color: string) => void
   setSelectedBubbleBorderColor: (color: string) => void
   addMosaicLayer: () => void
+  addFreehandMosaicLayer: (path: Array<{ x: number; y: number }>, style: CanvasMosaicLayer['style'], intensity: number) => void
   selectMosaicLayer: (layerId: string, additive?: boolean) => void
   moveSelectedMosaicLayer: (dx: number, dy: number) => void
   resizeSelectedMosaicLayer: (widthDelta: number, heightDelta: number) => void
@@ -873,6 +885,7 @@ const createMessageWindowLayer = (): CanvasMessageWindowLayer => ({
   opacity: 0.9,
   frameStyle: 'classic',
   assetName: null,
+  assetDataUrl: null,
   visible: true,
   locked: false,
 })
@@ -908,6 +921,7 @@ const createMosaicLayer = (): CanvasMosaicLayer => ({
   height: 120,
   intensity: 12,
   style: 'pixelate',
+  shape: 'rect',
   visible: true,
   locked: false,
 })
@@ -1169,12 +1183,25 @@ const migrateStoredProjectSnapshot = (project: StoredProjectSnapshot): StoredPro
 
 const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
 
-const writeProjectToStorage = (project: PersistedProject) => {
-  if (!canUseStorage()) {
-    return
-  }
+// electron-store IPC bridge (available only in Electron renderer)
+type ElectronAPI = {
+  saveProject: (data: unknown) => Promise<void>
+  loadProject: () => Promise<unknown>
+  saveRecentProjects: (data: unknown) => Promise<void>
+  loadRecentProjects: () => Promise<unknown>
+}
+const getElectronAPI = (): ElectronAPI | null =>
+  typeof window !== 'undefined' && 'electronAPI' in window
+    ? (window as unknown as { electronAPI: ElectronAPI }).electronAPI
+    : null
 
-  window.localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(project))
+const writeProjectToStorage = (project: PersistedProject) => {
+  // Fire-and-forget to electron-store when available
+  getElectronAPI()?.saveProject(project)
+  // Always keep localStorage as fallback for browser dev mode
+  if (canUseStorage()) {
+    window.localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(project))
+  }
 }
 
 const readRecentProjectsFromStorage = (): RecentProjectEntry[] => {
@@ -1197,11 +1224,10 @@ const readRecentProjectsFromStorage = (): RecentProjectEntry[] => {
 }
 
 const writeRecentProjectsToStorage = (recentProjects: RecentProjectEntry[]) => {
-  if (!canUseStorage()) {
-    return
+  getElectronAPI()?.saveRecentProjects(recentProjects)
+  if (canUseStorage()) {
+    window.localStorage.setItem(RECENT_PROJECTS_STORAGE_KEY, JSON.stringify(recentProjects))
   }
-
-  window.localStorage.setItem(RECENT_PROJECTS_STORAGE_KEY, JSON.stringify(recentProjects))
 }
 
 const upsertRecentProject = (project: PersistedProject): RecentProjectEntry[] => {
@@ -1302,6 +1328,7 @@ const readProjectFromStorage = (): PersistedProject | null => {
                   opacity: layer.opacity ?? 0.9,
                   frameStyle: layer.frameStyle ?? 'classic',
                   assetName: layer.assetName ?? null,
+                  assetDataUrl: (layer as { assetDataUrl?: string | null }).assetDataUrl ?? null,
                   visible: layer.visible ?? true,
                   locked: layer.locked ?? false,
                 }))
@@ -1326,6 +1353,7 @@ const readProjectFromStorage = (): PersistedProject | null => {
                   ...layer,
                   name: layer.name ?? null,
                   style: layer.style ?? 'pixelate',
+                  shape: (layer as { shape?: 'rect' | 'freehand' }).shape ?? 'rect',
                   groupId: layer.groupId ?? null,
                   visible: layer.visible ?? true,
                   locked: layer.locked ?? false,
@@ -2018,18 +2046,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       }
     }),
-  restoreSavedProject: () =>
-    set(() => {
-      const savedProject = readProjectFromStorage()
-      const recentProjects = readRecentProjectsFromStorage()
-
-      if (!savedProject) {
-        return {
-          recentProjects,
-        }
-      }
-
-      return {
+  restoreSavedProject: () => {
+    // Synchronously load from localStorage
+    const savedProject = readProjectFromStorage()
+    const recentProjects = readRecentProjectsFromStorage()
+    if (savedProject) {
+      set(() => ({
         pages: savedProject.pages,
         activePageId: savedProject.activePageId,
         selectedLayerId: savedProject.selectedLayerId,
@@ -2052,8 +2074,54 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         isDirty: false,
         undoStack: [],
         redoStack: [],
-      }
-    }),
+      }))
+    } else {
+      set(() => ({ recentProjects }))
+    }
+    // Also try electron-store (overrides localStorage when available)
+    const api = getElectronAPI()
+    if (api && canUseStorage()) {
+      Promise.all([api.loadProject(), api.loadRecentProjects()]).then(([rawProject, rawRecent]) => {
+        if (rawProject) {
+          // Write IPC data to localStorage, then re-read with normalization
+          window.localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(rawProject))
+        }
+        if (Array.isArray(rawRecent) && rawRecent.length > 0) {
+          window.localStorage.setItem(RECENT_PROJECTS_STORAGE_KEY, JSON.stringify(rawRecent))
+        }
+        const ipcProject = rawProject ? readProjectFromStorage() : null
+        const ipcRecent = readRecentProjectsFromStorage()
+        if (ipcProject) {
+          set(() => ({
+            pages: ipcProject.pages,
+            activePageId: ipcProject.activePageId,
+            selectedLayerId: ipcProject.selectedLayerId,
+            selectedLayerIds: ipcProject.selectedLayerId ? [ipcProject.selectedLayerId] : [],
+            imageTransform: ipcProject.imageTransform,
+            outputSettings: ipcProject.outputSettings,
+            lastSavedAt: ipcProject.lastSavedAt,
+            projectId: ipcProject.id,
+            projectName: ipcProject.name,
+            messageWindowPresets: ipcProject.messageWindowPresets,
+            textStylePresets: ipcProject.textStylePresets,
+            watermarkStylePresets: ipcProject.watermarkStylePresets,
+            bubbleStylePresets: ipcProject.bubbleStylePresets,
+            overlayStylePresets: ipcProject.overlayStylePresets,
+            mosaicStylePresets: ipcProject.mosaicStylePresets,
+            templates: ipcProject.templates,
+            reusableAssets: ipcProject.reusableAssets,
+            recentProjects: ipcRecent,
+            loadError: null,
+            isDirty: false,
+            undoStack: [],
+            redoStack: [],
+          }))
+        } else if (ipcRecent.length > 0) {
+          set(() => ({ recentProjects: ipcRecent }))
+        }
+      }).catch(() => {/* ignore IPC errors */})
+    }
+  },
   setActiveTool: (tool) =>
     set(() => ({
       activeTool: tool,
@@ -3535,6 +3603,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  setSelectedTextLayerBackgroundBand: (band) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) {
+        return state
+      }
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id ? { ...layer, backgroundBand: band } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
   setSelectedTextLayerFontFamily: (fontFamily) =>
     set((state) => {
       const activeTextLayer = selectActiveTextLayer(state)
@@ -3811,28 +3895,30 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
-  loadSelectedMessageWindowAsset: (file) =>
-    set((state) => {
-      const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
-      if (!activeMessageWindowLayer || !state.activePageId) {
-        return state
-      }
-
-      return withHistory(state, {
-        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
-          ...page,
-          messageWindowLayers: page.messageWindowLayers.map((layer) =>
-            layer.id === activeMessageWindowLayer.id
-              ? {
-                  ...layer,
-                  assetName: file.name,
-                }
-              : layer,
-          ),
-        })),
-        loadError: null,
+  loadSelectedMessageWindowAsset: (file) => {
+    const state = get()
+    const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
+    if (!activeMessageWindowLayer || !state.activePageId) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string
+      set((s) => {
+        if (!s.activePageId) return s
+        return withHistory(s, {
+          pages: updateActivePage(s.pages, s.activePageId, (page) => ({
+            ...page,
+            messageWindowLayers: page.messageWindowLayers.map((layer) =>
+              layer.id === activeMessageWindowLayer.id
+                ? { ...layer, assetName: file.name, assetDataUrl: dataUrl }
+                : layer,
+            ),
+          })),
+          loadError: null,
+        })
       })
-    }),
+    }
+    reader.readAsDataURL(file)
+  },
   saveSelectedMessageWindowPreset: () =>
     set((state) => {
       const activeMessageWindowLayer = selectActiveMessageWindowLayer(state)
@@ -4286,6 +4372,36 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       }
 
       const mosaicLayer = createMosaicLayer()
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          mosaicLayers: [...page.mosaicLayers, mosaicLayer],
+        })),
+        selectedLayerId: mosaicLayer.id,
+        selectedLayerIds: [mosaicLayer.id],
+        loadError: null,
+      })
+    }),
+  addFreehandMosaicLayer: (path, style, intensity) =>
+    set((state) => {
+      if (!state.activePageId || path.length < 3) return state
+      const xs = path.map((p) => p.x)
+      const ys = path.map((p) => p.y)
+      const bx = Math.min(...xs)
+      const by = Math.min(...ys)
+      const bw = Math.max(1, Math.max(...xs) - bx)
+      const bh = Math.max(1, Math.max(...ys) - by)
+      const mosaicLayer: CanvasMosaicLayer = {
+        ...createMosaicLayer(),
+        x: bx,
+        y: by,
+        width: bw,
+        height: bh,
+        style,
+        intensity,
+        shape: 'freehand',
+        path: path.map((p) => ({ x: p.x - bx, y: p.y - by })),
+      }
       return withHistory(state, {
         pages: updateActivePage(state.pages, state.activePageId, (page) => ({
           ...page,
@@ -6707,5 +6823,6 @@ export const toolLabels: Array<{ id: Tool; label: string }> = [
   { id: 'message-window', label: 'Message window' },
   { id: 'bubble', label: 'Bubble' },
   { id: 'mosaic', label: 'Mosaic' },
+  { id: 'freehand-mosaic', label: 'Freehand mosaic' },
   { id: 'overlay', label: 'Overlay' },
 ]

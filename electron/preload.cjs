@@ -1,4 +1,4 @@
-const { contextBridge } = require('electron')
+const { contextBridge, ipcRenderer } = require('electron')
 
 const backendUrlArgument =
   process.argv.find((argument) => argument.startsWith('--creators-coco-backend-url=')) ?? ''
@@ -11,4 +11,11 @@ contextBridge.exposeInMainWorld('creatorsCoco', {
   platform: process.platform,
   backendUrl,
   appVersion,
+})
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  saveProject: (data) => ipcRenderer.invoke('project:save', data),
+  loadProject: () => ipcRenderer.invoke('project:load'),
+  saveRecentProjects: (data) => ipcRenderer.invoke('recent-projects:save', data),
+  loadRecentProjects: () => ipcRenderer.invoke('recent-projects:load'),
 })

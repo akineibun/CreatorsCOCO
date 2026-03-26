@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
-import { Image as KonvaImage, Layer, Rect, Shape, Stage } from 'react-konva'
+import { Image as KonvaImage, Layer, Line as KonvaLine, Rect, Shape, Stage } from 'react-konva'
 import { getBubblePolygonPoints } from '../lib/bubbleShapes'
 import type {
   CanvasBubbleLayer,
@@ -16,6 +16,7 @@ import type {
   RubyAnnotation,
 } from '../stores/workspaceStore'
 import { useBackendStore, parseBackendLayerSuggestion } from '../stores/backendStore'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,20 @@ const drawHorizontalText = (
   const rubyReserve = ruby.length > 0 ? rubyFontSize + 2 : 0
 
   ctx.save()
+
+  // Background band
+  const band = layer.backgroundBand
+  if (band?.enabled) {
+    const lineH2 = fontSize * lineHeight
+    const rubyReserve2 = (layer.ruby?.length ?? 0) > 0 ? Math.max(8, Math.round(fontSize * 0.5)) + 2 : 0
+    const totalH2 = lines.length * lineH2 + rubyReserve2
+    ctx.save()
+    ctx.globalAlpha = band.opacity
+    ctx.fillStyle = band.color
+    ctx.fillRect(-band.paddingX, -band.paddingY, layer.maxWidth + band.paddingX * 2, totalH2 + band.paddingY * 2)
+    ctx.restore()
+  }
+
   ctx.font = `${fontSize}px "${fontFamily}", sans-serif`
   ctx.textBaseline = 'top'
 
@@ -160,6 +175,22 @@ const drawVerticalText = (
   const rubyColW = ruby.length > 0 ? rubyFontSize + 3 : 0
 
   ctx.save()
+
+  // Background band for vertical text
+  const band2 = layer.backgroundBand
+  if (band2?.enabled) {
+    const vLines = text.split('\n')
+    const colW2 = fontSize + letterSpacing + rubyColW
+    const maxLen = Math.max(...vLines.map((l) => l.length))
+    const totalW2 = vLines.length * colW2
+    const totalH2 = maxLen * (fontSize * lineHeight + letterSpacing)
+    ctx.save()
+    ctx.globalAlpha = band2.opacity
+    ctx.fillStyle = band2.color
+    ctx.fillRect(-band2.paddingX, -band2.paddingY, totalW2 + band2.paddingX * 2, totalH2 + band2.paddingY * 2)
+    ctx.restore()
+  }
+
   ctx.font = `${fontSize}px "${fontFamily}", sans-serif`
   ctx.textBaseline = 'top'
   ctx.textAlign = 'center'
@@ -562,6 +593,9 @@ export function KonvaCanvas({
     updateBackendReviewStateByPage,
   } = useBackendStore()
 
+  const { activeTool, addFreehandMosaicLayer } = useWorkspaceStore()
+  const [freehandPath, setFreehandPath] = useState<Array<{ x: number; y: number }> | null>(null)
+
   // Derive active page review state for canvas overlays.
   // In practice only one page has candidates at a time; use the last entry.
   const allReviewStates = Object.values(backendReviewStateByPage)
@@ -786,6 +820,10 @@ export function KonvaCanvas({
       if (dragState || resizeState) return
       const pos = getStageCanvasPos()
       if (!pos) return
+      if (activeTool === 'freehand-mosaic') {
+        setFreehandPath([{ x: pos.x, y: pos.y }])
+        return
+      }
       setMarqueeState({
         startX: pos.x,
         startY: pos.y,
@@ -794,7 +832,7 @@ export function KonvaCanvas({
         additive: e.evt.ctrlKey || e.evt.metaKey,
       })
     },
-    [backendManualPointPickingMode, dragState, resizeState, getStageCanvasPos],
+    [backendManualPointPickingMode, dragState, resizeState, getStageCanvasPos, activeTool],
   )
 
   const handleStagePointerMove = useCallback(() => {
@@ -803,6 +841,10 @@ export function KonvaCanvas({
 
     onCursorMove?.(pos.x, pos.y)
 
+    if (freehandPath) {
+      setFreehandPath((p) => p ? [...p, { x: pos.x, y: pos.y }] : p)
+      return
+    }
     if (manualPtDragState) {
       setManualPtDragState((s) => s ? { ...s, currentX: pos.x, currentY: pos.y } : s)
       return
@@ -818,12 +860,21 @@ export function KonvaCanvas({
     if (marqueeState) {
       setMarqueeState((s) => s ? { ...s, currentX: pos.x, currentY: pos.y } : s)
     }
-  }, [getStageCanvasPos, onCursorMove, manualPtDragState, dragState, resizeState, marqueeState])
+  }, [getStageCanvasPos, onCursorMove, freehandPath, manualPtDragState, dragState, resizeState, marqueeState])
 
   const handleStagePointerUp = useCallback(
     (e: KonvaEventObject<MouseEvent>) => {
       const pos = getStageCanvasPos()
       if (!pos) return
+
+      if (freehandPath) {
+        const finalPath = [...freehandPath, { x: pos.x, y: pos.y }]
+        if (finalPath.length >= 3) {
+          addFreehandMosaicLayer(finalPath, 'pixelate', 16)
+        }
+        setFreehandPath(null)
+        return
+      }
 
       if (manualPtDragState) {
         onManualSegmentPointDragEnd(manualPtDragState.index, clamp(pos.x, 0, CANVAS_W), clamp(pos.y, 0, CANVAS_H))
@@ -878,6 +929,8 @@ export function KonvaCanvas({
     },
     [
       getStageCanvasPos,
+      freehandPath,
+      addFreehandMosaicLayer,
       manualPtDragState,
       backendManualPointPickingMode,
       resizeState,
@@ -1136,6 +1189,18 @@ export function KonvaCanvas({
             listening={false}
           />
         )}
+        {/* Freehand mosaic path preview */}
+        {freehandPath && freehandPath.length >= 2 && (
+          <KonvaLine
+            points={freehandPath.flatMap((p) => [p.x, p.y])}
+            stroke="rgba(191,143,82,0.9)"
+            strokeWidth={2 / scale}
+            dash={[4 / scale, 2 / scale]}
+            fill="rgba(191,143,82,0.12)"
+            closed={false}
+            listening={false}
+          />
+        )}
       </Layer>
 
       {/* ── Resize handles layer (needs listening) ── */}
@@ -1308,11 +1373,32 @@ function MosaicNode({
       sceneFunc={(ctx, shape) => {
         const w = shape.width()
         const h = shape.height()
-        drawMosaic(ctx as unknown as CanvasRenderingContext2D, 0, 0, w, h, layer.style, layer.intensity)
-        if (selected) {
-          ctx.strokeStyle = SELECTION_STROKE
-          ctx.lineWidth = 2
-          ctx.strokeRect(0, 0, w, h)
+        const cctx = ctx as unknown as CanvasRenderingContext2D
+        if (layer.shape === 'freehand' && layer.path && layer.path.length >= 3) {
+          cctx.save()
+          cctx.beginPath()
+          cctx.moveTo(layer.path[0].x, layer.path[0].y)
+          for (const pt of layer.path.slice(1)) cctx.lineTo(pt.x, pt.y)
+          cctx.closePath()
+          cctx.clip()
+          drawMosaic(cctx, 0, 0, w, h, layer.style, layer.intensity)
+          cctx.restore()
+          if (selected) {
+            cctx.strokeStyle = SELECTION_STROKE
+            cctx.lineWidth = 2
+            cctx.beginPath()
+            cctx.moveTo(layer.path[0].x, layer.path[0].y)
+            for (const pt of layer.path.slice(1)) cctx.lineTo(pt.x, pt.y)
+            cctx.closePath()
+            cctx.stroke()
+          }
+        } else {
+          drawMosaic(cctx, 0, 0, w, h, layer.style, layer.intensity)
+          if (selected) {
+            ctx.strokeStyle = SELECTION_STROKE
+            ctx.lineWidth = 2
+            ctx.strokeRect(0, 0, w, h)
+          }
         }
       }}
       onMouseDown={onPointerDown}
@@ -1337,6 +1423,15 @@ function MessageWindowNode({
     const sh = layer.speaker ? Math.round(layer.height * 0.22) : 0
     return { fontSize: fs, lineH: lh, speakerH: sh }
   })()
+  const nineSliceImgRef = useRef<HTMLImageElement | null>(null)
+  const [nineSliceLoaded, setNineSliceLoaded] = useState(false)
+  useEffect(() => {
+    if (!layer.assetDataUrl) { nineSliceImgRef.current = null; setNineSliceLoaded(false); return }
+    const img = new Image()
+    img.onload = () => { nineSliceImgRef.current = img; setNineSliceLoaded(true) }
+    img.onerror = () => { nineSliceImgRef.current = null; setNineSliceLoaded(false) }
+    img.src = layer.assetDataUrl
+  }, [layer.assetDataUrl])
 
   return (
     <Shape
@@ -1347,7 +1442,32 @@ function MessageWindowNode({
         const cctx = ctx as unknown as CanvasRenderingContext2D
         const w = layer.width
         const h = layer.height
-        drawMessageWindow(cctx, 0, 0, w, h, layer.frameStyle, layer.assetName !== null)
+        if (nineSliceLoaded && nineSliceImgRef.current) {
+          // 9-slice rendering
+          const img = nineSliceImgRef.current
+          const s = Math.min(32, Math.floor(img.width / 3), Math.floor(img.height / 3))
+          const iw = img.width, ih = img.height
+          const mw = iw - s * 2, mh = ih - s * 2
+          const dw = w - s * 2, dh = h - s * 2
+          // Corners
+          cctx.drawImage(img, 0, 0, s, s, 0, 0, s, s)
+          cctx.drawImage(img, iw - s, 0, s, s, w - s, 0, s, s)
+          cctx.drawImage(img, 0, ih - s, s, s, 0, h - s, s, s)
+          cctx.drawImage(img, iw - s, ih - s, s, s, w - s, h - s, s, s)
+          // Edges
+          if (dw > 0) {
+            cctx.drawImage(img, s, 0, mw, s, s, 0, dw, s)
+            cctx.drawImage(img, s, ih - s, mw, s, s, h - s, dw, s)
+          }
+          if (dh > 0) {
+            cctx.drawImage(img, 0, s, s, mh, 0, s, s, dh)
+            cctx.drawImage(img, iw - s, s, s, mh, w - s, s, s, dh)
+          }
+          // Center
+          if (dw > 0 && dh > 0) cctx.drawImage(img, s, s, mw, mh, s, s, dw, dh)
+        } else {
+          drawMessageWindow(cctx, 0, 0, w, h, layer.frameStyle, layer.assetName !== null)
+        }
 
         // Speaker name
         if (layer.speaker) {

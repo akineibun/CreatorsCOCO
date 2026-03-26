@@ -439,10 +439,23 @@ export const exportPageAsPng = async (
   })
 
   image.mosaicLayers.filter((layer) => layer.visible).forEach((layer) => {
-    const x = mapX(layer.x - layer.width / 2)
-    const y = mapY(layer.y - layer.height / 2)
+    const isFreehand = layer.shape === 'freehand' && layer.path && layer.path.length >= 3
+    const x = isFreehand ? mapX(layer.x) : mapX(layer.x - layer.width / 2)
+    const y = isFreehand ? mapY(layer.y) : mapY(layer.y - layer.height / 2)
     const width = mapSize(layer.width)
     const height = mapSize(layer.height)
+
+    if (isFreehand && layer.path) {
+      context.save()
+      context.beginPath()
+      const pt0 = layer.path[0]
+      context.moveTo(x + pt0.x * exportFrame.scaleX, y + pt0.y * exportFrame.scaleY)
+      for (const pt of layer.path.slice(1)) {
+        context.lineTo(x + pt.x * exportFrame.scaleX, y + pt.y * exportFrame.scaleY)
+      }
+      context.closePath()
+      context.clip()
+    }
     context.fillStyle =
       layer.style === 'blur'
         ? 'rgba(221, 199, 184, 0.78)'
@@ -484,17 +497,21 @@ export const exportPageAsPng = async (
       }
     }
 
-    context.strokeStyle = '#241b15'
-    context.lineWidth = 2
-    context.strokeRect(x, y, width, height)
-    context.fillStyle = '#241b15'
-    context.font = `${Math.max(12, Math.round(mapSize(24)))}px Segoe UI`
-    context.textAlign = 'center'
-    context.fillText(
-      `${layer.style === 'pixelate' ? 'Mosaic' : layer.style === 'blur' ? 'Blur' : 'Noise'} ${layer.intensity}`,
-      mapX(layer.x),
-      mapY(layer.y + 6),
-    )
+    if (isFreehand) {
+      context.restore()
+    } else {
+      context.strokeStyle = '#241b15'
+      context.lineWidth = 2
+      context.strokeRect(x, y, width, height)
+      context.fillStyle = '#241b15'
+      context.font = `${Math.max(12, Math.round(mapSize(24)))}px Segoe UI`
+      context.textAlign = 'center'
+      context.fillText(
+        `${layer.style === 'pixelate' ? 'Mosaic' : layer.style === 'blur' ? 'Blur' : 'Noise'} ${layer.intensity}`,
+        mapX(layer.x),
+        mapY(layer.y + 6),
+      )
+    }
   })
 
   image.overlayLayers.filter((layer) => layer.visible).forEach((layer) => {
