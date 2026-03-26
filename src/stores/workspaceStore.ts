@@ -394,7 +394,9 @@ type WorkspaceState = {
   deleteTemplate: (templateId: string) => void
   applyTemplateToActivePage: (templateId: string) => void
   applyTemplateToAllPages: (templateId: string) => void
+  applyTemplateToSelectedPages: (templateId: string, pageIds: string[]) => void
   applyTemplatePreservingText: (templateId: string) => void
+  importDialogueFromCsv: (rows: Record<string, string>[], fieldMap: Record<string, string>) => void
   saveCurrentPageAsReusableAsset: () => void
   renameReusableAsset: (assetId: string, name: string) => void
   duplicateReusableAsset: (assetId: string) => void
@@ -2781,6 +2783,30 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  applyTemplateToSelectedPages: (templateId, pageIds) =>
+    set((state) => {
+      const template = state.templates.find((entry) => entry.id === templateId)
+      if (!template || pageIds.length === 0) return state
+      const pageIdSet = new Set(pageIds)
+      return withHistory(state, {
+        pages: state.pages.map((page) =>
+          pageIdSet.has(page.id)
+            ? {
+                ...page,
+                textLayers: template.textLayers.map(cloneTextLayer),
+                messageWindowLayers: template.messageWindowLayers.map(cloneMessageWindowLayer),
+                bubbleLayers: template.bubbleLayers.map(cloneBubbleLayer),
+                mosaicLayers: template.mosaicLayers.map(cloneMosaicLayer),
+                overlayLayers: template.overlayLayers.map(cloneOverlayLayer),
+                watermarkLayers: template.watermarkLayers.map(cloneWatermarkLayer),
+              }
+            : page,
+        ),
+        selectedLayerId: null,
+        selectedLayerIds: [],
+        loadError: null,
+      })
+    }),
   applyTemplatePreservingText: (templateId) =>
     set((state) => {
       const page = selectActiveImage(state)
@@ -2829,6 +2855,36 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         selectedLayerIds: nextSelectedLayerId ? [nextSelectedLayerId] : [],
         loadError: null,
       })
+    }),
+  importDialogueFromCsv: (rows, fieldMap) =>
+    set((state) => {
+      if (rows.length === 0 || state.pages.length === 0) return state
+      const updatedPages = state.pages.map((page, pageIndex) => {
+        const row = rows[pageIndex]
+        if (!row) return page
+        return {
+          ...page,
+          textLayers: page.textLayers.map((layer) => {
+            const csvCol = Object.entries(fieldMap).find(([, ln]) => ln === layer.name)?.[0]
+            if (!csvCol || !(csvCol in row)) return layer
+            return { ...layer, text: row[csvCol] }
+          }),
+          messageWindowLayers: page.messageWindowLayers.map((layer) => {
+            const bodyCol = Object.entries(fieldMap).find(([, ln]) => ln === `${layer.name}:body`)?.[0]
+            const speakerCol = Object.entries(fieldMap).find(([, ln]) => ln === `${layer.name}:speaker`)?.[0]
+            let updated = { ...layer }
+            if (bodyCol && row[bodyCol] !== undefined) updated = { ...updated, body: row[bodyCol] }
+            if (speakerCol && row[speakerCol] !== undefined) updated = { ...updated, speaker: row[speakerCol] }
+            return updated
+          }),
+          bubbleLayers: page.bubbleLayers.map((layer) => {
+            const csvCol = Object.entries(fieldMap).find(([, ln]) => ln === layer.name)?.[0]
+            if (!csvCol || !(csvCol in row)) return layer
+            return { ...layer, text: row[csvCol] }
+          }),
+        }
+      })
+      return withHistory(state, { pages: updatedPages, loadError: null })
     }),
   saveCurrentPageAsReusableAsset: () =>
     set((state) => {

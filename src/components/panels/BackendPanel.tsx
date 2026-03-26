@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs'
 import {
@@ -13,6 +13,7 @@ import {
 import {
   createEmptyBackendActionResults,
   createEmptyBackendReviewPageState,
+  createEmptyBatchMosaicState,
   DEFAULT_SAM3_MANUAL_SEGMENT_POINTS,
   GLOBAL_BACKEND_REVIEW_PAGE_ID,
   parseBackendLayerSuggestion,
@@ -36,7 +37,7 @@ const BACKEND_REVIEW_STATE_STORAGE_KEY = 'creators-coco.backend-review-state'
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function BackendPanel() {
-  const { pages, activePageId, addBackendMosaicLayers, addBackendOverlayLayers } = useWorkspaceStore()
+  const { pages, activePageId, addBackendMosaicLayers, addBackendMosaicLayersToPage, addBackendOverlayLayers } = useWorkspaceStore()
   const image = selectActiveImage({ pages, activePageId })
 
   const {
@@ -65,6 +66,8 @@ export function BackendPanel() {
     updateBackendActionHistory,
     updateBackendReviewStateByPage,
     setBackendStatusFromProgress,
+    batchMosaicState,
+    updateBatchMosaicState,
   } = useBackendStore()
 
   const backendPollTimeouts = useRef<Record<'sam3' | 'nudenet', ReturnType<typeof setTimeout> | null>>({
@@ -75,6 +78,56 @@ export function BackendPanel() {
     sam3: null,
     nudenet: null,
   })
+
+  const batchAbortedRef = useRef(false)
+  const [batchPageCheckboxes, setBatchPageCheckboxes] = useState<Record<string, boolean>>({})
+
+  const runBatchMosaic = useCallback(async () => {
+    const selectedPageIds = Object.entries(batchPageCheckboxes)
+      .filter(([, checked]) => checked)
+      .map(([id]) => id)
+    if (selectedPageIds.length === 0) return
+
+    batchAbortedRef.current = false
+    updateBatchMosaicState(() => ({
+      active: true,
+      selectedPageIds,
+      currentIndex: 0,
+      total: selectedPageIds.length,
+      results: Object.fromEntries(selectedPageIds.map((id) => [id, 'pending' as const])),
+      aborted: false,
+    }))
+
+    for (let i = 0; i < selectedPageIds.length; i++) {
+      if (batchAbortedRef.current) break
+      const pageId = selectedPageIds[i]
+      const page = pages.find((p) => p.id === pageId)
+      if (!page?.sourceUrl) {
+        updateBatchMosaicState((s) => ({ ...s, currentIndex: i + 1, results: { ...s.results, [pageId]: 'error' } }))
+        continue
+      }
+
+      updateBatchMosaicState((s) => ({ ...s, currentIndex: i, results: { ...s.results, [pageId]: 'processing' } }))
+      try {
+        const mosaicStrengthMap = { light: 8, medium: 16, strong: 24 } as const
+        const intensity = mosaicStrengthMap[backendAutoMosaicStrength]
+        const detectRes = await runNsfwDetection(page.sourceUrl, Number.parseFloat(backendNsfwThreshold) || 0.7)
+        if (batchAbortedRef.current) break
+        const mosaicLayers = detectRes.detections.map((d, index) => {
+          const bounds = parseBackendLayerSuggestion(d, index)
+          return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, intensity, style: 'pixelate' as const, name: `Batch mosaic ${index + 1}` }
+        })
+        if (mosaicLayers.length > 0) {
+          addBackendMosaicLayersToPage(pageId, mosaicLayers)
+        }
+        updateBatchMosaicState((s) => ({ ...s, currentIndex: i + 1, results: { ...s.results, [pageId]: 'done' } }))
+      } catch {
+        updateBatchMosaicState((s) => ({ ...s, currentIndex: i + 1, results: { ...s.results, [pageId]: 'error' } }))
+      }
+    }
+
+    updateBatchMosaicState((s) => ({ ...s, active: false, aborted: batchAbortedRef.current }))
+  }, [batchPageCheckboxes, pages, backendAutoMosaicStrength, backendNsfwThreshold, addBackendMosaicLayersToPage, updateBatchMosaicState])
 
   const backendReviewPageId = activePageId ?? GLOBAL_BACKEND_REVIEW_PAGE_ID
   const backendReviewPageState = backendReviewStateByPage[backendReviewPageId] ?? createEmptyBackendReviewPageState()
@@ -851,6 +904,7 @@ export function BackendPanel() {
             <TabsTrigger value="sam3">SAM3</TabsTrigger>
             <TabsTrigger value="nsfw">NSFW</TabsTrigger>
             <TabsTrigger value="manual">手動</TabsTrigger>
+            <TabsTrigger value="batch">バッチ</TabsTrigger>
           </TabsList>
 
           {/* ── Models tab ─────────────────────────────────────── */}
@@ -1057,6 +1111,75 @@ export function BackendPanel() {
                   </Button>
                 </>
               )}
+            </div>
+          </TabsContent>
+
+          {/* ── Batch tab ────────────────────────────────────────── */}
+          <TabsContent value="batch">
+            <div className="page-list">
+              <div className="page-card text-xs">
+                <strong>一括NudeNet→モザイク</strong>
+                <span>選択ページに自動検出＋モザイクを一括適用します。</span>
+              </div>
+              <div className="flex gap-2 mb-1">
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => setBatchPageCheckboxes(Object.fromEntries(pages.map((p) => [p.id, true])))} disabled={batchMosaicState.active}>全選択</Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => setBatchPageCheckboxes({})} disabled={batchMosaicState.active}>全解除</Button>
+              </div>
+              <div className="grid gap-1 max-h-48 overflow-y-auto">
+                {pages.map((page, index) => {
+                  const result = batchMosaicState.results[page.id]
+                  const statusIcon = result === 'done' ? '✓' : result === 'error' ? '✗' : result === 'processing' ? '…' : ''
+                  return (
+                    <label key={page.id} className="flex items-center gap-2 text-xs px-2 py-1 rounded cursor-pointer hover:bg-white/5">
+                      <input
+                        type="checkbox"
+                        checked={batchPageCheckboxes[page.id] ?? false}
+                        onChange={(e) => setBatchPageCheckboxes((prev) => ({ ...prev, [page.id]: e.target.checked }))}
+                        disabled={batchMosaicState.active}
+                      />
+                      <span className="flex-1 truncate">{`${index + 1}. ${page.name}`}</span>
+                      {statusIcon && <span>{statusIcon}</span>}
+                    </label>
+                  )
+                })}
+              </div>
+              {batchMosaicState.active && (
+                <div className="page-card text-xs">
+                  <strong>{`処理中: ${batchMosaicState.currentIndex} / ${batchMosaicState.total}ページ`}</strong>
+                </div>
+              )}
+              {!batchMosaicState.active && batchMosaicState.total > 0 && (
+                <div className="page-card text-xs">
+                  <strong>{batchMosaicState.aborted ? 'キャンセル済み' : `完了: ${Object.values(batchMosaicState.results).filter((r) => r === 'done').length} / ${batchMosaicState.total}ページ`}</strong>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="flex-1"
+                  onClick={() => void runBatchMosaic()}
+                  disabled={batchMosaicState.active || Object.values(batchPageCheckboxes).every((v) => !v)}
+                >
+                  一括実行
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { batchAbortedRef.current = true }}
+                  disabled={!batchMosaicState.active}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => updateBatchMosaicState(() => createEmptyBatchMosaicState())}
+                  disabled={batchMosaicState.active}
+                >
+                  リセット
+                </Button>
+              </div>
             </div>
           </TabsContent>
         </Tabs>

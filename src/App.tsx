@@ -38,6 +38,7 @@ import { OverlayLayerPanel } from './components/panels/OverlayLayerPanel'
 import { LayersPanel } from './components/panels/LayersPanel'
 import { InspectorLayerDetails } from './components/panels/InspectorLayerDetails'
 import { BackendPanel } from './components/panels/BackendPanel'
+import { CsvImportDialog } from './components/CsvImportDialog'
 import { Button } from './components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip'
 import {
@@ -264,6 +265,8 @@ function App() {
   const [variantBatchDraft, setVariantBatchDraft] = useState('Variant A\nVariant B')
   const [presetLibraryFilter, setPresetLibraryFilter] = useState<'all' | 'text' | 'message' | 'watermark' | 'bubble' | 'overlay' | 'mosaic' | 'template' | 'asset'>('all')
   const [presetLibrarySearch, setPresetLibrarySearch] = useState('')
+  const [csvImportOpen, setCsvImportOpen] = useState(false)
+  const [batchTemplateState, setBatchTemplateState] = useState<{ templateId: string; pageIds: Record<string, boolean> } | null>(null)
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null)
   const [layerDragState, setLayerDragState] = useState<LayerDragState | null>(null)
   const [layerResizeState, setLayerResizeState] = useState<LayerResizeState | null>(null)
@@ -320,6 +323,8 @@ function App() {
     saveCurrentPageAsReusableAsset,
     applyTemplateToActivePage,
     applyTemplateToAllPages,
+    applyTemplateToSelectedPages,
+    importDialogueFromCsv,
     addTextLayer,
     addWatermarkLayer,
     loadWatermarkImageFile,
@@ -1209,6 +1214,9 @@ function App() {
               </button>
               <button type="button" onClick={saveCurrentPageAsReusableAsset} disabled={!image}>
                 Save page as reusable asset
+              </button>
+              <button type="button" onClick={() => setCsvImportOpen(true)} disabled={pages.length === 0}>
+                CSV dialogue import
               </button>
               <button type="button" onClick={handleExportPng} disabled={!image}>
                 Export PNG
@@ -2104,6 +2112,14 @@ function App() {
                         <button
                           type="button"
                           className="page-button"
+                          onClick={() => setBatchTemplateState({ templateId: template.id, pageIds: Object.fromEntries(pages.map((p) => [p.id, true])) })}
+                          aria-label={`Apply template to selected pages: ${templateLabel}`}
+                        >
+                          Apply to selected...
+                        </button>
+                        <button
+                          type="button"
+                          className="page-button"
                           onClick={() => duplicateTemplate(template.id)}
                           aria-label={`Duplicate template: ${templateLabel}`}
                         >
@@ -2506,6 +2522,62 @@ function App() {
         saveStatusLabel={saveStatusLabel}
         exportMessage={exportMessage}
       />
+
+      {/* CSV Import Dialog */}
+      {csvImportOpen && (
+        <CsvImportDialog
+          onClose={() => setCsvImportOpen(false)}
+          onImport={(rows, fieldMap) => importDialogueFromCsv(rows, fieldMap)}
+          layerNames={[
+            ...(image?.textLayers.map((l) => l.name).filter(Boolean) ?? []),
+            ...(image?.messageWindowLayers.map((l) => l.name).filter(Boolean) ?? []),
+            ...(image?.bubbleLayers.map((l) => l.name).filter(Boolean) ?? []),
+          ] as string[]}
+        />
+      )}
+
+      {/* Batch template apply dialog */}
+      {batchTemplateState && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setBatchTemplateState(null)}>
+          <div className="bg-[#14110f] border border-[rgba(243,239,230,0.12)] rounded-xl p-5 w-80 max-h-[70vh] overflow-y-auto shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">適用ページを選択</h2>
+              <button type="button" className="page-button" onClick={() => setBatchTemplateState(null)}>✕</button>
+            </div>
+            <div className="flex gap-2 mb-2">
+              <button type="button" className="page-button flex-1" onClick={() => setBatchTemplateState((s) => s ? { ...s, pageIds: Object.fromEntries(pages.map((p) => [p.id, true])) } : s)}>全選択</button>
+              <button type="button" className="page-button flex-1" onClick={() => setBatchTemplateState((s) => s ? { ...s, pageIds: {} } : s)}>全解除</button>
+            </div>
+            <div className="grid gap-1 mb-3">
+              {pages.map((page, index) => (
+                <label key={page.id} className="flex items-center gap-2 text-xs px-2 py-1 rounded cursor-pointer hover:bg-white/5">
+                  <input
+                    type="checkbox"
+                    checked={batchTemplateState.pageIds[page.id] ?? false}
+                    onChange={(e) => setBatchTemplateState((s) => s ? { ...s, pageIds: { ...s.pageIds, [page.id]: e.target.checked } } : s)}
+                  />
+                  <span className="truncate">{`${index + 1}. ${page.name}`}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button type="button" className="page-button flex-1" onClick={() => setBatchTemplateState(null)}>キャンセル</button>
+              <button
+                type="button"
+                className="page-button flex-1"
+                onClick={() => {
+                  const selectedIds = Object.entries(batchTemplateState.pageIds).filter(([, v]) => v).map(([id]) => id)
+                  applyTemplateToSelectedPages(batchTemplateState.templateId, selectedIds)
+                  setBatchTemplateState(null)
+                }}
+                disabled={Object.values(batchTemplateState.pageIds).every((v) => !v)}
+              >
+                {`適用 (${Object.values(batchTemplateState.pageIds).filter(Boolean).length}ページ)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

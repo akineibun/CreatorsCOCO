@@ -141,6 +141,28 @@ export const parseBackendLayerSuggestion = (
   return { x, y, width, height }
 }
 
+// ── Batch mosaic types ─────────────────────────────────────────────────────────
+
+export type BatchMosaicPageResult = 'pending' | 'processing' | 'done' | 'error'
+
+export type BatchMosaicState = {
+  active: boolean
+  selectedPageIds: string[]
+  currentIndex: number
+  total: number
+  results: Record<string, BatchMosaicPageResult>
+  aborted: boolean
+}
+
+export const createEmptyBatchMosaicState = (): BatchMosaicState => ({
+  active: false,
+  selectedPageIds: [],
+  currentIndex: 0,
+  total: 0,
+  results: {},
+  aborted: false,
+})
+
 // ── Store interface ────────────────────────────────────────────────────────────
 
 type BackendStoreState = {
@@ -157,6 +179,7 @@ type BackendStoreState = {
   backendManualPointDragState: BackendManualPointDragState | null
   backendActionHistory: BackendActionHistoryEntry[]
   backendReviewStateByPage: Record<string, BackendReviewPageState>
+  batchMosaicState: BatchMosaicState
 }
 
 type BackendStoreActions = {
@@ -174,6 +197,7 @@ type BackendStoreActions = {
   updateBackendActionHistory: (updater: (current: BackendActionHistoryEntry[]) => BackendActionHistoryEntry[]) => void
   updateBackendReviewStateByPage: (updater: (current: Record<string, BackendReviewPageState>) => Record<string, BackendReviewPageState>) => void
   setBackendStatusFromProgress: (modelName: BackendModelName, progress: { status: string; progress: number }) => void
+  updateBatchMosaicState: (updater: (current: BatchMosaicState) => BatchMosaicState) => void
 }
 
 export type BackendStore = BackendStoreState & BackendStoreActions
@@ -194,6 +218,7 @@ export const useBackendStore = create<BackendStore>((set) => ({
   backendManualPointDragState: null,
   backendActionHistory: [],
   backendReviewStateByPage: {},
+  batchMosaicState: createEmptyBatchMosaicState(),
 
   setBackendStatus: (status) => set({ backendStatus: status }),
   setBackendStatusError: (error) => set({ backendStatusError: error }),
@@ -234,4 +259,6 @@ export const useBackendStore = create<BackendStore>((set) => ({
           }
         : state.backendStatus,
     })),
+  updateBatchMosaicState: (updater) =>
+    set((state) => ({ batchMosaicState: updater(state.batchMosaicState) })),
 }))
