@@ -419,6 +419,7 @@ type WorkspaceState = {
   moveSelectedTextLayerForward: () => void
   toggleSelectedTextLayerVertical: () => void
   changeSelectedTextLayerOutlineWidth: (delta: number) => void
+  setSelectedTextLayerStrokeColor: (color: string) => void
   toggleSelectedTextLayerShadow: () => void
   setSelectedTextLayerRuby: (ruby: RubyAnnotation[]) => void
   setSelectedTextLayerBackgroundBand: (band: CanvasTextLayer['backgroundBand']) => void
@@ -576,6 +577,7 @@ type WorkspaceState = {
   toggleSelectedLayerLock: () => void
   toggleLayerVisibilityById: (layerId: string) => void
   toggleLayerLockById: (layerId: string) => void
+  setAllLayersVisible: (visible: boolean) => void
   groupSelectedLayers: () => void
   ungroupSelectedLayers: () => void
   duplicateSelectedLayer: () => void
@@ -3624,6 +3626,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         loadError: null,
       })
     }),
+  setSelectedTextLayerStrokeColor: (color) =>
+    set((state) => {
+      const activeTextLayer = selectActiveTextLayer(state)
+      if (!activeTextLayer || !state.activePageId || activeTextLayer.locked) return state
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((layer) =>
+            layer.id === activeTextLayer.id ? { ...layer, strokeColor: color } : layer,
+          ),
+        })),
+        loadError: null,
+      })
+    }),
   toggleSelectedTextLayerShadow: () =>
     set((state) => {
       const activeTextLayer = selectActiveTextLayer(state)
@@ -5573,6 +5589,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           mosaicLayers: page.mosaicLayers.map((l) => l.id === layerId ? { ...l, locked: !l.locked } : l),
           overlayLayers: page.overlayLayers.map((l) => l.id === layerId ? { ...l, locked: !l.locked } : l),
           watermarkLayers: page.watermarkLayers.map((l) => l.id === layerId ? { ...l, locked: !l.locked } : l),
+        })),
+        loadError: null,
+      })
+    }),
+  setAllLayersVisible: (visible) =>
+    set((state) => {
+      if (!state.activePageId) return state
+      return withHistory(state, {
+        pages: updateActivePage(state.pages, state.activePageId, (page) => ({
+          ...page,
+          textLayers: page.textLayers.map((l) => ({ ...l, visible })),
+          messageWindowLayers: page.messageWindowLayers.map((l) => ({ ...l, visible })),
+          bubbleLayers: page.bubbleLayers.map((l) => ({ ...l, visible })),
+          mosaicLayers: page.mosaicLayers.map((l) => ({ ...l, visible })),
+          overlayLayers: page.overlayLayers.map((l) => ({ ...l, visible })),
+          watermarkLayers: page.watermarkLayers.map((l) => ({ ...l, visible })),
         })),
         loadError: null,
       })

@@ -21,6 +21,7 @@ export function LayersPanel() {
     toggleLayerVisibilityById,
     toggleLayerLockById,
     moveLayerToIndex,
+    setAllLayersVisible,
   } = useWorkspaceStore()
 
   const image = selectActiveImage({ pages, activePageId })
@@ -76,7 +77,17 @@ export function LayersPanel() {
 
   return (
     <section aria-label="Layer panel" className="sidebar-card">
-      <div className="panel-title">Layers</div>
+      <div className="panel-title flex items-center justify-between">
+        <span>Layers</span>
+        <div className="flex gap-1">
+          <button type="button" className="layer-visibility" title="全レイヤーを表示" aria-label="Show all layers" onClick={() => setAllLayersVisible(true)}>
+            <Eye className="w-3 h-3" />
+          </button>
+          <button type="button" className="layer-visibility" title="全レイヤーを非表示" aria-label="Hide all layers" onClick={() => setAllLayersVisible(false)}>
+            <EyeOff className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
       <ul className="layer-list">
         <li className={selectedLayerId === 'base-image' ? 'selected-layer' : undefined}>
           <button

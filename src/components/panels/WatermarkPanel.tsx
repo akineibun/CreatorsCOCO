@@ -1,5 +1,7 @@
 import { useWorkspaceStore, selectActiveImage } from '../../stores/workspaceStore'
 import type { CanvasWatermarkLayer } from '../../stores/workspaceStore'
+import { Button } from '../ui/button'
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../ui/accordion'
 
 export function WatermarkPanel() {
   const {
@@ -35,42 +37,117 @@ export function WatermarkPanel() {
 
   return (
     <div className="selection-controls text-controls" role="group" aria-label="Watermark layer controls">
-      <label className="text-layer-field"><span>Layer name</span>
-        <input type="text" aria-label="Selected layer name" value={activeLayer.name ?? ''} onChange={e => renameSelectedLayer(e.target.value)} />
-      </label>
-      <label className="text-layer-field"><span>Watermark</span>
-        <input type="text" aria-label="Selected watermark text" value={activeLayer.text} onChange={e => updateSelectedWatermarkText(e.target.value)} />
-      </label>
-      <button type="button" onClick={() => changeSelectedWatermarkOpacity(-0.1)}>Decrease watermark opacity</button>
-      <button type="button" onClick={() => changeSelectedWatermarkOpacity(0.1)}>Increase watermark opacity</button>
-      <button type="button" onClick={toggleSelectedWatermarkPattern}>Toggle watermark pattern</button>
-      <button type="button" onClick={() => setSelectedWatermarkPreset('patreon')}>Apply Patreon CTA watermark</button>
-      <button type="button" onClick={() => setSelectedWatermarkPreset('discord')}>Apply Discord CTA watermark</button>
-      <button type="button" onClick={() => changeSelectedWatermarkAngle(-8)}>Rotate watermark less</button>
-      <button type="button" onClick={() => changeSelectedWatermarkAngle(8)}>Rotate watermark more</button>
-      <button type="button" onClick={() => changeSelectedWatermarkDensity(-1)}>Decrease watermark density</button>
-      <button type="button" onClick={() => changeSelectedWatermarkDensity(1)}>Increase watermark density</button>
-      <button type="button" onClick={() => moveSelectedWatermarkLayer(-96, 0)}>Move watermark left</button>
-      <button type="button" onClick={() => moveSelectedWatermarkLayer(96, 0)}>Move watermark right</button>
-      <button type="button" onClick={() => moveSelectedWatermarkLayer(0, -64)}>Move watermark up</button>
-      <button type="button" onClick={() => moveSelectedWatermarkLayer(0, 64)}>Move watermark down</button>
-      <button type="button" onClick={() => changeSelectedWatermarkScale(-0.2)}>Decrease watermark scale</button>
-      <button type="button" onClick={() => changeSelectedWatermarkScale(0.2)}>Increase watermark scale</button>
-      <button type="button" onClick={toggleSelectedWatermarkTileLayout}>Toggle watermark tile layout</button>
-      <button type="button" onClick={saveSelectedWatermarkStylePreset}>Save watermark preset</button>
-      {watermarkStylePresets.length > 0 && (
-        <div className="selection-controls">
-          {watermarkStylePresets.map(preset => (
-            <button key={preset.id} type="button" onClick={() => applyWatermarkStylePreset(preset.id)}>
-              {`Apply watermark preset: ${preset.label}`}
-            </button>
-          ))}
-        </div>
-      )}
-      <button type="button" onClick={duplicateSelectedLayer}>Duplicate watermark layer</button>
-      <button type="button" onClick={moveSelectedLayerBackward}>Send watermark backward</button>
-      <button type="button" onClick={moveSelectedLayerForward}>Bring watermark forward</button>
-      <button type="button" onClick={deleteSelectedLayer}>Delete watermark layer</button>
+      <Accordion type="multiple" defaultValue={['basic', 'style', 'position']}>
+
+        {/* Basic */}
+        <AccordionItem value="basic">
+          <AccordionTrigger>ウォーターマーク基本</AccordionTrigger>
+          <AccordionContent>
+            <div className="grid gap-3">
+              <label className="text-layer-field">
+                <span>レイヤー名</span>
+                <input type="text" aria-label="Selected layer name" value={activeLayer.name ?? ''} onChange={e => renameSelectedLayer(e.target.value)} />
+              </label>
+              <label className="text-layer-field">
+                <span>テキスト</span>
+                <input type="text" aria-label="Selected watermark text" value={activeLayer.text} onChange={e => updateSelectedWatermarkText(e.target.value)} />
+              </label>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" className="flex-1" onClick={toggleSelectedWatermarkPattern}>
+                  {activeLayer.pattern === 'diagonal' ? '斜め' : activeLayer.pattern === 'grid' ? 'グリッド' : 'シングル'}
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={toggleSelectedWatermarkTileLayout}>
+                  {activeLayer.tileLayout ? 'タイル ON' : 'タイル OFF'}
+                </Button>
+              </div>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedWatermarkPreset('patreon')}>
+                  Patreon CTA
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedWatermarkPreset('discord')}>
+                  Discord CTA
+                </Button>
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Style */}
+        <AccordionItem value="style">
+          <AccordionTrigger>スタイル</AccordionTrigger>
+          <AccordionContent>
+            <div className="grid gap-2">
+              <div className="text-layer-field">
+                <span>{`不透明度: ${Math.round(activeLayer.opacity * 100)}%`}</span>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedWatermarkOpacity(-0.1)}>−10%</Button>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedWatermarkOpacity(0.1)}>+10%</Button>
+                </div>
+              </div>
+              <div className="text-layer-field">
+                <span>{`角度: ${activeLayer.angle ?? 0}°`}</span>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedWatermarkAngle(-8)}>−8°</Button>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedWatermarkAngle(8)}>+8°</Button>
+                </div>
+              </div>
+              <div className="text-layer-field">
+                <span>密度</span>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedWatermarkDensity(-1)}>−</Button>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedWatermarkDensity(1)}>+</Button>
+                </div>
+              </div>
+              <div className="text-layer-field">
+                <span>スケール</span>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedWatermarkScale(-0.2)}>−</Button>
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedWatermarkScale(0.2)}>+</Button>
+                </div>
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Position */}
+        <AccordionItem value="position">
+          <AccordionTrigger>位置</AccordionTrigger>
+          <AccordionContent>
+            <div className="grid grid-cols-3 gap-1">
+              <div /><Button size="sm" variant="outline" onClick={() => moveSelectedWatermarkLayer(0, -64)}>↑</Button><div />
+              <Button size="sm" variant="outline" onClick={() => moveSelectedWatermarkLayer(-96, 0)}>←</Button>
+              <div />
+              <Button size="sm" variant="outline" onClick={() => moveSelectedWatermarkLayer(96, 0)}>→</Button>
+              <div /><Button size="sm" variant="outline" onClick={() => moveSelectedWatermarkLayer(0, 64)}>↓</Button><div />
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Presets */}
+        {watermarkStylePresets.length > 0 && (
+          <AccordionItem value="presets">
+            <AccordionTrigger>プリセット</AccordionTrigger>
+            <AccordionContent>
+              <div className="grid gap-2">
+                <Button size="sm" variant="accent" className="w-full" onClick={saveSelectedWatermarkStylePreset}>現在の設定を保存</Button>
+                {watermarkStylePresets.map(preset => (
+                  <Button key={preset.id} size="sm" variant="outline" className="w-full" onClick={() => applyWatermarkStylePreset(preset.id)}>
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        )}
+      </Accordion>
+
+      {/* Layer order & delete */}
+      <div className="flex gap-2 mt-3 pt-3 border-t border-[rgba(243,239,230,0.08)]">
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedLayerBackward}>↓ 前面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedLayerForward}>↑ 背面</Button>
+        <Button size="sm" variant="outline" onClick={duplicateSelectedLayer}>複製</Button>
+        <Button size="sm" variant="destructive" onClick={deleteSelectedLayer}>削除</Button>
+      </div>
     </div>
   )
 }

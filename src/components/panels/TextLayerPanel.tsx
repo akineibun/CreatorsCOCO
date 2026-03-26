@@ -37,6 +37,7 @@ export function TextLayerPanel() {
     setSelectedTextLayerRotation,
     changeSelectedTextLayerRotation,
     setSelectedTextLayerBackgroundBand,
+    setSelectedTextLayerStrokeColor,
   } = useWorkspaceStore()
 
   const image = selectActiveImage({ pages, activePageId })
@@ -99,10 +100,14 @@ export function TextLayerPanel() {
           <AccordionTrigger>色・スタイル</AccordionTrigger>
           <AccordionContent>
             <div className="grid gap-3">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <label className="text-layer-field color-field">
                   <span>色</span>
                   <input type="color" aria-label="Text color" value={activeLayer.color} onChange={e => setSelectedTextLayerColor(e.target.value)} />
+                </label>
+                <label className="text-layer-field color-field">
+                  <span>縁取り色</span>
+                  <input type="color" aria-label="Text stroke color" value={activeLayer.strokeColor ?? '#000000'} onChange={e => setSelectedTextLayerStrokeColor(e.target.value)} />
                 </label>
                 <label className="text-layer-field color-field">
                   <span>グラデ開始</span>
