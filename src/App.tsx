@@ -1025,6 +1025,8 @@ function App() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase()
+      const target = event.target as HTMLElement
+      const isEditing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable
 
       if (!(event.ctrlKey || event.metaKey)) {
         if (event.key === 'ArrowLeft') {
@@ -1039,6 +1041,35 @@ function App() {
         } else if (event.key === 'ArrowDown') {
           event.preventDefault()
           nudgeSelectedLayer(0, 32)
+        } else if (!isEditing) {
+          if (event.key === 'Delete' || event.key === 'Backspace') {
+            event.preventDefault()
+            deleteSelectedLayer()
+          } else if (event.key === 'Escape') {
+            event.preventDefault()
+            setSelectedLayerIds([])
+          } else if (key === 'v') {
+            event.preventDefault()
+            setActiveTool('select')
+          } else if (key === 't') {
+            event.preventDefault()
+            setActiveTool('text')
+          } else if (key === 'w') {
+            event.preventDefault()
+            setActiveTool('message-window')
+          } else if (key === 'b') {
+            event.preventDefault()
+            setActiveTool('bubble')
+          } else if (key === 'm') {
+            event.preventDefault()
+            setActiveTool('mosaic')
+          } else if (key === 'p') {
+            event.preventDefault()
+            setActiveTool('freehand-mosaic')
+          } else if (key === 'l') {
+            event.preventDefault()
+            setActiveTool('overlay')
+          }
         }
         return
       }
@@ -1058,6 +1089,12 @@ function App() {
       if (key === 'y') {
         event.preventDefault()
         redo()
+        return
+      }
+
+      if (key === 'd') {
+        event.preventDefault()
+        duplicateActivePage()
       }
     }
 
@@ -1065,7 +1102,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [nudgeSelectedLayer, redo, saveNow, undo])
+  }, [nudgeSelectedLayer, redo, saveNow, undo, deleteSelectedLayer, setSelectedLayerIds, setActiveTool, duplicateActivePage])
 
   return (
     <div className="app-shell">
@@ -2294,6 +2331,26 @@ function App() {
                   onBlur={commitHeightDraft}
                 />
               </label>
+            </div>
+            <div className="selection-controls">
+              {([
+                { label: 'Twitter', w: 1200, h: 675 },
+                { label: 'IG 1:1', w: 1080, h: 1080 },
+                { label: 'IG 4:5', w: 1080, h: 1350 },
+                { label: 'Story', w: 1080, h: 1920 },
+                { label: 'FANZA', w: 1280, h: 960 },
+                { label: '4K', w: 3840, h: 2160 },
+              ] as const).map(({ label, w, h }) => (
+                <button
+                  key={label}
+                  type="button"
+                  className="page-card page-button"
+                  onClick={() => { setCustomOutputWidth(w); setCustomOutputHeight(h); setWidthDraft(String(w)); setHeightDraft(String(h)) }}
+                  aria-label={`SNS preset ${label} ${w}x${h}`}
+                >
+                  {`${label} ${w}×${h}`}
+                </button>
+              ))}
             </div>
             <div className="selection-controls">
               <button

@@ -4,12 +4,15 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs'
 import {
   downloadBackendModel,
   getBackendModelProgress,
+  getBackendRuntimeConfig,
   getBackendStatus,
   runNsfwDetection,
   runSam3AutoMosaic,
   runSam3ManualSegment,
   subscribeToBackendModelProgress,
+  updateBackendRuntimeConfig,
 } from '../../lib/api/pythonClient'
+import type { BackendRuntimeConfig } from '../../lib/api/pythonClient'
 import {
   createEmptyBackendActionResults,
   createEmptyBackendReviewPageState,
@@ -81,6 +84,8 @@ export function BackendPanel() {
 
   const batchAbortedRef = useRef(false)
   const [batchPageCheckboxes, setBatchPageCheckboxes] = useState<Record<string, boolean>>({})
+  const [runtimeConfig, setRuntimeConfig] = useState<BackendRuntimeConfig | null>(null)
+  const [runtimeConfigSaving, setRuntimeConfigSaving] = useState(false)
 
   const runBatchMosaic = useCallback(async () => {
     const selectedPageIds = Object.entries(batchPageCheckboxes)
@@ -875,6 +880,26 @@ export function BackendPanel() {
 
   useEffect(() => { void loadBackendStatus() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!backendStatus) return
+    getBackendRuntimeConfig()
+      .then(setRuntimeConfig)
+      .catch(() => {/* ignore if not available */})
+  }, [backendStatus])
+
+  const saveRuntimeConfig = useCallback(async (
+    sam3Pref: 'auto' | 'native' | 'heuristic',
+    nudenetPref: 'auto' | 'native' | 'heuristic',
+  ) => {
+    setRuntimeConfigSaving(true)
+    try {
+      const updated = await updateBackendRuntimeConfig(sam3Pref, nudenetPref)
+      setRuntimeConfig(updated)
+    } catch {/* ignore */} finally {
+      setRuntimeConfigSaving(false)
+    }
+  }, [])
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -947,6 +972,47 @@ export function BackendPanel() {
               </div>
               {backendDownloads.sam3 && <div className="page-card"><strong>{backendDownloads.sam3}</strong></div>}
               {backendDownloads.nudenet && <div className="page-card"><strong>{backendDownloads.nudenet}</strong></div>}
+              {runtimeConfig && (
+                <div className="mt-2 pt-2 border-t border-[rgba(243,239,230,0.08)] grid gap-2">
+                  <span className="text-xs text-[rgba(243,239,230,0.5)]">バックエンド設定</span>
+                  <label className="text-layer-field">
+                    <span>SAM3</span>
+                    <select
+                      aria-label="SAM3 backend preference"
+                      value={runtimeConfig.sam3_backend_preference}
+                      disabled={runtimeConfigSaving}
+                      onChange={(e) => {
+                        const v = e.target.value as 'auto' | 'native' | 'heuristic'
+                        void saveRuntimeConfig(v, runtimeConfig.nudenet_backend_preference)
+                      }}
+                    >
+                      <option value="auto">auto</option>
+                      <option value="native">native (SAM3)</option>
+                      <option value="heuristic">heuristic (高速)</option>
+                    </select>
+                  </label>
+                  <label className="text-layer-field">
+                    <span>NudeNet</span>
+                    <select
+                      aria-label="NudeNet backend preference"
+                      value={runtimeConfig.nudenet_backend_preference}
+                      disabled={runtimeConfigSaving}
+                      onChange={(e) => {
+                        const v = e.target.value as 'auto' | 'native' | 'heuristic'
+                        void saveRuntimeConfig(runtimeConfig.sam3_backend_preference, v)
+                      }}
+                    >
+                      <option value="auto">auto</option>
+                      <option value="native">native (NudeNet)</option>
+                      <option value="heuristic">heuristic (高速)</option>
+                    </select>
+                  </label>
+                  <div className="page-card text-xs">
+                    <span>{`SAM3: ${runtimeConfig.sam3_effective_backend} — ${runtimeConfig.sam3_recommendation}`}</span>
+                    <span>{`NudeNet: ${runtimeConfig.nudenet_effective_backend} — ${runtimeConfig.nudenet_recommendation}`}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </TabsContent>
 

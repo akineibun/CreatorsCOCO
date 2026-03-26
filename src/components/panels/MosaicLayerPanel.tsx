@@ -55,13 +55,18 @@ export function MosaicLayerPanel() {
 
       {/* Intensity */}
       <div className="text-layer-field mt-2">
-        <span>強度</span>
+        <span>{`強度: ${activeLayer.intensity}`}</span>
         <div className="flex gap-1 mt-1">
-          <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedMosaicIntensity(8)}>小</Button>
-          <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedMosaicIntensity(16)}>中</Button>
-          <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedMosaicIntensity(24)}>大</Button>
-          <Button size="sm" variant="outline" onClick={() => changeSelectedMosaicIntensity(-4)}>−</Button>
-          <Button size="sm" variant="outline" onClick={() => changeSelectedMosaicIntensity(4)}>+</Button>
+          <Button size="sm" variant={activeLayer.intensity === 10 ? 'active' : 'outline'} className="flex-1" onClick={() => setSelectedMosaicIntensity(10)}>Pixiv</Button>
+          <Button size="sm" variant={activeLayer.intensity === 8 ? 'active' : 'outline'} className="flex-1" onClick={() => setSelectedMosaicIntensity(8)}>小</Button>
+          <Button size="sm" variant={activeLayer.intensity === 16 ? 'active' : 'outline'} className="flex-1" onClick={() => setSelectedMosaicIntensity(16)}>中</Button>
+          <Button size="sm" variant={activeLayer.intensity === 24 ? 'active' : 'outline'} className="flex-1" onClick={() => setSelectedMosaicIntensity(24)}>大</Button>
+        </div>
+        <div className="flex gap-1 mt-1">
+          <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedMosaicIntensity(-2)}>−2</Button>
+          <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedMosaicIntensity(-1)}>−1</Button>
+          <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedMosaicIntensity(1)}>+1</Button>
+          <Button size="sm" variant="outline" className="flex-1" onClick={() => changeSelectedMosaicIntensity(2)}>+2</Button>
         </div>
       </div>
 
