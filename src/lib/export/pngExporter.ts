@@ -227,13 +227,21 @@ export const exportPageAsPng = async (
   }
 
   image.textLayers.filter((layer) => layer.visible).forEach((layer) => {
+    const layerRotation = layer.rotation ?? 0
+    if (layerRotation !== 0) {
+      context.save()
+      context.translate(mapX(layer.x), mapY(layer.y))
+      context.rotate((layerRotation * Math.PI) / 180)
+      context.translate(-mapX(layer.x), -mapY(layer.y))
+    }
     context.textAlign = 'left'
     context.lineJoin = 'round'
     context.shadowColor = layer.shadowEnabled ? 'rgba(0, 0, 0, 0.35)' : 'transparent'
     context.shadowBlur = layer.shadowEnabled ? 12 : 0
     context.shadowOffsetX = layer.shadowEnabled ? 3 : 0
     context.shadowOffsetY = layer.shadowEnabled ? 3 : 0
-    context.font = `${Math.max(12, Math.round(mapSize(layer.fontSize)))}px Segoe UI`
+    const layerFontStr = `${Math.max(12, Math.round(mapSize(layer.fontSize)))}px "${layer.fontFamily ?? 'Segoe UI'}", Segoe UI, sans-serif`
+    context.font = layerFontStr
     const approxCharWidth = Math.max(1, layer.fontSize * 0.55 + layer.letterSpacing)
     const maxCharsPerLine = Math.max(1, Math.floor(layer.maxWidth / approxCharWidth))
     const wrappedLines = wrapText(layer.text, maxCharsPerLine)
@@ -332,6 +340,9 @@ export const exportPageAsPng = async (
 
         globalCharIndex += line.length
       })
+    }
+    if (layerRotation !== 0) {
+      context.restore()
     }
   })
 
