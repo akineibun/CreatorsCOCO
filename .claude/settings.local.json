@@ -28,7 +28,13 @@
       "Bash(cp -r \"D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/dist\" \"D:/Other/CreatorsCOCO/dist_v121_backup\")",
       "Bash(cp -r \"D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/dist/.\" \"D:/Other/CreatorsCOCO/dist/\")",
       "Bash(grep -n \"Preset library\\\\|Backend\\\\|Recent projects\\\\|Recent exports\\\\|Export preview\" src/components/panels/*.tsx src/App.tsx)",
-      "Bash(node -e \"const p=JSON.parse\\(require\\(''fs''\\).readFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',''utf8''\\)\\); const mp=JSON.parse\\(require\\(''fs''\\).readFileSync\\(''D:/Other/CreatorsCOCO/package.json'',''utf8''\\)\\); mp.version=p.version; require\\(''fs''\\).writeFileSync\\(''D:/Other/CreatorsCOCO/package.json'',JSON.stringify\\(mp,null,2\\)+''\\\\n''\\); console.log\\(''version synced to'',p.version\\)\")"
+      "Bash(node -e \"const p=JSON.parse\\(require\\(''fs''\\).readFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',''utf8''\\)\\); const mp=JSON.parse\\(require\\(''fs''\\).readFileSync\\(''D:/Other/CreatorsCOCO/package.json'',''utf8''\\)\\); mp.version=p.version; require\\(''fs''\\).writeFileSync\\(''D:/Other/CreatorsCOCO/package.json'',JSON.stringify\\(mp,null,2\\)+''\\\\n''\\); console.log\\(''version synced to'',p.version\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(node -e \"const fs=require\\(''fs''\\); const p=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',''utf8''\\)\\); p.version=''1.2.4''; fs.writeFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',JSON.stringify\\(p,null,2\\)+''\\\\n''\\); console.log\\(''bumped to'',p.version\\)\")",
+      "Bash(cp -r dist/. \"D:/Other/CreatorsCOCO/dist/\")",
+      "Bash(node -e \"const fs=require\\(''''fs''''\\);const mp=JSON.parse\\(fs.readFileSync\\(''''D:/Other/CreatorsCOCO/package.json'''',''''utf8''''\\)\\);mp.version=''''1.2.4'''';fs.writeFileSync\\(''''D:/Other/CreatorsCOCO/package.json'''',JSON.stringify\\(mp,null,2\\)+''''\\\\n''''\\);console.log\\(''''main repo synced to 1.2.4''''\\)\")"
     ]
   }
 }

@@ -2535,16 +2535,24 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const images = supportedFiles.map(createImageFromFile)
       const activeImage = images[images.length - 1]
 
-      if (activeImage?.sourceUrl) {
-        void loadImageDimensions(activeImage.sourceUrl).then((dims) => {
+      // Load true pixel dimensions for every new image and store them on the
+      // page object so that selectPage can compute the correct imageTransform
+      // even after switching away and back.
+      for (const img of images) {
+        if (!img.sourceUrl) continue
+        void loadImageDimensions(img.sourceUrl).then((dims) => {
           set((current) => {
-            if (current.activePageId !== activeImage.id) {
-              return current
+            const pages = current.pages.map((p) =>
+              p.id === img.id ? { ...p, width: dims.width, height: dims.height } : p,
+            )
+            if (current.activePageId === img.id) {
+              return {
+                ...current,
+                pages,
+                imageTransform: calculateInitialImageTransform(dims.width, dims.height),
+              }
             }
-            return {
-              ...current,
-              imageTransform: calculateInitialImageTransform(dims.width, dims.height),
-            }
+            return { ...current, pages }
           })
         })
       }
@@ -6925,13 +6933,37 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         return state
       }
 
+      // Use the page's stored dimensions for an immediate best-guess transform.
+      // Also kick off an async reload to get the true pixel dimensions (guards
+      // against the initial inferred size from inferImageSize being wrong).
+      const imageTransform =
+        page.width > 0 && page.height > 0
+          ? calculateInitialImageTransform(page.width, page.height)
+          : { ...INITIAL_IMAGE_TRANSFORM }
+
+      if (page.sourceUrl) {
+        void loadImageDimensions(page.sourceUrl).then((dims) => {
+          set((current) => {
+            if (current.activePageId !== pageId) return current
+            const pages = current.pages.map((p) =>
+              p.id === pageId ? { ...p, width: dims.width, height: dims.height } : p,
+            )
+            return {
+              ...current,
+              pages,
+              imageTransform: calculateInitialImageTransform(dims.width, dims.height),
+            }
+          })
+        })
+      }
+
       return {
         activePageId: pageId,
         loadError: null,
         selectedLayerId: null,
         selectedLayerIds: [],
         activeTool: 'select' as const,
-        imageTransform: { ...INITIAL_IMAGE_TRANSFORM },
+        imageTransform,
         zoomPercent: 100,
       }
     }),
