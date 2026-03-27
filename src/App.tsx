@@ -727,7 +727,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <header aria-label="Main menu" className="menu-bar" ref={menuBarRef}>
+      <header aria-label="Main menu" className="menu-bar">
         <div className="brand">
           <strong>CreatorsCOCO</strong>
           <span>{projectName}</span>
@@ -744,134 +744,155 @@ function App() {
             onBlur={commitProjectNameDraft}
           />
         </label>
-        <nav aria-label="Primary navigation" style={{display:'flex', alignItems:'stretch', gap:0}}>
-          {/* ファイル menu */}
-          <div style={{position:'relative'}}>
-            <button
-              type="button"
-              style={{background: menuOpen === 'file' ? 'rgba(255,255,255,0.1)' : 'none', border:'none', color:'#e8d5c0', padding:'4px 10px', cursor:'pointer', fontSize:13, height:'100%'}}
-              onClick={() => setMenuOpen(menuOpen === 'file' ? null : 'file')}
-            >ファイル</button>
-            {menuOpen === 'file' && (
-              <div style={{position:'absolute', top:'100%', left:0, background:'#1a1a2e', border:'1px solid #333', borderRadius:4, minWidth:200, zIndex:1000, boxShadow:'0 4px 16px rgba(0,0,0,0.4)'}}>
-                <label style={{display:'block', width:'100%', padding:'6px 16px', color:'#e8d5c0', cursor:'pointer', fontSize:13}}>
-                  画像を開く
-                  <input
-                    aria-label="画像ファイルを開く"
-                    type="file"
-                    accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                    multiple
-                    style={{display:'none'}}
-                    onChange={(e) => { handleFileChange(e); setMenuOpen(null) }}
-                  />
-                </label>
-                <label style={{display:'block', width:'100%', padding:'6px 16px', color:'#e8d5c0', cursor:'pointer', fontSize:13}}>
-                  ウォーターマーク素材
-                  <input
-                    aria-label="ウォーターマーク画像を開く"
-                    type="file"
-                    accept=".png,image/png"
-                    style={{display:'none'}}
-                    onChange={(e) => { handleWatermarkFileChange(e); setMenuOpen(null) }}
-                  />
-                </label>
-                <hr style={{margin:'4px 0', border:'none', borderTop:'1px solid #333'}} />
-                <button type="button" onClick={() => { saveNow(); setMenuOpen(null) }} disabled={!isDirty} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: isDirty ? 'pointer' : 'default', fontSize:13, opacity: isDirty ? 1 : 0.4}}>今すぐ保存</button>
-                <button type="button" onClick={() => { deleteActivePage(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>このページを削除</button>
-              </div>
-            )}
-          </div>
-          {/* 編集 menu */}
-          <div style={{position:'relative'}}>
-            <button
-              type="button"
-              style={{background: menuOpen === 'edit' ? 'rgba(255,255,255,0.1)' : 'none', border:'none', color:'#e8d5c0', padding:'4px 10px', cursor:'pointer', fontSize:13, height:'100%'}}
-              onClick={() => setMenuOpen(menuOpen === 'edit' ? null : 'edit')}
-            >編集</button>
-            {menuOpen === 'edit' && (
-              <div style={{position:'absolute', top:'100%', left:0, background:'#1a1a2e', border:'1px solid #333', borderRadius:4, minWidth:220, zIndex:1000, boxShadow:'0 4px 16px rgba(0,0,0,0.4)'}}>
-                <button type="button" onClick={() => { undo(); setMenuOpen(null) }} disabled={undoStack.length === 0} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: undoStack.length > 0 ? 'pointer' : 'default', fontSize:13, opacity: undoStack.length > 0 ? 1 : 0.4}}>元に戻す</button>
-                <button type="button" onClick={() => { redo(); setMenuOpen(null) }} disabled={redoStack.length === 0} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: redoStack.length > 0 ? 'pointer' : 'default', fontSize:13, opacity: redoStack.length > 0 ? 1 : 0.4}}>やり直す</button>
-                <hr style={{margin:'4px 0', border:'none', borderTop:'1px solid #333'}} />
-                <button type="button" onClick={() => { selectAllVisibleLayers(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>表示レイヤーをすべて選択</button>
-                <button type="button" onClick={() => { selectVisibleLayersByType('text'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>テキストレイヤーを選択</button>
-                <button type="button" onClick={() => { selectVisibleLayersByType('message-window'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>会話枠レイヤーを選択</button>
-                <button type="button" onClick={() => { selectVisibleLayersByType('bubble'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>吹き出しレイヤーを選択</button>
-                <button type="button" onClick={() => { selectVisibleLayersByType('mosaic'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>モザイクレイヤーを選択</button>
-                <button type="button" onClick={() => { selectVisibleLayersByType('overlay'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>オーバーレイレイヤーを選択</button>
-                <button type="button" onClick={() => { selectVisibleLayersByType('watermark'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>ウォーターマークレイヤーを選択</button>
-                <hr style={{margin:'4px 0', border:'none', borderTop:'1px solid #333'}} />
-                <button type="button" onClick={() => { invertLayerSelection(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>選択を反転</button>
-                <button type="button" onClick={() => { clearLayerSelection(); setMenuOpen(null) }} disabled={!selectedLayerId} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: selectedLayerId ? 'pointer' : 'default', fontSize:13, opacity: selectedLayerId ? 1 : 0.4}}>選択を解除</button>
-              </div>
-            )}
-          </div>
-          {/* ページ menu */}
-          <div style={{position:'relative'}}>
-            <button
-              type="button"
-              style={{background: menuOpen === 'page' ? 'rgba(255,255,255,0.1)' : 'none', border:'none', color:'#e8d5c0', padding:'4px 10px', cursor:'pointer', fontSize:13, height:'100%'}}
-              onClick={() => setMenuOpen(menuOpen === 'page' ? null : 'page')}
-            >ページ</button>
-            {menuOpen === 'page' && (
-              <div style={{position:'absolute', top:'100%', left:0, background:'#1a1a2e', border:'1px solid #333', borderRadius:4, minWidth:200, zIndex:1000, boxShadow:'0 4px 16px rgba(0,0,0,0.4)'}}>
-                <button type="button" onClick={() => { duplicateActivePage(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>このページを複製 (Ctrl+D)</button>
-                <button type="button" onClick={() => { deleteActivePage(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>このページを削除</button>
-                {image && (
-                  <>
-                    <hr style={{margin:'4px 0', border:'none', borderTop:'1px solid #333'}} />
-                    <button type="button" onClick={() => { selectBaseImageLayer(); setMenuOpen(null) }} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor:'pointer', fontSize:13}}>ベース画像を選択</button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-          {/* レイヤー menu */}
-          <div style={{position:'relative'}}>
-            <button
-              type="button"
-              style={{background: menuOpen === 'layer' ? 'rgba(255,255,255,0.1)' : 'none', border:'none', color:'#e8d5c0', padding:'4px 10px', cursor:'pointer', fontSize:13, height:'100%'}}
-              onClick={() => setMenuOpen(menuOpen === 'layer' ? null : 'layer')}
-            >レイヤー</button>
-            {menuOpen === 'layer' && (
-              <div style={{position:'absolute', top:'100%', left:0, background:'#1a1a2e', border:'1px solid #333', borderRadius:4, minWidth:200, zIndex:1000, boxShadow:'0 4px 16px rgba(0,0,0,0.4)'}}>
-                <button type="button" onClick={() => { addTextLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>テキストを追加</button>
-                <button type="button" onClick={() => { addMessageWindowLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>会話枠を追加</button>
-                <button type="button" onClick={() => { addBubbleLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>吹き出しを追加</button>
-                <button type="button" onClick={() => { addMosaicLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>モザイクを追加</button>
-                <button type="button" onClick={() => { addOverlayLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>オーバーレイを追加</button>
-                <button type="button" onClick={() => { addWatermarkLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>ウォーターマークを追加</button>
-              </div>
-            )}
-          </div>
-        </nav>
       </header>
 
       <div className="workspace-grid" data-active-tool={activeTool}>
-        <aside aria-label="Tool palette" className="tool-palette" style={{background: getToolbarBg(activeTool), display:'flex', flexDirection:'column'}}>
-          <div className="panel-title">ツール</div>
-          <TooltipProvider delayDuration={400}>
-            <div className="tool-stack" role="toolbar" aria-label="Tool palette">
-              {toolLabels.map((tool) => (
-                <Tooltip key={tool.id}>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className={tool.id === activeTool ? 'tool-button active' : 'tool-button'}
-                      aria-label={tool.label}
-                      aria-pressed={tool.id === activeTool}
-                      onClick={() => setActiveTool(tool.id)}
-                    >
-                      <span className="tool-button-icon" aria-hidden="true">{TOOL_ICON_BY_ID[tool.id]}</span>
-                      <span className="tool-button-label">{TOOL_LABEL_JA_BY_ID[tool.id]}</span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{TOOL_LABEL_JA_BY_ID[tool.id]}</TooltipContent>
-                </Tooltip>
-              ))}
+        <aside aria-label="Tool palette" className="tool-palette" style={{background: getToolbarBg(activeTool)}}>
+          {/* ── Side menus ── */}
+          <nav aria-label="Primary navigation" className="side-menu-nav" ref={menuBarRef}>
+            {/* ファイル */}
+            <div>
+              <button type="button" className={menuOpen === 'file' ? 'open' : ''} onClick={() => setMenuOpen(menuOpen === 'file' ? null : 'file')}>ファイル</button>
+              {menuOpen === 'file' && (
+                <div className="side-menu-dropdown">
+                  <label>
+                    画像を開く
+                    <input aria-label="画像ファイルを開く" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple style={{display:'none'}} onChange={(e) => { handleFileChange(e); setMenuOpen(null) }} />
+                  </label>
+                  <label>
+                    ウォーターマーク素材
+                    <input aria-label="ウォーターマーク画像を開く" type="file" accept=".png,image/png" style={{display:'none'}} onChange={(e) => { handleWatermarkFileChange(e); setMenuOpen(null) }} />
+                  </label>
+                  <hr />
+                  <button type="button" onClick={() => { saveNow(); setMenuOpen(null) }} disabled={!isDirty}>今すぐ保存</button>
+                </div>
+              )}
             </div>
-          </TooltipProvider>
-          <div className="tool-palette-bottom" style={{marginTop:'auto', padding:'6px', borderTop:'1px solid rgba(255,255,255,0.1)'}}>
+
+            {/* 編集 */}
+            <div>
+              <button type="button" className={menuOpen === 'edit' ? 'open' : ''} onClick={() => setMenuOpen(menuOpen === 'edit' ? null : 'edit')}>編集</button>
+              {menuOpen === 'edit' && (
+                <div className="side-menu-dropdown">
+                  <button type="button" onClick={() => { undo(); setMenuOpen(null) }} disabled={undoStack.length === 0}>元に戻す</button>
+                  <button type="button" onClick={() => { redo(); setMenuOpen(null) }} disabled={redoStack.length === 0}>やり直す</button>
+                  <hr />
+                  <button type="button" onClick={() => { selectAllVisibleLayers(); setMenuOpen(null) }} disabled={!image}>表示レイヤーをすべて選択</button>
+                  <button type="button" onClick={() => { selectVisibleLayersByType('text'); setMenuOpen(null) }} disabled={!image}>テキストレイヤーを選択</button>
+                  <button type="button" onClick={() => { selectVisibleLayersByType('message-window'); setMenuOpen(null) }} disabled={!image}>会話枠レイヤーを選択</button>
+                  <button type="button" onClick={() => { selectVisibleLayersByType('bubble'); setMenuOpen(null) }} disabled={!image}>吹き出しレイヤーを選択</button>
+                  <button type="button" onClick={() => { selectVisibleLayersByType('mosaic'); setMenuOpen(null) }} disabled={!image}>モザイクレイヤーを選択</button>
+                  <button type="button" onClick={() => { selectVisibleLayersByType('overlay'); setMenuOpen(null) }} disabled={!image}>オーバーレイレイヤーを選択</button>
+                  <button type="button" onClick={() => { selectVisibleLayersByType('watermark'); setMenuOpen(null) }} disabled={!image}>ウォーターマークレイヤーを選択</button>
+                  <hr />
+                  <button type="button" onClick={() => { invertLayerSelection(); setMenuOpen(null) }} disabled={!image}>選択を反転</button>
+                  <button type="button" onClick={() => { clearLayerSelection(); setMenuOpen(null) }} disabled={!selectedLayerId}>選択を解除</button>
+                </div>
+              )}
+            </div>
+
+            {/* ページ */}
+            <div>
+              <button type="button" className={menuOpen === 'page' ? 'open' : ''} onClick={() => setMenuOpen(menuOpen === 'page' ? null : 'page')}>ページ</button>
+              {menuOpen === 'page' && (
+                <div className="side-menu-dropdown">
+                  <button type="button" onClick={() => { duplicateActivePage(); setMenuOpen(null) }} disabled={!image}>このページを複製</button>
+                  <button type="button" onClick={() => { deleteActivePage(); setMenuOpen(null) }} disabled={!image}>このページを削除</button>
+                </div>
+              )}
+            </div>
+
+            {/* レイヤー */}
+            <div>
+              <button type="button" className={menuOpen === 'layer' ? 'open' : ''} onClick={() => setMenuOpen(menuOpen === 'layer' ? null : 'layer')}>レイヤー</button>
+              {menuOpen === 'layer' && (
+                <div className="side-menu-dropdown">
+                  {/* 追加 */}
+                  <button type="button" onClick={() => { addTextLayer(); setMenuOpen(null) }} disabled={!image}>テキストを追加</button>
+                  <button type="button" onClick={() => { addMessageWindowLayer(); setMenuOpen(null) }} disabled={!image}>会話枠を追加</button>
+                  <button type="button" onClick={() => { addBubbleLayer(); setMenuOpen(null) }} disabled={!image}>吹き出しを追加</button>
+                  <button type="button" onClick={() => { addMosaicLayer(); setMenuOpen(null) }} disabled={!image}>モザイクを追加</button>
+                  <button type="button" onClick={() => { addOverlayLayer(); setMenuOpen(null) }} disabled={!image}>オーバーレイを追加</button>
+                  <button type="button" onClick={() => { addWatermarkLayer(); setMenuOpen(null) }} disabled={!image}>ウォーターマークを追加</button>
+                  <hr />
+                  {/* 選択対象 */}
+                  <button type="button" onClick={() => { selectBaseImageLayer(); setMenuOpen(null) }} disabled={!image}>ベース画像を選択</button>
+                  <button type="button" onClick={() => { toggleSelectedLayerVisibility(); setMenuOpen(null) }} disabled={noLayerSelected}>表示／非表示を切り替え</button>
+                  <button type="button" onClick={() => { toggleSelectedLayerLock(); setMenuOpen(null) }} disabled={noLayerSelected}>ロック／解除を切り替え</button>
+                  <hr />
+                  {/* グループ */}
+                  <button type="button" onClick={() => { groupSelectedLayers(); setMenuOpen(null) }} disabled={selectedLayerCount < 2}>レイヤーをグループ化</button>
+                  <button type="button" onClick={() => { selectGroupedLayers(); setMenuOpen(null) }} disabled={!activeLayerGroupId}>グループ内を全選択</button>
+                  <button type="button" onClick={() => { ungroupSelectedLayers(); setMenuOpen(null) }} disabled={!activeLayerGroupId && selectedLayerCount < 2}>グループを解除</button>
+                  <hr />
+                  {/* 操作 */}
+                  <button type="button" onClick={() => { duplicateSelectedLayer(); setMenuOpen(null) }} disabled={noLayerSelected}>レイヤーを複製</button>
+                  <button type="button" onClick={() => { centerSelectedLayer(); setMenuOpen(null) }} disabled={noLayerSelected}>中央に配置</button>
+                  <button type="button" onClick={() => { moveSelectedLayerBackward(); setMenuOpen(null) }} disabled={noLayerSelected}>背面へ移動</button>
+                  <button type="button" onClick={() => { moveSelectedLayerForward(); setMenuOpen(null) }} disabled={noLayerSelected}>前面へ移動</button>
+                  <button type="button" onClick={() => { deleteSelectedLayer(); setMenuOpen(null) }} disabled={noLayerSelected}>レイヤーを削除</button>
+                  <hr />
+                  {/* 揃え */}
+                  <button type="button" onClick={() => { alignSelectedLayer('left'); setMenuOpen(null) }} disabled={noLayerSelected}>左揃え</button>
+                  <button type="button" onClick={() => { alignSelectedLayer('right'); setMenuOpen(null) }} disabled={noLayerSelected}>右揃え</button>
+                  <button type="button" onClick={() => { alignSelectedLayer('top'); setMenuOpen(null) }} disabled={noLayerSelected}>上揃え</button>
+                  <button type="button" onClick={() => { alignSelectedLayer('bottom'); setMenuOpen(null) }} disabled={noLayerSelected}>下揃え</button>
+                  <button type="button" onClick={() => { alignSelectedLayersCenter('horizontal'); setMenuOpen(null) }} disabled={noLayerSelected}>水平方向に中央揃え</button>
+                  <button type="button" onClick={() => { alignSelectedLayersCenter('vertical'); setMenuOpen(null) }} disabled={noLayerSelected}>垂直方向に中央揃え</button>
+                  <button type="button" onClick={() => { distributeSelectedLayers('horizontal'); setMenuOpen(null) }} disabled={noLayerSelected}>水平方向に等間隔配置</button>
+                  <button type="button" onClick={() => { distributeSelectedLayers('vertical'); setMenuOpen(null) }} disabled={noLayerSelected}>垂直方向に等間隔配置</button>
+                  <button type="button" onClick={() => { matchSelectedLayerSize('width'); setMenuOpen(null) }} disabled={noLayerSelected}>幅を揃える</button>
+                  <button type="button" onClick={() => { matchSelectedLayerSize('height'); setMenuOpen(null) }} disabled={noLayerSelected}>高さを揃える</button>
+                  <hr />
+                  {/* 移動・スケール */}
+                  <button type="button" onClick={() => { moveSelection(-32, 0); setMenuOpen(null) }} disabled={noLayerSelected}>左へ移動</button>
+                  <button type="button" onClick={() => { moveSelection(32, 0); setMenuOpen(null) }} disabled={noLayerSelected}>右へ移動</button>
+                  <button type="button" onClick={() => { moveSelection(0, -32); setMenuOpen(null) }} disabled={noLayerSelected}>上へ移動</button>
+                  <button type="button" onClick={() => { moveSelection(0, 32); setMenuOpen(null) }} disabled={noLayerSelected}>下へ移動</button>
+                  <button type="button" onClick={() => { scaleSelection(0.9); setMenuOpen(null) }} disabled={noLayerSelected}>縮小</button>
+                  <button type="button" onClick={() => { scaleSelection(1.125); setMenuOpen(null) }} disabled={noLayerSelected}>拡大</button>
+                </div>
+              )}
+            </div>
+          </nav>
+
+          {/* ── Scrollable inner area ── */}
+          <div className="tool-palette-inner">
+            <div className="panel-title" style={{fontSize:11, opacity:0.6, marginBottom:6}}>ツール</div>
+            <TooltipProvider delayDuration={400}>
+              <div className="tool-stack" role="toolbar" aria-label="Tool palette">
+                {toolLabels.map((tool) => (
+                  <Tooltip key={tool.id}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className={tool.id === activeTool ? 'tool-button active' : 'tool-button'}
+                        aria-label={tool.label}
+                        aria-pressed={tool.id === activeTool}
+                        onClick={() => setActiveTool(tool.id)}
+                      >
+                        <span className="tool-button-icon" aria-hidden="true">{TOOL_ICON_BY_ID[tool.id]}</span>
+                        <span className="tool-button-label">{TOOL_LABEL_JA_BY_ID[tool.id]}</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{TOOL_LABEL_JA_BY_ID[tool.id]}</TooltipContent>
+                  </Tooltip>
+                ))}
+              </div>
+            </TooltipProvider>
+
+            {/* ── Layer property panels ── */}
+            <div className="left-panels">
+              <TextLayerPanel />
+              <MessageWindowPanel />
+              <WatermarkPanel />
+              <BubbleLayerPanel />
+              <MosaicLayerPanel />
+              <OverlayLayerPanel />
+            </div>
+          </div>
+
+          <div className="tool-palette-bottom" style={{flexShrink:0, padding:'6px', borderTop:'1px solid rgba(255,255,255,0.1)'}}>
             <div style={{display:'flex', gap:2, marginBottom:4}}>
               <button
                 type="button"
@@ -1003,191 +1024,20 @@ function App() {
                 })}
               </div>
             ) : image ? (
-              <div className="canvas-stack">
-                <KonvaCanvas
-                  image={image}
-                  imageTransform={imageTransform}
-                  selectedLayerId={selectedLayerId}
-                  selectedLayerIds={selectedLayerIds}
-                  zoomPercent={zoomPercent}
-                  onSelectLayers={(ids, additive) => setSelectedLayerIds(ids, additive)}
-                  onMoveSelectedLayers={(dx, dy) => moveSelectedLayersByDelta(dx, dy)}
-                  onResizeSelectedLayers={(dx, dy, handle, preserveAspectRatio) =>
-                    resizeSelectedLayersByDelta(dx, dy, handle, preserveAspectRatio)
-                  }
-                  onCursorMove={handleCursorMove}
-                  className={selectedLayerId === 'base-image' ? 'canvas-frame loaded selected' : 'canvas-frame loaded'}
-                />
-
-                <div className="selection-controls" role="group" aria-label="選択操作">
-                  <button type="button" onClick={selectBaseImageLayer}>
-                    ベース画像を選択
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleSelectedLayerVisibility}
-                    disabled={noLayerSelected}
-                  >
-                    表示／非表示を切り替え
-                  </button>
-                  <button
-                    type="button"
-                    onClick={toggleSelectedLayerLock}
-                    disabled={
-                      !activeTextLayer &&
-                      !activeMessageWindowLayer &&
-                      !activeBubbleLayer &&
-                      !activeMosaicLayer &&
-                      !activeOverlayLayer &&
-                      !activeWatermarkLayer
-                    }
-                  >
-                    ロック／解除を切り替え
-                  </button>
-                  <button type="button" onClick={groupSelectedLayers} disabled={selectedLayerCount < 2}>
-                    レイヤーをグループ化
-                  </button>
-                  <button type="button" onClick={selectGroupedLayers} disabled={!activeLayerGroupId}>
-                    グループ内を全選択
-                  </button>
-                  <button
-                    type="button"
-                    onClick={ungroupSelectedLayers}
-                    disabled={!activeLayerGroupId && selectedLayerCount < 2}
-                  >
-                    グループを解除
-                  </button>
-                  <button
-                    type="button"
-                    onClick={duplicateSelectedLayer}
-                    disabled={noLayerSelected}
-                  >
-                    レイヤーを複製
-                  </button>
-                  <button
-                    type="button"
-                    onClick={centerSelectedLayer}
-                    disabled={noLayerSelected}
-                  >
-                    中央に配置
-                  </button>
-                  <button
-                    type="button"
-                    onClick={moveSelectedLayerBackward}
-                    disabled={noLayerSelected}
-                  >
-                    背面へ移動
-                  </button>
-                  <button
-                    type="button"
-                    onClick={moveSelectedLayerForward}
-                    disabled={noLayerSelected}
-                  >
-                    前面へ移動
-                  </button>
-                  <button
-                    type="button"
-                    onClick={deleteSelectedLayer}
-                    disabled={noLayerSelected}
-                  >
-                    レイヤーを削除
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayer('left')}
-                    disabled={noLayerSelected}
-                  >
-                    左揃え
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayer('right')}
-                    disabled={noLayerSelected}
-                  >
-                    右揃え
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayer('top')}
-                    disabled={noLayerSelected}
-                  >
-                    上揃え
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayer('bottom')}
-                    disabled={noLayerSelected}
-                  >
-                    下揃え
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayersCenter('horizontal')}
-                    disabled={noLayerSelected}
-                  >
-                    水平方向に中央揃え
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => alignSelectedLayersCenter('vertical')}
-                    disabled={noLayerSelected}
-                  >
-                    垂直方向に中央揃え
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => distributeSelectedLayers('horizontal')}
-                    disabled={noLayerSelected}
-                  >
-                    水平方向に等間隔配置
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => distributeSelectedLayers('vertical')}
-                    disabled={noLayerSelected}
-                  >
-                    垂直方向に等間隔配置
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => matchSelectedLayerSize('width')}
-                    disabled={noLayerSelected}
-                  >
-                    幅を揃える
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => matchSelectedLayerSize('height')}
-                    disabled={noLayerSelected}
-                  >
-                    高さを揃える
-                  </button>
-                  <button type="button" onClick={() => moveSelection(-32, 0)}>
-                    左へ移動
-                  </button>
-                  <button type="button" onClick={() => moveSelection(32, 0)}>
-                    右へ移動
-                  </button>
-                  <button type="button" onClick={() => moveSelection(0, -32)}>
-                    上へ移動
-                  </button>
-                  <button type="button" onClick={() => moveSelection(0, 32)}>
-                    下へ移動
-                  </button>
-                  <button type="button" onClick={() => scaleSelection(0.9)}>
-                    縮小
-                  </button>
-                  <button type="button" onClick={() => scaleSelection(1.125)}>
-                    拡大
-                  </button>
-                </div>
-                <TextLayerPanel />
-                <MessageWindowPanel />
-                <WatermarkPanel />
-                <BubbleLayerPanel />
-                <MosaicLayerPanel />
-                <OverlayLayerPanel />
-              </div>
+              <KonvaCanvas
+                image={image}
+                imageTransform={imageTransform}
+                selectedLayerId={selectedLayerId}
+                selectedLayerIds={selectedLayerIds}
+                zoomPercent={zoomPercent}
+                onSelectLayers={(ids, additive) => setSelectedLayerIds(ids, additive)}
+                onMoveSelectedLayers={(dx, dy) => moveSelectedLayersByDelta(dx, dy)}
+                onResizeSelectedLayers={(dx, dy, handle, preserveAspectRatio) =>
+                  resizeSelectedLayersByDelta(dx, dy, handle, preserveAspectRatio)
+                }
+                onCursorMove={handleCursorMove}
+                className={selectedLayerId === 'base-image' ? 'canvas-frame loaded selected' : 'canvas-frame loaded'}
+              />
             ) : (
               <button
                 type="button"
