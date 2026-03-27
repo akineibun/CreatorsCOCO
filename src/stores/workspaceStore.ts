@@ -632,6 +632,37 @@ const INITIAL_IMAGE_TRANSFORM: CanvasTransform = {
   height: 540,
 }
 
+const CANVAS_LOGICAL_W = 1920
+const CANVAS_LOGICAL_H = 1080
+
+const calculateInitialImageTransform = (imgW: number, imgH: number): CanvasTransform => {
+  const canvasAspect = CANVAS_LOGICAL_W / CANVAS_LOGICAL_H
+  const imgAspect = imgW / imgH
+  let width: number
+  let height: number
+  if (imgAspect > canvasAspect) {
+    width = CANVAS_LOGICAL_W
+    height = CANVAS_LOGICAL_W / imgAspect
+  } else {
+    height = CANVAS_LOGICAL_H
+    width = CANVAS_LOGICAL_H * imgAspect
+  }
+  return {
+    x: Math.round((CANVAS_LOGICAL_W - width) / 2),
+    y: Math.round((CANVAS_LOGICAL_H - height) / 2),
+    width: Math.round(width),
+    height: Math.round(height),
+  }
+}
+
+const loadImageDimensions = (url: string): Promise<{ width: number; height: number }> =>
+  new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
+    img.onerror = reject
+    img.src = url
+  })
+
 const clampZoom = (value: number) => Math.max(25, Math.min(400, value))
 const supportedExtensions = ['png', 'jpg', 'jpeg', 'webp']
 export const PROJECT_STORAGE_KEY = 'creators-coco.project'
@@ -2402,6 +2433,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
       const image = createImageFromFile(file)
 
+      if (image.sourceUrl) {
+        void loadImageDimensions(image.sourceUrl).then((dims) => {
+          set((current) => {
+            if (current.activePageId !== image.id) {
+              return current
+            }
+            return {
+              ...current,
+              imageTransform: calculateInitialImageTransform(dims.width, dims.height),
+            }
+          })
+        })
+      }
+
       void readFileAsDataUrl(file).then((dataUrl) => {
         if (!dataUrl) {
           return
@@ -2487,6 +2532,20 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
       const images = supportedFiles.map(createImageFromFile)
       const activeImage = images[images.length - 1]
+
+      if (activeImage?.sourceUrl) {
+        void loadImageDimensions(activeImage.sourceUrl).then((dims) => {
+          set((current) => {
+            if (current.activePageId !== activeImage.id) {
+              return current
+            }
+            return {
+              ...current,
+              imageTransform: calculateInitialImageTransform(dims.width, dims.height),
+            }
+          })
+        })
+      }
 
       supportedFiles.forEach((file, index) => {
         const image = images[index]
