@@ -54,10 +54,10 @@ export function WatermarkPanel() {
               </label>
               <div className="flex gap-1">
                 <Button size="sm" variant="outline" className="flex-1" onClick={toggleSelectedWatermarkPattern}>
-                  {activeLayer.pattern === 'diagonal' ? '斜め' : activeLayer.pattern === 'grid' ? 'グリッド' : 'シングル'}
+                  {activeLayer.repeated ? '繰り返し ON' : '繰り返し OFF'}
                 </Button>
                 <Button size="sm" variant="outline" className="flex-1" onClick={toggleSelectedWatermarkTileLayout}>
-                  {activeLayer.tileLayout ? 'タイル ON' : 'タイル OFF'}
+                  {activeLayer.tiled ? 'タイル ON' : 'タイル OFF'}
                 </Button>
               </div>
               <div className="flex gap-1">
