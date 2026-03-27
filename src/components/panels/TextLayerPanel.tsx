@@ -185,7 +185,7 @@ export function TextLayerPanel() {
                     <input
                       type="color"
                       aria-label="Background band color"
-                      value={activeLayer.backgroundBand.color}
+                      value={activeLayer.backgroundBand?.color ?? '#000000'}
                       onChange={e => setSelectedTextLayerBackgroundBand({ ...activeLayer.backgroundBand!, color: e.target.value })}
                     />
                   </label>
@@ -193,7 +193,7 @@ export function TextLayerPanel() {
                     <span>不透明度</span>
                     <div className="flex gap-1">
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedTextLayerBackgroundBand({ ...activeLayer.backgroundBand!, opacity: Math.max(0, (activeLayer.backgroundBand?.opacity ?? 0.6) - 0.1) })}>−</Button>
-                      <span className="flex items-center px-2 text-xs">{Math.round((activeLayer.backgroundBand.opacity) * 100)}%</span>
+                      <span className="flex items-center px-2 text-xs">{Math.round((activeLayer.backgroundBand?.opacity ?? 0.6) * 100)}%</span>
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => setSelectedTextLayerBackgroundBand({ ...activeLayer.backgroundBand!, opacity: Math.min(1, (activeLayer.backgroundBand?.opacity ?? 0.6) + 0.1) })}>+</Button>
                     </div>
                   </div>

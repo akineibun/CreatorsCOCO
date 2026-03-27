@@ -135,7 +135,6 @@ function App() {
     selectGroupedLayers,
     setSelectedLayerIds,
     clearLayerSelection,
-    loadSampleImage,
     loadImageFile,
     loadImageFiles,
     selectPage,
@@ -605,16 +604,16 @@ function App() {
       const isEditing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable
 
       if (!(event.ctrlKey || event.metaKey)) {
-        if (event.key === 'ArrowLeft') {
+        if (!isEditing && event.key === 'ArrowLeft') {
           event.preventDefault()
           nudgeSelectedLayer(-32, 0)
-        } else if (event.key === 'ArrowRight') {
+        } else if (!isEditing && event.key === 'ArrowRight') {
           event.preventDefault()
           nudgeSelectedLayer(32, 0)
-        } else if (event.key === 'ArrowUp') {
+        } else if (!isEditing && event.key === 'ArrowUp') {
           event.preventDefault()
           nudgeSelectedLayer(0, -32)
-        } else if (event.key === 'ArrowDown') {
+        } else if (!isEditing && event.key === 'ArrowDown') {
           event.preventDefault()
           nudgeSelectedLayer(0, 32)
         } else if (!isEditing) {

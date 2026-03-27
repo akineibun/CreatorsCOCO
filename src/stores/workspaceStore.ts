@@ -328,6 +328,7 @@ type HistoryEntry = {
   activePageId: string | null
   imageTransform: CanvasTransform | null
   selectedLayerId: string | null
+  selectedLayerIds: string[]
 }
 
 type WorkspaceState = {
@@ -1092,7 +1093,7 @@ const createReusableAssetSummary = (page: CanvasImage) => {
 
 const snapshotHistory = (state: Pick<
   WorkspaceState,
-  'pages' | 'activePageId' | 'imageTransform' | 'selectedLayerId'
+  'pages' | 'activePageId' | 'imageTransform' | 'selectedLayerId' | 'selectedLayerIds'
 >): HistoryEntry => ({
   pages: state.pages.map((page) => ({
     ...page,
@@ -1106,6 +1107,7 @@ const snapshotHistory = (state: Pick<
   activePageId: state.activePageId,
   imageTransform: state.imageTransform ? { ...state.imageTransform } : null,
   selectedLayerId: state.selectedLayerId,
+  selectedLayerIds: [...state.selectedLayerIds],
 })
 
 const withHistory = (
@@ -6407,9 +6409,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           pages: updateActivePage(state.pages, state.activePageId, (page) => ({
             ...page,
             textLayers: page.textLayers.filter((layer) => !selectedLayerIds.has(layer.id)),
+            messageWindowLayers: page.messageWindowLayers.filter((layer) => !selectedLayerIds.has(layer.id)),
             bubbleLayers: page.bubbleLayers.filter((layer) => !selectedLayerIds.has(layer.id)),
             mosaicLayers: page.mosaicLayers.filter((layer) => !selectedLayerIds.has(layer.id)),
             overlayLayers: page.overlayLayers.filter((layer) => !selectedLayerIds.has(layer.id)),
+            watermarkLayers: page.watermarkLayers.filter((layer) => !selectedLayerIds.has(layer.id)),
           })),
           selectedLayerId: null,
           selectedLayerIds: [],
@@ -6919,6 +6923,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         activePageId: pageId,
         loadError: null,
         selectedLayerId: null,
+        selectedLayerIds: [],
+        activeTool: 'select' as const,
         imageTransform: { ...INITIAL_IMAGE_TRANSFORM },
       }
     }),
