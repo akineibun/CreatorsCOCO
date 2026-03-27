@@ -173,8 +173,8 @@ export function ExportSettingsPanel({ onExportComplete }: Props) {
   const exportPreviewLayout = getExportPreviewLayout(image, outputSettings)
 
   return (
-    <section aria-label="Export settings" className="sidebar-card">
-      <div className="panel-title">Export settings</div>
+    <section aria-label="エクスポート設定" className="sidebar-card">
+      <div className="panel-title">エクスポート設定</div>
       <div className="page-list">
         {/* Output presets */}
         {outputPresets.map((preset) => (
@@ -195,28 +195,28 @@ export function ExportSettingsPanel({ onExportComplete }: Props) {
       {/* Dimensions & file naming */}
       <div className="export-dimensions">
         <label className="export-prefix">
-          <span>Prefix</span>
-          <input aria-label="Export filename prefix" type="text" value={prefixDraft}
+          <span>プレフィックス</span>
+          <input aria-label="ファイル名プレフィックス" type="text" value={prefixDraft}
             onChange={(e) => setPrefixDraft(e.target.value)} onBlur={commitPrefixDraft} />
         </label>
         <label>
-          <span>Start</span>
-          <input aria-label="Export start number" type="number" min={1} max={9999} step={1}
+          <span>開始番号</span>
+          <input aria-label="開始番号" type="number" min={1} max={9999} step={1}
             value={startNumberDraft} onChange={(e) => setStartNumberDraft(e.target.value)} onBlur={commitStartNumberDraft} />
         </label>
         <label>
-          <span>Padding</span>
-          <input aria-label="Export number padding" type="number" min={2} max={6} step={1}
+          <span>桁数</span>
+          <input aria-label="番号の桁数（ゼロ埋め）" type="number" min={2} max={6} step={1}
             value={numberPaddingDraft} onChange={(e) => setNumberPaddingDraft(e.target.value)} onBlur={commitNumberPaddingDraft} />
         </label>
         <label>
-          <span>Width</span>
-          <input aria-label="Output width" type="number" min={256} max={4096} step={1}
+          <span>幅</span>
+          <input aria-label="出力幅" type="number" min={256} max={4096} step={1}
             value={widthDraft} onChange={(e) => setWidthDraft(e.target.value)} onBlur={commitWidthDraft} />
         </label>
         <label>
-          <span>Height</span>
-          <input aria-label="Output height" type="number" min={256} max={4096} step={1}
+          <span>高さ</span>
+          <input aria-label="出力高さ" type="number" min={256} max={4096} step={1}
             value={heightDraft} onChange={(e) => setHeightDraft(e.target.value)} onBlur={commitHeightDraft} />
         </label>
       </div>
@@ -254,7 +254,7 @@ export function ExportSettingsPanel({ onExportComplete }: Props) {
             aria-label={`Export quality ${mode}`}
             aria-pressed={outputSettings.qualityMode === mode}
           >
-            {mode === 'high' ? 'High quality' : mode === 'medium' ? 'Medium quality' : mode === 'low' ? 'Low quality' : 'Platform preset'}
+            {mode === 'high' ? '高品質' : mode === 'medium' ? '中品質' : mode === 'low' ? '低品質' : 'プラットフォーム標準'}
           </button>
         ))}
       </div>
@@ -270,7 +270,7 @@ export function ExportSettingsPanel({ onExportComplete }: Props) {
             aria-label={`Resize fit ${mode}`}
             aria-pressed={outputSettings.resizeFitMode === mode}
           >
-            {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            {mode === 'contain' ? 'コンテイン' : mode === 'cover' ? 'カバー' : 'ストレッチ'}
           </button>
         ))}
       </div>
@@ -278,9 +278,9 @@ export function ExportSettingsPanel({ onExportComplete }: Props) {
       {/* Resize background mode */}
       <div className="selection-controls">
         {([
-          ['white', 'White margin'],
-          ['black', 'Black margin'],
-          ['blurred-art', 'Blurred art'],
+          ['white', '白余白'],
+          ['black', '黒余白'],
+          ['blurred-art', 'ぼかし背景'],
         ] as const).map(([mode, label]) => (
           <button
             key={mode}
@@ -296,40 +296,40 @@ export function ExportSettingsPanel({ onExportComplete }: Props) {
       </div>
 
       {/* Status labels */}
-      <div className="page-meta">Output preset {outputSettings.label}</div>
+      <div className="page-meta">出力プリセット：{outputSettings.label}</div>
       <div className="page-meta">
-        Export quality{' '}
-        {outputSettings.qualityMode === 'platform' ? 'Platform preset'
-          : outputSettings.qualityMode === 'medium' ? 'Medium'
-          : outputSettings.qualityMode === 'low' ? 'Low'
-          : 'High'}
+        品質：{' '}
+        {outputSettings.qualityMode === 'platform' ? 'プラットフォーム標準'
+          : outputSettings.qualityMode === 'medium' ? '中品質'
+          : outputSettings.qualityMode === 'low' ? '低品質'
+          : '高品質'}
       </div>
       <div className="page-meta">
-        Resize fit{' '}
-        {outputSettings.resizeFitMode === 'cover' ? 'Cover'
-          : outputSettings.resizeFitMode === 'stretch' ? 'Stretch'
-          : 'Contain'}
+        フィット：{' '}
+        {outputSettings.resizeFitMode === 'cover' ? 'カバー'
+          : outputSettings.resizeFitMode === 'stretch' ? 'ストレッチ'
+          : 'コンテイン'}
       </div>
       <div className="page-meta">
-        Resize background{' '}
-        {outputSettings.resizeBackgroundMode === 'blurred-art' ? 'Blurred art'
-          : outputSettings.resizeBackgroundMode === 'black' ? 'Black'
-          : 'White'}
+        背景：{' '}
+        {outputSettings.resizeBackgroundMode === 'blurred-art' ? 'ぼかし背景'
+          : outputSettings.resizeBackgroundMode === 'black' ? '黒余白'
+          : '白余白'}
       </div>
-      <div className="page-meta">Export prefix {outputSettings.fileNamePrefix}</div>
-      <div className="page-meta">Export numbering {outputSettings.startNumber} / pad {outputSettings.numberPadding}</div>
+      <div className="page-meta">プレフィックス：{outputSettings.fileNamePrefix}</div>
+      <div className="page-meta">連番：{outputSettings.startNumber} ／ 桁数：{outputSettings.numberPadding}</div>
       <div className="page-meta">{EXPORT_METADATA_POLICY_LABEL}</div>
 
       {/* Export buttons */}
       <div className="selection-controls">
-        <button type="button" className="page-button flex-1" onClick={handleExportPng} disabled={!image}>Export PNG</button>
-        <button type="button" className="page-button flex-1" onClick={handleExportZip} disabled={pages.length === 0}>Export ZIP</button>
-        <button type="button" className="page-button flex-1" onClick={handleExportPdf} disabled={!image}>Export PDF</button>
+        <button type="button" className="page-button flex-1" onClick={handleExportPng} disabled={!image}>PNG 出力</button>
+        <button type="button" className="page-button flex-1" onClick={handleExportZip} disabled={pages.length === 0}>ZIP 出力</button>
+        <button type="button" className="page-button flex-1" onClick={handleExportPdf} disabled={!image}>PDF 出力</button>
       </div>
 
       {/* Export preview */}
       <div className="export-preview">
-        <div className="panel-title">Export preview</div>
+        <div className="panel-title">出力プレビュー</div>
         <div className="page-meta">PNG {pngPreviewName}</div>
         <div className="page-meta">PDF {pdfPreviewName}</div>
         <div className="page-meta">ZIP {zipPreviewName}</div>
@@ -357,14 +357,14 @@ export function ExportSettingsPanel({ onExportComplete }: Props) {
             </>
           ) : (
             <div className="resize-preview-empty">
-              <strong>No active page</strong>
-              <span>Load an image to preview size unification.</span>
+              <strong>ページが選択されていません</strong>
+              <span>画像を読み込むとプレビューが表示されます。</span>
             </div>
           )}
         </div>
         <div className="page-list export-entry-list">
           {zipEntryPreviewNames.length === 0 ? (
-            <div className="page-card empty"><strong>No ZIP entries yet</strong></div>
+            <div className="page-card empty"><strong>ZIP エントリがありません</strong></div>
           ) : (
             zipEntryPreviewNames.map((entryName) => (
               <div key={entryName} className="page-card"><strong>{entryName}</strong></div>
@@ -375,10 +375,10 @@ export function ExportSettingsPanel({ onExportComplete }: Props) {
 
       {/* Recent exports */}
       <div className="export-preview">
-        <div className="panel-title">Recent exports</div>
+        <div className="panel-title">最近の出力</div>
         <div className="page-list export-entry-list">
           {recentExports.length === 0 ? (
-            <div className="page-card empty"><strong>No exports yet</strong></div>
+            <div className="page-card empty"><strong>出力履歴がありません</strong></div>
           ) : (
             recentExports.map((entry, index) => (
               <div key={`${entry.format}-${entry.label}-${index}`} className="page-card">

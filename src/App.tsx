@@ -24,6 +24,9 @@ import {
   Stamp,
   GripVertical,
   PenLine,
+  BookOpen,
+  Brain,
+  LayoutGrid,
 } from 'lucide-react'
 import { KonvaCanvas } from './components/KonvaCanvas'
 import { PageThumb } from './components/PageThumb'
@@ -52,6 +55,9 @@ const TOOL_ICON_BY_ID: Record<Tool, React.ReactNode> = {
   mosaic: <Grid2X2 className="w-5 h-5" />,
   'freehand-mosaic': <PenLine className="w-5 h-5" />,
   overlay: <Layers className="w-5 h-5" />,
+  library: <BookOpen className="w-5 h-5" />,
+  backend: <Brain className="w-5 h-5" />,
+  export: <Download className="w-5 h-5" />,
 }
 
 const TOOL_LABEL_JA_BY_ID: Record<Tool, string> = {
@@ -62,6 +68,27 @@ const TOOL_LABEL_JA_BY_ID: Record<Tool, string> = {
   mosaic: 'モザイク',
   'freehand-mosaic': '投げ縄',
   overlay: 'オーバーレイ',
+  library: 'プリセット',
+  backend: 'バックエンド',
+  export: '書き出し',
+}
+
+const LAYER_TOOLS: Tool[] = ['text', 'message-window', 'bubble', 'mosaic', 'freehand-mosaic', 'overlay', 'watermark' as Tool]
+
+const getToolbarBg = (tool: Tool): string => {
+  if (LAYER_TOOLS.includes(tool)) return '#2d4a3e'
+  if (tool === 'export') return '#3a2d1a'
+  if (tool === 'library') return '#2d1a3a'
+  if (tool === 'backend') return '#1a2d3a'
+  return '#1a1a2e'
+}
+
+const getCanvasBorderColor = (tool: Tool): string => {
+  if (LAYER_TOOLS.includes(tool)) return '#4a8c6a'
+  if (tool === 'export') return '#c8882a'
+  if (tool === 'library') return '#8a4ac8'
+  if (tool === 'backend') return '#2a7ec8'
+  return '#3a3a5e'
 }
 
 type MarqueeSelection = {
@@ -104,6 +131,7 @@ function App() {
   const [numberPaddingDraft, setNumberPaddingDraft] = useState('2')
   const [duplicatePageTextDraft, setDuplicatePageTextDraft] = useState('Variant line')
   const [variantBatchDraft, setVariantBatchDraft] = useState('Variant A\nVariant B')
+  const [showGallery, setShowGallery] = useState(false)
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null)
   const [layerDragState, setLayerDragState] = useState<LayerDragState | null>(null)
   const [layerResizeState, setLayerResizeState] = useState<LayerResizeState | null>(null)
@@ -135,7 +163,6 @@ function App() {
     selectGroupedLayers,
     setSelectedLayerIds,
     clearLayerSelection,
-    loadSampleImage,
     loadImageFile,
     loadImageFiles,
     selectPage,
@@ -526,13 +553,17 @@ function App() {
   }
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const files = Array.from(event.target.files ?? [])
 
-    if (!file) {
+    if (files.length === 0) {
       return
     }
 
-    loadImageFile(file)
+    if (files.length === 1 && files[0]) {
+      loadImageFile(files[0])
+    } else {
+      loadImageFiles(files)
+    }
     event.target.value = ''
   }
 
@@ -605,16 +636,16 @@ function App() {
       const isEditing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable
 
       if (!(event.ctrlKey || event.metaKey)) {
-        if (event.key === 'ArrowLeft') {
+        if (!isEditing && event.key === 'ArrowLeft') {
           event.preventDefault()
           nudgeSelectedLayer(-32, 0)
-        } else if (event.key === 'ArrowRight') {
+        } else if (!isEditing && event.key === 'ArrowRight') {
           event.preventDefault()
           nudgeSelectedLayer(32, 0)
-        } else if (event.key === 'ArrowUp') {
+        } else if (!isEditing && event.key === 'ArrowUp') {
           event.preventDefault()
           nudgeSelectedLayer(0, -32)
-        } else if (event.key === 'ArrowDown') {
+        } else if (!isEditing && event.key === 'ArrowDown') {
           event.preventDefault()
           nudgeSelectedLayer(0, 32)
         } else if (!isEditing) {
@@ -708,8 +739,8 @@ function App() {
         </nav>
       </header>
 
-      <div className="workspace-grid">
-        <aside aria-label="Tool palette" className="tool-palette">
+      <div className="workspace-grid" data-active-tool={activeTool}>
+        <aside aria-label="Tool palette" className="tool-palette" style={{background: getToolbarBg(activeTool)}}>
           <div className="panel-title">ツール</div>
           <TooltipProvider delayDuration={400}>
             <div className="tool-stack" role="toolbar" aria-label="Tool palette">
@@ -734,104 +765,102 @@ function App() {
           </TooltipProvider>
         </aside>
 
-        <main aria-label="Canvas workspace" className="canvas-panel">
+        <main aria-label="Canvas workspace" className="canvas-panel" style={{borderLeft: `3px solid ${getCanvasBorderColor(activeTool)}`}}>
           <div className="panel-header">
             <div>
-              <div className="panel-title">Main canvas</div>
-              <div className="panel-subtitle">Phase 1 canvas MVP</div>
+              <div className="panel-title">メインキャンバス</div>
+              <div className="panel-subtitle">キャンバスワークスペース</div>
             </div>
             <div className="canvas-controls">
               <label className="file-picker">
-                <span>Choose image</span>
+                <span>画像を開く</span>
                 <input
-                  aria-label="Open image file"
+                  aria-label="画像ファイルを開く"
                   type="file"
                   accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                  multiple
                   onChange={handleFileChange}
                 />
               </label>
-              <button type="button" onClick={loadSampleImage}>
-                Load sample image
-              </button>
               <button type="button" onClick={selectAllVisibleLayers} disabled={!image}>
-                Select all visible layers
+                表示レイヤーをすべて選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('text')} disabled={!image}>
-                Select text layers
+                テキストレイヤーを選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('message-window')} disabled={!image}>
-                Select message window layers
+                会話枠レイヤーを選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('bubble')} disabled={!image}>
-                Select bubble layers
+                吹き出しレイヤーを選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('mosaic')} disabled={!image}>
-                Select mosaic layers
+                モザイクレイヤーを選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('overlay')} disabled={!image}>
-                Select overlay layers
+                オーバーレイレイヤーを選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('watermark')} disabled={!image}>
-                Select watermark layers
+                ウォーターマークレイヤーを選択
               </button>
               <button type="button" onClick={invertLayerSelection} disabled={!image}>
-                Invert layer selection
+                選択を反転
               </button>
               <button type="button" onClick={clearLayerSelection} disabled={!selectedLayerId}>
-                Clear layer selection
+                選択を解除
               </button>
               <button type="button" onClick={addTextLayer} disabled={!image}>
-                Add text layer
+                テキストを追加
               </button>
               <button type="button" onClick={addMessageWindowLayer} disabled={!image}>
-                Add message window layer
+                会話枠を追加
               </button>
               <button type="button" onClick={addWatermarkLayer} disabled={!image}>
-                Add watermark layer
+                ウォーターマークを追加
               </button>
               <label className="file-picker">
-                <span>Watermark asset</span>
+                <span>ウォーターマーク素材</span>
                 <input
-                  aria-label="Open watermark image"
+                  aria-label="ウォーターマーク画像を開く"
                   type="file"
                   accept=".png,image/png"
                   onChange={handleWatermarkFileChange}
                 />
               </label>
-              <button type="button" onClick={addBubbleLayer} disabled={!image}>
-                Add bubble layer
+              <button type="button" onClick={() => addBubbleLayer()} disabled={!image}>
+                吹き出しを追加
               </button>
               <button type="button" onClick={addMosaicLayer} disabled={!image}>
-                Add mosaic layer
+                モザイクを追加
               </button>
               <button type="button" onClick={addOverlayLayer} disabled={!image}>
-                Add overlay layer
+                オーバーレイを追加
               </button>
               <button type="button" onClick={zoomOut}>
-                Zoom out
+                縮小
               </button>
               <button type="button" onClick={zoomIn}>
-                Zoom in
+                拡大
               </button>
               <button type="button" onClick={undo} disabled={undoStack.length === 0}>
-                Undo
+                元に戻す
               </button>
               <button type="button" onClick={redo} disabled={redoStack.length === 0}>
-                Redo
+                やり直す
               </button>
               <button type="button" onClick={saveNow} disabled={!isDirty}>
-                Save now
+                今すぐ保存
               </button>
               <button type="button" onClick={deleteActivePage} disabled={!image}>
-                Delete active page
+                このページを削除
               </button>
               <button type="button" onClick={duplicateActivePage} disabled={!image}>
-                Duplicate active page
+                このページを複製
               </button>
               <label className="text-layer-field">
-                <span>Variant text</span>
+                <span>差し替えテキスト</span>
                 <input
-                  aria-label="Duplicate page text swap"
+                  aria-label="ページ複製時のテキスト差し替え"
                   type="text"
                   value={duplicatePageTextDraft}
                   onChange={(event) => {
@@ -844,12 +873,12 @@ function App() {
                 onClick={() => duplicateActivePageWithTextSwap(duplicatePageTextDraft)}
                 disabled={!image}
               >
-                Duplicate page with text swap
+                テキスト差し替えで複製
               </button>
               <label className="text-layer-field">
-                <span>Variant batch</span>
+                <span>バリアント一括</span>
                 <textarea
-                  aria-label="Duplicate page variant batch"
+                  aria-label="ページ複製バリアント一括入力"
                   value={variantBatchDraft}
                   onChange={(event) => {
                     setVariantBatchDraft(event.target.value)
@@ -858,9 +887,9 @@ function App() {
                 />
               </label>
               <label className="text-layer-field">
-                <span>Variant label</span>
+                <span>バリアントラベル</span>
                 <input
-                  aria-label="Active page variant label"
+                  aria-label="アクティブページのバリアントラベル"
                   type="text"
                   value={image?.variantLabel ?? ''}
                   onChange={(event) => {
@@ -874,18 +903,47 @@ function App() {
                 onClick={() => duplicateActivePageWithTextVariants(variantBatchDraft.split('\n'))}
                 disabled={!image}
               >
-                Duplicate page as batch variants
+                バリアントを一括複製
               </button>
               <button type="button" onClick={moveActivePageUp} disabled={!image}>
-                Move active page up
+                ページを上へ移動
               </button>
               <button type="button" onClick={moveActivePageDown} disabled={!image}>
-                Move active page down
+                ページを下へ移動
               </button>
             </div>
           </div>
           <div className="canvas-surface">
-            {image ? (
+            {showGallery ? (
+              <div style={{display:'flex',flexWrap:'wrap',gap:'16px',padding:'16px',overflowY:'auto',height:'100%',alignContent:'flex-start'}}>
+                {pages.map((page, index) => {
+                  const thumb = pageThumbnails[page.id]
+                  const isActive = page.id === activePageId
+                  return (
+                    <div
+                      key={page.id}
+                      style={{
+                        display:'flex',flexDirection:'column',alignItems:'center',gap:'6px',cursor:'pointer',
+                        border: isActive ? '3px solid #bf8f52' : '2px solid rgba(255,255,255,0.15)',
+                        borderRadius:'6px',padding:'8px',background: isActive ? 'rgba(191,143,82,0.1)' : 'rgba(255,255,255,0.04)',
+                        minWidth:'180px',maxWidth:'220px',
+                      }}
+                      onClick={() => { selectPage(page.id); setShowGallery(false) }}
+                    >
+                      {thumb ? (
+                        <img src={thumb} alt={page.name} style={{width:'200px',height:'auto',borderRadius:'3px',objectFit:'contain'}} />
+                      ) : (
+                        <div style={{width:'200px',height:'113px',background:'rgba(255,255,255,0.08)',borderRadius:'3px',display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.3)',fontSize:'12px'}}>
+                          No preview
+                        </div>
+                      )}
+                      <span style={{fontSize:'11px',opacity:0.6}}>{`${index + 1}`.padStart(2,'0')}</span>
+                      <strong style={{fontSize:'12px',textAlign:'center',wordBreak:'break-word'}}>{page.name}</strong>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : image ? (
               <div className="canvas-stack">
                 <KonvaCanvas
                   image={image}
@@ -901,16 +959,16 @@ function App() {
                   className={selectedLayerId === 'base-image' ? 'canvas-frame loaded selected' : 'canvas-frame loaded'}
                 />
 
-                <div className="selection-controls" role="group" aria-label="Selection controls">
+                <div className="selection-controls" role="group" aria-label="選択操作">
                   <button type="button" onClick={selectBaseImageLayer}>
-                    Select base image layer
+                    ベース画像を選択
                   </button>
                   <button
                     type="button"
                     onClick={toggleSelectedLayerVisibility}
                     disabled={noLayerSelected}
                   >
-                    Toggle selected layer visibility
+                    表示／非表示を切り替え
                   </button>
                   <button
                     type="button"
@@ -924,143 +982,143 @@ function App() {
                       !activeWatermarkLayer
                     }
                   >
-                    Toggle selected layer lock
+                    ロック／解除を切り替え
                   </button>
                   <button type="button" onClick={groupSelectedLayers} disabled={selectedLayerCount < 2}>
-                    Group selected layers
+                    レイヤーをグループ化
                   </button>
                   <button type="button" onClick={selectGroupedLayers} disabled={!activeLayerGroupId}>
-                    Select grouped layers
+                    グループ内を全選択
                   </button>
                   <button
                     type="button"
                     onClick={ungroupSelectedLayers}
                     disabled={!activeLayerGroupId && selectedLayerCount < 2}
                   >
-                    Ungroup selected layers
+                    グループを解除
                   </button>
                   <button
                     type="button"
                     onClick={duplicateSelectedLayer}
                     disabled={noLayerSelected}
                   >
-                    Duplicate selected layer
+                    レイヤーを複製
                   </button>
                   <button
                     type="button"
                     onClick={centerSelectedLayer}
                     disabled={noLayerSelected}
                   >
-                    Center selected layer
+                    中央に配置
                   </button>
                   <button
                     type="button"
                     onClick={moveSelectedLayerBackward}
                     disabled={noLayerSelected}
                   >
-                    Move selected layer backward
+                    背面へ移動
                   </button>
                   <button
                     type="button"
                     onClick={moveSelectedLayerForward}
                     disabled={noLayerSelected}
                   >
-                    Move selected layer forward
+                    前面へ移動
                   </button>
                   <button
                     type="button"
                     onClick={deleteSelectedLayer}
                     disabled={noLayerSelected}
                   >
-                    Delete selected layer
+                    レイヤーを削除
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayer('left')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layer left
+                    左揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayer('right')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layer right
+                    右揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayer('top')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layer top
+                    上揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayer('bottom')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layer bottom
+                    下揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayersCenter('horizontal')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layers center horizontally
+                    水平方向に中央揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayersCenter('vertical')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layers center vertically
+                    垂直方向に中央揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => distributeSelectedLayers('horizontal')}
                     disabled={noLayerSelected}
                   >
-                    Distribute selected layers horizontally
+                    水平方向に等間隔配置
                   </button>
                   <button
                     type="button"
                     onClick={() => distributeSelectedLayers('vertical')}
                     disabled={noLayerSelected}
                   >
-                    Distribute selected layers vertically
+                    垂直方向に等間隔配置
                   </button>
                   <button
                     type="button"
                     onClick={() => matchSelectedLayerSize('width')}
                     disabled={noLayerSelected}
                   >
-                    Match selected layer widths
+                    幅を揃える
                   </button>
                   <button
                     type="button"
                     onClick={() => matchSelectedLayerSize('height')}
                     disabled={noLayerSelected}
                   >
-                    Match selected layer heights
+                    高さを揃える
                   </button>
                   <button type="button" onClick={() => moveSelection(-32, 0)}>
-                    Move left
+                    左へ移動
                   </button>
                   <button type="button" onClick={() => moveSelection(32, 0)}>
-                    Move right
+                    右へ移動
                   </button>
                   <button type="button" onClick={() => moveSelection(0, -32)}>
-                    Move up
+                    上へ移動
                   </button>
                   <button type="button" onClick={() => moveSelection(0, 32)}>
-                    Move down
+                    下へ移動
                   </button>
                   <button type="button" onClick={() => scaleSelection(0.9)}>
-                    Scale down
+                    縮小
                   </button>
                   <button type="button" onClick={() => scaleSelection(1.125)}>
-                    Scale up
+                    拡大
                   </button>
                 </div>
                 <TextLayerPanel />
@@ -1078,8 +1136,8 @@ function App() {
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={handleCanvasDrop}
               >
-                <strong>Drop or choose an image to begin</strong>
-                <span>Zoom / pan controls are active for the current page.</span>
+                <strong>画像をドロップするか、ファイルを選択してください</strong>
+                <span>ズーム・パン操作はページが読み込まれると有効になります。</span>
                 {loadError ? <span className="error-text">{loadError}</span> : null}
               </button>
             )}
@@ -1087,13 +1145,23 @@ function App() {
         </main>
 
         <div className="right-sidebar">
-          <aside aria-label="Page list" className="sidebar-card">
-            <div className="panel-title">Pages</div>
+          <aside aria-label="ページ一覧" className="sidebar-card">
+            <div className="panel-title" style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+              <span>ページ</span>
+              <button
+                type="button"
+                title={showGallery ? 'ギャラリーを閉じる' : 'ギャラリー表示'}
+                style={{fontSize:'0.75em', padding:'2px 6px', opacity: 0.8}}
+                onClick={() => setShowGallery((v) => !v)}
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
             <div className="page-list">
               {pages.length === 0 ? (
                 <div className="page-card current empty">
                   <span>01</span>
-                  <strong>Cover draft</strong>
+                  <strong>表紙（下書き）</strong>
                 </div>
               ) : (
                 pages.map((page, index) => {
@@ -1115,7 +1183,9 @@ function App() {
                         }
                       }}
                     >
-                      <PageThumb page={page} isActive={isActive} className="mb-1" />
+                      <div style={{cursor:'pointer'}} onClick={() => selectPage(page.id)}>
+                        <PageThumb page={page} isActive={isActive} className="mb-1" />
+                      </div>
                       <button
                         type="button"
                         className="page-card-info page-button"
@@ -1134,116 +1204,122 @@ function App() {
               )}
             </div>
             <div className="page-meta">
-              {pageCount === 1 ? '1 page loaded' : `${pageCount} pages loaded`}
+              {pageCount === 1 ? '1 ページ読み込み済み' : `${pageCount} ページ読み込み済み`}
             </div>
             {loadError ? <div className="page-meta error-text">{loadError}</div> : null}
           </aside>
 
-          <section aria-label="Property inspector" className="sidebar-card">
-            <div className="panel-title">Inspector</div>
-            <dl className="inspector-grid">
-              <div>
-                <dt>Selection</dt>
-                <dd>{selectedLayerCount > 1 ? `${selectedLayerCount} layers selected` : selectionLabel}</dd>
-              </div>
-              <div>
-                <dt>Active tool</dt>
-                <dd>{activeTool}</dd>
-              </div>
-              <div>
-                <dt>Output</dt>
-                <dd>{`${outputSettings.width} x ${outputSettings.height} ${outputSettings.format.toUpperCase()}`}</dd>
-              </div>
-              {activePageVariantLabel ? (
+          {activeTool !== 'export' && activeTool !== 'library' && activeTool !== 'backend' ? (
+            <section aria-label="プロパティインスペクター" className="sidebar-card">
+              <div className="panel-title">インスペクター</div>
+              <dl className="inspector-grid">
                 <div>
-                  <dt>Variant</dt>
-                  <dd>{`Variant ${activePageVariantLabel}`}</dd>
+                  <dt>選択</dt>
+                  <dd>{selectedLayerCount > 1 ? `${selectedLayerCount} 個のレイヤーを選択中` : selectionLabel}</dd>
                 </div>
-              ) : null}
-              {activePageVariantSourceLabel ? (
                 <div>
-                  <dt>Variant source</dt>
-                  <dd>{`Source ${activePageVariantSourceLabel}`}</dd>
+                  <dt>ツール</dt>
+                  <dd>{activeTool}</dd>
                 </div>
-              ) : null}
-              <div>
-                <dt>Transform</dt>
-                <dd>{positionLabel}</dd>
-              </div>
-              <div>
-                <dt>Bounds</dt>
-                <dd>{sizeLabel}</dd>
-              </div>
-              {selectionBoundsLabel ? (
                 <div>
-                  <dt>Selection box</dt>
-                  <dd>{selectionBoundsLabel}</dd>
+                  <dt>出力</dt>
+                  <dd>{`${outputSettings.width} x ${outputSettings.height} ${outputSettings.format.toUpperCase()}`}</dd>
                 </div>
-              ) : null}
-              {selectedLayerTypeLabel ? (
+                {activePageVariantLabel ? (
+                  <div>
+                    <dt>バリアント</dt>
+                    <dd>{`バリアント ${activePageVariantLabel}`}</dd>
+                  </div>
+                ) : null}
+                {activePageVariantSourceLabel ? (
+                  <div>
+                    <dt>元バリアント</dt>
+                    <dd>{`元 ${activePageVariantSourceLabel}`}</dd>
+                  </div>
+                ) : null}
                 <div>
-                  <dt>Selection mix</dt>
-                  <dd>{selectedLayerTypeLabel}</dd>
+                  <dt>位置</dt>
+                  <dd>{positionLabel}</dd>
                 </div>
-              ) : null}
-              {multiSelectionActionLabel ? (
                 <div>
-                  <dt>Shared actions</dt>
-                  <dd>{multiSelectionActionLabel}</dd>
+                  <dt>サイズ</dt>
+                  <dd>{sizeLabel}</dd>
                 </div>
-              ) : null}
-              {activeLayerGroupId ? (
-                <div>
-                  <dt>Group</dt>
-                  <dd>{`Group ${activeLayerGroupCount} layers`}</dd>
-                </div>
-              ) : null}
-              {!noLayerSelected ? (
-                <div>
-                  <dt>Visibility</dt>
-                  <dd>{visibilityLabel}</dd>
-                </div>
-              ) : null}
-              {!noLayerSelected ? (
-                <div>
-                  <dt>Lock</dt>
-                  <dd>{lockLabel}</dd>
-                </div>
-              ) : null}
-              <InspectorLayerDetails />
-            </dl>
-          </section>
+                {selectionBoundsLabel ? (
+                  <div>
+                    <dt>選択範囲</dt>
+                    <dd>{selectionBoundsLabel}</dd>
+                  </div>
+                ) : null}
+                {selectedLayerTypeLabel ? (
+                  <div>
+                    <dt>選択タイプ</dt>
+                    <dd>{selectedLayerTypeLabel}</dd>
+                  </div>
+                ) : null}
+                {multiSelectionActionLabel ? (
+                  <div>
+                    <dt>共通操作</dt>
+                    <dd>{multiSelectionActionLabel}</dd>
+                  </div>
+                ) : null}
+                {activeLayerGroupId ? (
+                  <div>
+                    <dt>グループ</dt>
+                    <dd>{`グループ内 ${activeLayerGroupCount} レイヤー`}</dd>
+                  </div>
+                ) : null}
+                {!noLayerSelected ? (
+                  <div>
+                    <dt>表示</dt>
+                    <dd>{visibilityLabel}</dd>
+                  </div>
+                ) : null}
+                {!noLayerSelected ? (
+                  <div>
+                    <dt>ロック</dt>
+                    <dd>{lockLabel}</dd>
+                  </div>
+                ) : null}
+                <InspectorLayerDetails />
+              </dl>
+            </section>
+          ) : null}
 
-          <LayersPanel />
+          {activeTool !== 'export' && activeTool !== 'library' && activeTool !== 'backend' ? (
+            <LayersPanel />
+          ) : null}
 
-          <section aria-label="Recent projects" className="sidebar-card">
-            <div className="panel-title">Recent projects</div>
-            <div className="page-list">
-              {recentProjects.length === 0 ? (
-                <div className="page-card empty">
-                  <strong>No saved projects yet</strong>
-                </div>
-              ) : (
-                recentProjects.map((project) => (
-                  <button
-                    key={project.id}
-                    type="button"
-                    className="page-card page-button"
-                    onClick={() => openRecentProject(project.id)}
-                    aria-label={`Open recent project: ${project.name}`}
-                  >
-                    <strong>{project.name}</strong>
-                    <span>{project.pageCount} pages</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </section>
+          {activeTool === 'select' ? (
+            <section aria-label="最近のプロジェクト" className="sidebar-card">
+              <div className="panel-title">最近のプロジェクト</div>
+              <div className="page-list">
+                {recentProjects.length === 0 ? (
+                  <div className="page-card empty">
+                    <strong>保存済みプロジェクトはありません</strong>
+                  </div>
+                ) : (
+                  recentProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      type="button"
+                      className="page-card page-button"
+                      onClick={() => openRecentProject(project.id)}
+                      aria-label={`Open recent project: ${project.name}`}
+                    >
+                      <strong>{project.name}</strong>
+                      <span>{project.pageCount} pages</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </section>
+          ) : null}
 
-          <BackendPanel />
+          {activeTool === 'backend' ? <BackendPanel /> : null}
 
-          <PresetLibraryPanel />
-          <ExportSettingsPanel onExportComplete={setExportMessage} />
+          {activeTool === 'library' ? <PresetLibraryPanel /> : null}
+          {activeTool === 'export' ? <ExportSettingsPanel onExportComplete={setExportMessage} /> : null}
         </div>
       </div>
 

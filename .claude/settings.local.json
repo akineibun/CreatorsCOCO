@@ -9,7 +9,26 @@
       "Bash(node node_modules/vite/bin/vite.js build)",
       "Bash(npx tsc:*)",
       "Bash(node_modules/.bin/tsc --noEmit)",
-      "Bash(/d/Other/CreatorsCOCO/node_modules/.bin/tsc --noEmit)"
+      "Bash(/d/Other/CreatorsCOCO/node_modules/.bin/tsc --noEmit)",
+      "Bash(gh pr:*)",
+      "Bash(where gh:*)",
+      "Bash(winget list:*)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Users/$USER/AppData/Local/GitHub/**)",
+      "Read(//c/Users/**)",
+      "Bash(npm run:*)",
+      "Bash(cross-env CSC_IDENTITY_AUTO_DISCOVERY=false node_modules/.bin/electron-builder --win portable)",
+      "Bash(node_modules/.bin/electron-builder --win portable)",
+      "Bash(CSC_IDENTITY_AUTO_DISCOVERY=false \"/d/Other/CreatorsCOCO/node_modules/.bin/electron-builder\" --win portable)",
+      "Bash(node -e \"const p=require\\(''''/d/Other/CreatorsCOCO/node_modules/electron/package.json''''\\); console.log\\(p.version\\)\")",
+      "Bash(node -e \"const p=require\\(''/d/Other/CreatorsCOCO/node_modules/electron/package.json''\\); console.log\\(''electron version:'', p.version\\)\")",
+      "Bash(export 'PATH=/c/Program Files/nodejs:$PATH')",
+      "Bash(cmd.exe /c \"mklink /D \"\"D:\\\\Other\\\\CreatorsCOCO\\\\.claude\\\\worktrees\\\\fervent-johnson\\\\node_modules\"\" \"\"D:\\\\Other\\\\CreatorsCOCO\\\\node_modules\"\"\")",
+      "Bash(CSC_IDENTITY_AUTO_DISCOVERY=false node_modules/.bin/electron-builder --win portable)",
+      "Bash(cp -r \"D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/dist\" \"D:/Other/CreatorsCOCO/dist_v121_backup\")",
+      "Bash(cp -r \"D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/dist/.\" \"D:/Other/CreatorsCOCO/dist/\")",
+      "Bash(grep -n \"Preset library\\\\|Backend\\\\|Recent projects\\\\|Recent exports\\\\|Export preview\" src/components/panels/*.tsx src/App.tsx)",
+      "Bash(node -e \"const p=JSON.parse\\(require\\(''fs''\\).readFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',''utf8''\\)\\); const mp=JSON.parse\\(require\\(''fs''\\).readFileSync\\(''D:/Other/CreatorsCOCO/package.json'',''utf8''\\)\\); mp.version=p.version; require\\(''fs''\\).writeFileSync\\(''D:/Other/CreatorsCOCO/package.json'',JSON.stringify\\(mp,null,2\\)+''\\\\n''\\); console.log\\(''version synced to'',p.version\\)\")"
     ]
   }
 }
