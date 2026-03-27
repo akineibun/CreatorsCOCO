@@ -737,101 +737,98 @@ function App() {
         <main aria-label="Canvas workspace" className="canvas-panel">
           <div className="panel-header">
             <div>
-              <div className="panel-title">Main canvas</div>
-              <div className="panel-subtitle">Phase 1 canvas MVP</div>
+              <div className="panel-title">メインキャンバス</div>
+              <div className="panel-subtitle">キャンバスワークスペース</div>
             </div>
             <div className="canvas-controls">
               <label className="file-picker">
-                <span>Choose image</span>
+                <span>画像を開く</span>
                 <input
-                  aria-label="Open image file"
+                  aria-label="画像ファイルを開く"
                   type="file"
                   accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
                   onChange={handleFileChange}
                 />
               </label>
-              <button type="button" onClick={loadSampleImage}>
-                Load sample image
-              </button>
               <button type="button" onClick={selectAllVisibleLayers} disabled={!image}>
-                Select all visible layers
+                表示レイヤーをすべて選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('text')} disabled={!image}>
-                Select text layers
+                テキストレイヤーを選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('message-window')} disabled={!image}>
-                Select message window layers
+                会話枠レイヤーを選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('bubble')} disabled={!image}>
-                Select bubble layers
+                吹き出しレイヤーを選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('mosaic')} disabled={!image}>
-                Select mosaic layers
+                モザイクレイヤーを選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('overlay')} disabled={!image}>
-                Select overlay layers
+                オーバーレイレイヤーを選択
               </button>
               <button type="button" onClick={() => selectVisibleLayersByType('watermark')} disabled={!image}>
-                Select watermark layers
+                ウォーターマークレイヤーを選択
               </button>
               <button type="button" onClick={invertLayerSelection} disabled={!image}>
-                Invert layer selection
+                選択を反転
               </button>
               <button type="button" onClick={clearLayerSelection} disabled={!selectedLayerId}>
-                Clear layer selection
+                選択を解除
               </button>
               <button type="button" onClick={addTextLayer} disabled={!image}>
-                Add text layer
+                テキストを追加
               </button>
               <button type="button" onClick={addMessageWindowLayer} disabled={!image}>
-                Add message window layer
+                会話枠を追加
               </button>
               <button type="button" onClick={addWatermarkLayer} disabled={!image}>
-                Add watermark layer
+                ウォーターマークを追加
               </button>
               <label className="file-picker">
-                <span>Watermark asset</span>
+                <span>ウォーターマーク素材</span>
                 <input
-                  aria-label="Open watermark image"
+                  aria-label="ウォーターマーク画像を開く"
                   type="file"
                   accept=".png,image/png"
                   onChange={handleWatermarkFileChange}
                 />
               </label>
               <button type="button" onClick={addBubbleLayer} disabled={!image}>
-                Add bubble layer
+                吹き出しを追加
               </button>
               <button type="button" onClick={addMosaicLayer} disabled={!image}>
-                Add mosaic layer
+                モザイクを追加
               </button>
               <button type="button" onClick={addOverlayLayer} disabled={!image}>
-                Add overlay layer
+                オーバーレイを追加
               </button>
               <button type="button" onClick={zoomOut}>
-                Zoom out
+                縮小
               </button>
               <button type="button" onClick={zoomIn}>
-                Zoom in
+                拡大
               </button>
               <button type="button" onClick={undo} disabled={undoStack.length === 0}>
-                Undo
+                元に戻す
               </button>
               <button type="button" onClick={redo} disabled={redoStack.length === 0}>
-                Redo
+                やり直す
               </button>
               <button type="button" onClick={saveNow} disabled={!isDirty}>
-                Save now
+                今すぐ保存
               </button>
               <button type="button" onClick={deleteActivePage} disabled={!image}>
-                Delete active page
+                このページを削除
               </button>
               <button type="button" onClick={duplicateActivePage} disabled={!image}>
-                Duplicate active page
+                このページを複製
               </button>
               <label className="text-layer-field">
-                <span>Variant text</span>
+                <span>差し替えテキスト</span>
                 <input
-                  aria-label="Duplicate page text swap"
+                  aria-label="ページ複製時のテキスト差し替え"
                   type="text"
                   value={duplicatePageTextDraft}
                   onChange={(event) => {
@@ -844,12 +841,12 @@ function App() {
                 onClick={() => duplicateActivePageWithTextSwap(duplicatePageTextDraft)}
                 disabled={!image}
               >
-                Duplicate page with text swap
+                テキスト差し替えで複製
               </button>
               <label className="text-layer-field">
-                <span>Variant batch</span>
+                <span>バリアント一括</span>
                 <textarea
-                  aria-label="Duplicate page variant batch"
+                  aria-label="ページ複製バリアント一括入力"
                   value={variantBatchDraft}
                   onChange={(event) => {
                     setVariantBatchDraft(event.target.value)
@@ -858,9 +855,9 @@ function App() {
                 />
               </label>
               <label className="text-layer-field">
-                <span>Variant label</span>
+                <span>バリアントラベル</span>
                 <input
-                  aria-label="Active page variant label"
+                  aria-label="アクティブページのバリアントラベル"
                   type="text"
                   value={image?.variantLabel ?? ''}
                   onChange={(event) => {
@@ -874,13 +871,13 @@ function App() {
                 onClick={() => duplicateActivePageWithTextVariants(variantBatchDraft.split('\n'))}
                 disabled={!image}
               >
-                Duplicate page as batch variants
+                バリアントを一括複製
               </button>
               <button type="button" onClick={moveActivePageUp} disabled={!image}>
-                Move active page up
+                ページを上へ移動
               </button>
               <button type="button" onClick={moveActivePageDown} disabled={!image}>
-                Move active page down
+                ページを下へ移動
               </button>
             </div>
           </div>
@@ -901,16 +898,16 @@ function App() {
                   className={selectedLayerId === 'base-image' ? 'canvas-frame loaded selected' : 'canvas-frame loaded'}
                 />
 
-                <div className="selection-controls" role="group" aria-label="Selection controls">
+                <div className="selection-controls" role="group" aria-label="選択操作">
                   <button type="button" onClick={selectBaseImageLayer}>
-                    Select base image layer
+                    ベース画像を選択
                   </button>
                   <button
                     type="button"
                     onClick={toggleSelectedLayerVisibility}
                     disabled={noLayerSelected}
                   >
-                    Toggle selected layer visibility
+                    表示／非表示を切り替え
                   </button>
                   <button
                     type="button"
@@ -924,143 +921,143 @@ function App() {
                       !activeWatermarkLayer
                     }
                   >
-                    Toggle selected layer lock
+                    ロック／解除を切り替え
                   </button>
                   <button type="button" onClick={groupSelectedLayers} disabled={selectedLayerCount < 2}>
-                    Group selected layers
+                    レイヤーをグループ化
                   </button>
                   <button type="button" onClick={selectGroupedLayers} disabled={!activeLayerGroupId}>
-                    Select grouped layers
+                    グループ内を全選択
                   </button>
                   <button
                     type="button"
                     onClick={ungroupSelectedLayers}
                     disabled={!activeLayerGroupId && selectedLayerCount < 2}
                   >
-                    Ungroup selected layers
+                    グループを解除
                   </button>
                   <button
                     type="button"
                     onClick={duplicateSelectedLayer}
                     disabled={noLayerSelected}
                   >
-                    Duplicate selected layer
+                    レイヤーを複製
                   </button>
                   <button
                     type="button"
                     onClick={centerSelectedLayer}
                     disabled={noLayerSelected}
                   >
-                    Center selected layer
+                    中央に配置
                   </button>
                   <button
                     type="button"
                     onClick={moveSelectedLayerBackward}
                     disabled={noLayerSelected}
                   >
-                    Move selected layer backward
+                    背面へ移動
                   </button>
                   <button
                     type="button"
                     onClick={moveSelectedLayerForward}
                     disabled={noLayerSelected}
                   >
-                    Move selected layer forward
+                    前面へ移動
                   </button>
                   <button
                     type="button"
                     onClick={deleteSelectedLayer}
                     disabled={noLayerSelected}
                   >
-                    Delete selected layer
+                    レイヤーを削除
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayer('left')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layer left
+                    左揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayer('right')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layer right
+                    右揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayer('top')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layer top
+                    上揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayer('bottom')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layer bottom
+                    下揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayersCenter('horizontal')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layers center horizontally
+                    水平方向に中央揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => alignSelectedLayersCenter('vertical')}
                     disabled={noLayerSelected}
                   >
-                    Align selected layers center vertically
+                    垂直方向に中央揃え
                   </button>
                   <button
                     type="button"
                     onClick={() => distributeSelectedLayers('horizontal')}
                     disabled={noLayerSelected}
                   >
-                    Distribute selected layers horizontally
+                    水平方向に等間隔配置
                   </button>
                   <button
                     type="button"
                     onClick={() => distributeSelectedLayers('vertical')}
                     disabled={noLayerSelected}
                   >
-                    Distribute selected layers vertically
+                    垂直方向に等間隔配置
                   </button>
                   <button
                     type="button"
                     onClick={() => matchSelectedLayerSize('width')}
                     disabled={noLayerSelected}
                   >
-                    Match selected layer widths
+                    幅を揃える
                   </button>
                   <button
                     type="button"
                     onClick={() => matchSelectedLayerSize('height')}
                     disabled={noLayerSelected}
                   >
-                    Match selected layer heights
+                    高さを揃える
                   </button>
                   <button type="button" onClick={() => moveSelection(-32, 0)}>
-                    Move left
+                    左へ移動
                   </button>
                   <button type="button" onClick={() => moveSelection(32, 0)}>
-                    Move right
+                    右へ移動
                   </button>
                   <button type="button" onClick={() => moveSelection(0, -32)}>
-                    Move up
+                    上へ移動
                   </button>
                   <button type="button" onClick={() => moveSelection(0, 32)}>
-                    Move down
+                    下へ移動
                   </button>
                   <button type="button" onClick={() => scaleSelection(0.9)}>
-                    Scale down
+                    縮小
                   </button>
                   <button type="button" onClick={() => scaleSelection(1.125)}>
-                    Scale up
+                    拡大
                   </button>
                 </div>
                 <TextLayerPanel />
@@ -1078,8 +1075,8 @@ function App() {
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={handleCanvasDrop}
               >
-                <strong>Drop or choose an image to begin</strong>
-                <span>Zoom / pan controls are active for the current page.</span>
+                <strong>画像をドロップするか、ファイルを選択してください</strong>
+                <span>ズーム・パン操作はページが読み込まれると有効になります。</span>
                 {loadError ? <span className="error-text">{loadError}</span> : null}
               </button>
             )}
@@ -1087,13 +1084,13 @@ function App() {
         </main>
 
         <div className="right-sidebar">
-          <aside aria-label="Page list" className="sidebar-card">
-            <div className="panel-title">Pages</div>
+          <aside aria-label="ページ一覧" className="sidebar-card">
+            <div className="panel-title">ページ</div>
             <div className="page-list">
               {pages.length === 0 ? (
                 <div className="page-card current empty">
                   <span>01</span>
-                  <strong>Cover draft</strong>
+                  <strong>表紙（下書き）</strong>
                 </div>
               ) : (
                 pages.map((page, index) => {
@@ -1134,79 +1131,79 @@ function App() {
               )}
             </div>
             <div className="page-meta">
-              {pageCount === 1 ? '1 page loaded' : `${pageCount} pages loaded`}
+              {pageCount === 1 ? '1 ページ読み込み済み' : `${pageCount} ページ読み込み済み`}
             </div>
             {loadError ? <div className="page-meta error-text">{loadError}</div> : null}
           </aside>
 
-          <section aria-label="Property inspector" className="sidebar-card">
-            <div className="panel-title">Inspector</div>
+          <section aria-label="プロパティインスペクター" className="sidebar-card">
+            <div className="panel-title">インスペクター</div>
             <dl className="inspector-grid">
               <div>
-                <dt>Selection</dt>
-                <dd>{selectedLayerCount > 1 ? `${selectedLayerCount} layers selected` : selectionLabel}</dd>
+                <dt>選択</dt>
+                <dd>{selectedLayerCount > 1 ? `${selectedLayerCount} 個のレイヤーを選択中` : selectionLabel}</dd>
               </div>
               <div>
-                <dt>Active tool</dt>
+                <dt>ツール</dt>
                 <dd>{activeTool}</dd>
               </div>
               <div>
-                <dt>Output</dt>
+                <dt>出力</dt>
                 <dd>{`${outputSettings.width} x ${outputSettings.height} ${outputSettings.format.toUpperCase()}`}</dd>
               </div>
               {activePageVariantLabel ? (
                 <div>
-                  <dt>Variant</dt>
-                  <dd>{`Variant ${activePageVariantLabel}`}</dd>
+                  <dt>バリアント</dt>
+                  <dd>{`バリアント ${activePageVariantLabel}`}</dd>
                 </div>
               ) : null}
               {activePageVariantSourceLabel ? (
                 <div>
-                  <dt>Variant source</dt>
-                  <dd>{`Source ${activePageVariantSourceLabel}`}</dd>
+                  <dt>元バリアント</dt>
+                  <dd>{`元 ${activePageVariantSourceLabel}`}</dd>
                 </div>
               ) : null}
               <div>
-                <dt>Transform</dt>
+                <dt>位置</dt>
                 <dd>{positionLabel}</dd>
               </div>
               <div>
-                <dt>Bounds</dt>
+                <dt>サイズ</dt>
                 <dd>{sizeLabel}</dd>
               </div>
               {selectionBoundsLabel ? (
                 <div>
-                  <dt>Selection box</dt>
+                  <dt>選択範囲</dt>
                   <dd>{selectionBoundsLabel}</dd>
                 </div>
               ) : null}
               {selectedLayerTypeLabel ? (
                 <div>
-                  <dt>Selection mix</dt>
+                  <dt>選択タイプ</dt>
                   <dd>{selectedLayerTypeLabel}</dd>
                 </div>
               ) : null}
               {multiSelectionActionLabel ? (
                 <div>
-                  <dt>Shared actions</dt>
+                  <dt>共通操作</dt>
                   <dd>{multiSelectionActionLabel}</dd>
                 </div>
               ) : null}
               {activeLayerGroupId ? (
                 <div>
-                  <dt>Group</dt>
-                  <dd>{`Group ${activeLayerGroupCount} layers`}</dd>
+                  <dt>グループ</dt>
+                  <dd>{`グループ内 ${activeLayerGroupCount} レイヤー`}</dd>
                 </div>
               ) : null}
               {!noLayerSelected ? (
                 <div>
-                  <dt>Visibility</dt>
+                  <dt>表示</dt>
                   <dd>{visibilityLabel}</dd>
                 </div>
               ) : null}
               {!noLayerSelected ? (
                 <div>
-                  <dt>Lock</dt>
+                  <dt>ロック</dt>
                   <dd>{lockLabel}</dd>
                 </div>
               ) : null}
@@ -1216,12 +1213,12 @@ function App() {
 
           <LayersPanel />
 
-          <section aria-label="Recent projects" className="sidebar-card">
-            <div className="panel-title">Recent projects</div>
+          <section aria-label="最近のプロジェクト" className="sidebar-card">
+            <div className="panel-title">最近のプロジェクト</div>
             <div className="page-list">
               {recentProjects.length === 0 ? (
                 <div className="page-card empty">
-                  <strong>No saved projects yet</strong>
+                  <strong>保存済みプロジェクトはありません</strong>
                 </div>
               ) : (
                 recentProjects.map((project) => (

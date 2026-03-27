@@ -181,18 +181,18 @@ export function PresetLibraryPanel() {
 
   return (
     <>
-      <section aria-label="Preset library" className="sidebar-card">
-        <div className="panel-title">Preset library</div>
+      <section aria-label="プリセットライブラリ" className="sidebar-card">
+        <div className="panel-title">プリセットライブラリ</div>
         <div className="page-list">
           <div className="page-card">
-            <strong>{`${messageWindowPresets.length} msg / ${textStylePresets.length} text / ${watermarkStylePresets.length} wm / ${bubbleStylePresets.length} bbl / ${overlayStylePresets.length} ovl / ${mosaicStylePresets.length} msc`}</strong>
-            <span>{`${templates.length} templates / ${reusableAssets.length} assets`}</span>
+            <strong>{`${messageWindowPresets.length} 会話枠 / ${textStylePresets.length} テキスト / ${watermarkStylePresets.length} WM / ${bubbleStylePresets.length} 吹き出し / ${overlayStylePresets.length} OVL / ${mosaicStylePresets.length} モザイク`}</strong>
+            <span>{`${templates.length} テンプレート / ${reusableAssets.length} アセット`}</span>
           </div>
 
           <label className="text-layer-field">
-            <span>Search</span>
+            <span>検索</span>
             <input
-              aria-label="Preset library search"
+              aria-label="プリセット検索"
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -214,27 +214,27 @@ export function PresetLibraryPanel() {
 
           <div className="selection-controls">
             <button type="button" className="page-button flex-1" onClick={saveCurrentPageAsTemplate} disabled={!image}>
-              Save as template
+              テンプレート保存
             </button>
             <button type="button" className="page-button flex-1" onClick={saveCurrentPageAsReusableAsset} disabled={!image}>
-              Save as asset
+              アセット保存
             </button>
             <button type="button" className="page-button flex-1" onClick={() => setCsvImportOpen(true)} disabled={pages.length === 0}>
-              CSV import
+              CSV 読み込み
             </button>
           </div>
 
           {/* ── Text presets ──────────────────────────────────────────── */}
           {show('text') && (
             textStylePresets.length === 0 ? (
-              <div className="page-card empty"><strong>No text presets yet</strong></div>
+              <div className="page-card empty"><strong>テキストプリセットがありません</strong></div>
             ) : (
               textStylePresets.filter((p) => matches(p.label, p.text)).map((preset) => {
-                const label = preset.label.trim() || 'Untitled text preset'
+                const label = preset.label.trim() || '名称未設定テキストプリセット'
                 return (
                   <div key={preset.id} className="page-card">
                     <label className="text-layer-field">
-                      <span>Text preset</span>
+                      <span>テキストプリセット</span>
                       <input type="text" aria-label={`Text preset name: ${label}`} value={preset.label}
                         onChange={(e) => renameTextStylePreset(preset.id, e.target.value)} />
                     </label>
@@ -242,9 +242,9 @@ export function PresetLibraryPanel() {
                       {getTextPresetPreviewLines(preset).slice(0, 3).map((line) => <small key={line}>{`Preview ${line}`}</small>)}
                     </div>
                     <div className="selection-controls">
-                      <button type="button" className="page-button" onClick={() => applyTextStylePreset(preset.id)} aria-label={`Apply text preset: ${label}`}>Apply to selected text</button>
-                      <button type="button" className="page-button" onClick={() => duplicateTextStylePreset(preset.id)} aria-label={`Duplicate text preset: ${label}`}>Duplicate</button>
-                      <button type="button" className="page-button" onClick={() => deleteTextStylePreset(preset.id)} aria-label={`Delete text preset: ${label}`}>Delete</button>
+                      <button type="button" className="page-button" onClick={() => applyTextStylePreset(preset.id)} aria-label={`テキストプリセットを適用: ${label}`}>選択テキストに適用</button>
+                      <button type="button" className="page-button" onClick={() => duplicateTextStylePreset(preset.id)} aria-label={`テキストプリセットを複製: ${label}`}>複製</button>
+                      <button type="button" className="page-button" onClick={() => deleteTextStylePreset(preset.id)} aria-label={`テキストプリセットを削除: ${label}`}>削除</button>
                     </div>
                   </div>
                 )
@@ -255,14 +255,14 @@ export function PresetLibraryPanel() {
           {/* ── Message presets ───────────────────────────────────────── */}
           {show('message') && (
             messageWindowPresets.length === 0 ? (
-              <div className="page-card empty"><strong>No message presets yet</strong></div>
+              <div className="page-card empty"><strong>会話枠プリセットがありません</strong></div>
             ) : (
               messageWindowPresets.filter((p) => matches(p.label, p.speaker, p.body)).map((preset) => {
-                const label = preset.label.trim() || 'Untitled preset'
+                const label = preset.label.trim() || '名称未設定プリセット'
                 return (
                   <div key={preset.id} className="page-card">
                     <label className="text-layer-field">
-                      <span>Preset</span>
+                      <span>会話枠プリセット</span>
                       <input type="text" aria-label={`Message preset name: ${label}`} value={preset.label}
                         onChange={(e) => renameMessageWindowPreset(preset.id, e.target.value)} />
                     </label>
@@ -270,9 +270,9 @@ export function PresetLibraryPanel() {
                       {getMessagePresetPreviewLines(preset).slice(0, 3).map((line) => <small key={line}>{`Preview ${line}`}</small>)}
                     </div>
                     <div className="selection-controls">
-                      <button type="button" className="page-button" onClick={() => applyMessageWindowPreset(preset.id)} aria-label={`Apply message preset: ${label}`}>Apply to selected window</button>
-                      <button type="button" className="page-button" onClick={() => duplicateMessageWindowPreset(preset.id)} aria-label={`Duplicate message preset: ${label}`}>Duplicate</button>
-                      <button type="button" className="page-button" onClick={() => deleteMessageWindowPreset(preset.id)} aria-label={`Delete message preset: ${label}`}>Delete</button>
+                      <button type="button" className="page-button" onClick={() => applyMessageWindowPreset(preset.id)} aria-label={`会話枠プリセットを適用: ${label}`}>選択会話枠に適用</button>
+                      <button type="button" className="page-button" onClick={() => duplicateMessageWindowPreset(preset.id)} aria-label={`会話枠プリセットを複製: ${label}`}>複製</button>
+                      <button type="button" className="page-button" onClick={() => deleteMessageWindowPreset(preset.id)} aria-label={`会話枠プリセットを削除: ${label}`}>削除</button>
                     </div>
                   </div>
                 )
@@ -283,14 +283,14 @@ export function PresetLibraryPanel() {
           {/* ── Bubble presets ────────────────────────────────────────── */}
           {show('bubble') && (
             bubbleStylePresets.length === 0 ? (
-              <div className="page-card empty"><strong>No bubble presets yet</strong></div>
+              <div className="page-card empty"><strong>吹き出しプリセットがありません</strong></div>
             ) : (
               bubbleStylePresets.filter((p) => matches(p.label, p.text, p.stylePreset, p.bubbleShape)).map((preset) => {
-                const label = preset.label.trim() || 'Untitled bubble preset'
+                const label = preset.label.trim() || '名称未設定吹き出しプリセット'
                 return (
                   <div key={preset.id} className="page-card">
                     <label className="text-layer-field">
-                      <span>Bubble preset</span>
+                      <span>吹き出しプリセット</span>
                       <input type="text" aria-label={`Bubble preset name: ${label}`} value={preset.label}
                         onChange={(e) => renameBubbleStylePreset(preset.id, e.target.value)} />
                     </label>
@@ -298,9 +298,9 @@ export function PresetLibraryPanel() {
                       {getBubblePresetPreviewLines(preset).slice(0, 3).map((line) => <small key={line}>{`Preview ${line}`}</small>)}
                     </div>
                     <div className="selection-controls">
-                      <button type="button" className="page-button" onClick={() => applyBubbleStylePreset(preset.id)} aria-label={`Apply bubble preset: ${label}`}>Apply to selected bubble</button>
-                      <button type="button" className="page-button" onClick={() => duplicateBubbleStylePreset(preset.id)} aria-label={`Duplicate bubble preset: ${label}`}>Duplicate</button>
-                      <button type="button" className="page-button" onClick={() => deleteBubbleStylePreset(preset.id)} aria-label={`Delete bubble preset: ${label}`}>Delete</button>
+                      <button type="button" className="page-button" onClick={() => applyBubbleStylePreset(preset.id)} aria-label={`吹き出しプリセットを適用: ${label}`}>選択吹き出しに適用</button>
+                      <button type="button" className="page-button" onClick={() => duplicateBubbleStylePreset(preset.id)} aria-label={`吹き出しプリセットを複製: ${label}`}>複製</button>
+                      <button type="button" className="page-button" onClick={() => deleteBubbleStylePreset(preset.id)} aria-label={`吹き出しプリセットを削除: ${label}`}>削除</button>
                     </div>
                   </div>
                 )
@@ -311,14 +311,14 @@ export function PresetLibraryPanel() {
           {/* ── Overlay presets ───────────────────────────────────────── */}
           {show('overlay') && (
             overlayStylePresets.length === 0 ? (
-              <div className="page-card empty"><strong>No overlay presets yet</strong></div>
+              <div className="page-card empty"><strong>オーバーレイプリセットがありません</strong></div>
             ) : (
               overlayStylePresets.filter((p) => matches(p.label, p.areaPreset, p.fillMode, p.gradientDirection)).map((preset) => {
-                const label = preset.label.trim() || 'Untitled overlay preset'
+                const label = preset.label.trim() || '名称未設定オーバーレイプリセット'
                 return (
                   <div key={preset.id} className="page-card">
                     <label className="text-layer-field">
-                      <span>Overlay preset</span>
+                      <span>オーバーレイプリセット</span>
                       <input type="text" aria-label={`Overlay preset name: ${label}`} value={preset.label}
                         onChange={(e) => renameOverlayStylePreset(preset.id, e.target.value)} />
                     </label>
@@ -326,9 +326,9 @@ export function PresetLibraryPanel() {
                       {getOverlayPresetPreviewLines(preset).slice(0, 3).map((line) => <small key={line}>{`Preview ${line}`}</small>)}
                     </div>
                     <div className="selection-controls">
-                      <button type="button" className="page-button" onClick={() => applyOverlayStylePreset(preset.id)} aria-label={`Apply overlay preset: ${label}`}>Apply to selected overlay</button>
-                      <button type="button" className="page-button" onClick={() => duplicateOverlayStylePreset(preset.id)} aria-label={`Duplicate overlay preset: ${label}`}>Duplicate</button>
-                      <button type="button" className="page-button" onClick={() => deleteOverlayStylePreset(preset.id)} aria-label={`Delete overlay preset: ${label}`}>Delete</button>
+                      <button type="button" className="page-button" onClick={() => applyOverlayStylePreset(preset.id)} aria-label={`オーバーレイプリセットを適用: ${label}`}>選択オーバーレイに適用</button>
+                      <button type="button" className="page-button" onClick={() => duplicateOverlayStylePreset(preset.id)} aria-label={`オーバーレイプリセットを複製: ${label}`}>複製</button>
+                      <button type="button" className="page-button" onClick={() => deleteOverlayStylePreset(preset.id)} aria-label={`オーバーレイプリセットを削除: ${label}`}>削除</button>
                     </div>
                   </div>
                 )
@@ -339,14 +339,14 @@ export function PresetLibraryPanel() {
           {/* ── Mosaic presets ────────────────────────────────────────── */}
           {show('mosaic') && (
             mosaicStylePresets.length === 0 ? (
-              <div className="page-card empty"><strong>No mosaic presets yet</strong></div>
+              <div className="page-card empty"><strong>モザイクプリセットがありません</strong></div>
             ) : (
               mosaicStylePresets.filter((p) => matches(p.label, p.style)).map((preset) => {
-                const label = preset.label.trim() || 'Untitled mosaic preset'
+                const label = preset.label.trim() || '名称未設定モザイクプリセット'
                 return (
                   <div key={preset.id} className="page-card">
                     <label className="text-layer-field">
-                      <span>Mosaic preset</span>
+                      <span>モザイクプリセット</span>
                       <input type="text" aria-label={`Mosaic preset name: ${label}`} value={preset.label}
                         onChange={(e) => renameMosaicStylePreset(preset.id, e.target.value)} />
                     </label>
@@ -354,9 +354,9 @@ export function PresetLibraryPanel() {
                       {getMosaicPresetPreviewLines(preset).slice(0, 3).map((line) => <small key={line}>{`Preview ${line}`}</small>)}
                     </div>
                     <div className="selection-controls">
-                      <button type="button" className="page-button" onClick={() => applyMosaicStylePreset(preset.id)} aria-label={`Apply mosaic preset: ${label}`}>Apply to selected mosaic</button>
-                      <button type="button" className="page-button" onClick={() => duplicateMosaicStylePreset(preset.id)} aria-label={`Duplicate mosaic preset: ${label}`}>Duplicate</button>
-                      <button type="button" className="page-button" onClick={() => deleteMosaicStylePreset(preset.id)} aria-label={`Delete mosaic preset: ${label}`}>Delete</button>
+                      <button type="button" className="page-button" onClick={() => applyMosaicStylePreset(preset.id)} aria-label={`モザイクプリセットを適用: ${label}`}>選択モザイクに適用</button>
+                      <button type="button" className="page-button" onClick={() => duplicateMosaicStylePreset(preset.id)} aria-label={`モザイクプリセットを複製: ${label}`}>複製</button>
+                      <button type="button" className="page-button" onClick={() => deleteMosaicStylePreset(preset.id)} aria-label={`モザイクプリセットを削除: ${label}`}>削除</button>
                     </div>
                   </div>
                 )
@@ -367,14 +367,14 @@ export function PresetLibraryPanel() {
           {/* ── Watermark presets ─────────────────────────────────────── */}
           {show('watermark') && (
             watermarkStylePresets.length === 0 ? (
-              <div className="page-card empty"><strong>No watermark presets yet</strong></div>
+              <div className="page-card empty"><strong>ウォーターマークプリセットがありません</strong></div>
             ) : (
               watermarkStylePresets.filter((p) => matches(p.label, p.text, p.assetName)).map((preset) => {
-                const label = preset.label.trim() || 'Untitled watermark preset'
+                const label = preset.label.trim() || '名称未設定ウォーターマークプリセット'
                 return (
                   <div key={preset.id} className="page-card">
                     <label className="text-layer-field">
-                      <span>Watermark preset</span>
+                      <span>ウォーターマークプリセット</span>
                       <input type="text" aria-label={`Watermark preset name: ${label}`} value={preset.label}
                         onChange={(e) => renameWatermarkStylePreset(preset.id, e.target.value)} />
                     </label>
@@ -382,9 +382,9 @@ export function PresetLibraryPanel() {
                       {getWatermarkPresetPreviewLines(preset).slice(0, 3).map((line) => <small key={line}>{`Preview ${line}`}</small>)}
                     </div>
                     <div className="selection-controls">
-                      <button type="button" className="page-button" onClick={() => applyWatermarkStylePreset(preset.id)} aria-label={`Apply watermark preset: ${label}`}>Apply to selected watermark</button>
-                      <button type="button" className="page-button" onClick={() => duplicateWatermarkStylePreset(preset.id)} aria-label={`Duplicate watermark preset: ${label}`}>Duplicate</button>
-                      <button type="button" className="page-button" onClick={() => deleteWatermarkStylePreset(preset.id)} aria-label={`Delete watermark preset: ${label}`}>Delete</button>
+                      <button type="button" className="page-button" onClick={() => applyWatermarkStylePreset(preset.id)} aria-label={`ウォーターマークプリセットを適用: ${label}`}>選択WMに適用</button>
+                      <button type="button" className="page-button" onClick={() => duplicateWatermarkStylePreset(preset.id)} aria-label={`ウォーターマークプリセットを複製: ${label}`}>複製</button>
+                      <button type="button" className="page-button" onClick={() => deleteWatermarkStylePreset(preset.id)} aria-label={`ウォーターマークプリセットを削除: ${label}`}>削除</button>
                     </div>
                   </div>
                 )
@@ -395,10 +395,10 @@ export function PresetLibraryPanel() {
           {/* ── Templates ─────────────────────────────────────────────── */}
           {show('template') && (
             templates.length === 0 ? (
-              <div className="page-card empty"><strong>No templates yet</strong></div>
+              <div className="page-card empty"><strong>テンプレートがありません</strong></div>
             ) : (
               templates.filter((t) => matches(t.label, ...getTemplatePreviewLines(t))).map((template) => {
-                const label = template.label.trim() || 'Untitled template'
+                const label = template.label.trim() || '名称未設定テンプレート'
                 const layerCount =
                   template.textLayers.length + template.messageWindowLayers.length +
                   template.bubbleLayers.length + template.mosaicLayers.length +
@@ -406,19 +406,19 @@ export function PresetLibraryPanel() {
                 return (
                   <div key={template.id} className="page-card">
                     <label className="text-layer-field">
-                      <span>Template</span>
-                      <input type="text" aria-label={`Template name: ${label}`} value={template.label}
+                      <span>テンプレート</span>
+                      <input type="text" aria-label={`テンプレート名: ${label}`} value={template.label}
                         onChange={(e) => renameTemplate(template.id, e.target.value)} />
                     </label>
-                    <span>{`${layerCount} layers`}</span>
+                    <span>{`${layerCount} レイヤー`}</span>
                     <TemplateThumb template={template} />
                     <div className="selection-controls">
-                      <button type="button" className="page-button" onClick={() => applyTemplateToActivePage(template.id)} aria-label={`Apply template: ${label}`}>Apply to page</button>
-                      <button type="button" className="page-button" onClick={() => applyTemplatePreservingText(template.id)} disabled={!image} aria-label={`Apply template style keeping text: ${label}`}>Apply (keep text)</button>
-                      <button type="button" className="page-button" onClick={() => applyTemplateToAllPages(template.id)} aria-label={`Apply template to all pages: ${label}`}>Apply to all pages</button>
-                      <button type="button" className="page-button" onClick={() => setBatchTemplateState({ templateId: template.id, pageIds: Object.fromEntries(pages.map((p) => [p.id, true])) })} aria-label={`Apply template to selected pages: ${label}`}>Apply to selected...</button>
-                      <button type="button" className="page-button" onClick={() => duplicateTemplate(template.id)} aria-label={`Duplicate template: ${label}`}>Duplicate</button>
-                      <button type="button" className="page-button" onClick={() => deleteTemplate(template.id)} aria-label={`Delete template: ${label}`}>Delete</button>
+                      <button type="button" className="page-button" onClick={() => applyTemplateToActivePage(template.id)} aria-label={`テンプレートを適用: ${label}`}>ページに適用</button>
+                      <button type="button" className="page-button" onClick={() => applyTemplatePreservingText(template.id)} disabled={!image} aria-label={`テンプレートをテキスト保持で適用: ${label}`}>適用（テキスト保持）</button>
+                      <button type="button" className="page-button" onClick={() => applyTemplateToAllPages(template.id)} aria-label={`全ページにテンプレートを適用: ${label}`}>全ページに適用</button>
+                      <button type="button" className="page-button" onClick={() => setBatchTemplateState({ templateId: template.id, pageIds: Object.fromEntries(pages.map((p) => [p.id, true])) })} aria-label={`選択ページにテンプレートを適用: ${label}`}>選択ページに適用...</button>
+                      <button type="button" className="page-button" onClick={() => duplicateTemplate(template.id)} aria-label={`テンプレートを複製: ${label}`}>複製</button>
+                      <button type="button" className="page-button" onClick={() => deleteTemplate(template.id)} aria-label={`テンプレートを削除: ${label}`}>削除</button>
                     </div>
                   </div>
                 )
@@ -429,25 +429,25 @@ export function PresetLibraryPanel() {
           {/* ── Reusable assets ───────────────────────────────────────── */}
           {show('asset') && (
             reusableAssets.length === 0 ? (
-              <div className="page-card empty"><strong>No reusable assets yet</strong></div>
+              <div className="page-card empty"><strong>再利用アセットがありません</strong></div>
             ) : (
               reusableAssets.filter((a) => matches(a.label, a.assetName, a.summary)).map((asset) => {
-                const label = asset.label.trim() || 'Untitled asset'
+                const label = asset.label.trim() || '名称未設定アセット'
                 return (
                   <div key={asset.id} className="page-card">
                     <label className="text-layer-field">
-                      <span>Asset</span>
-                      <input type="text" aria-label={`Reusable asset name: ${label}`} value={asset.label}
+                      <span>アセット</span>
+                      <input type="text" aria-label={`アセット名: ${label}`} value={asset.label}
                         onChange={(e) => renameReusableAsset(asset.id, e.target.value)} />
                     </label>
-                    <div className="template-preview" aria-label={`Reusable asset preview: ${label}`}>
-                      <small>{`Asset ${asset.assetName}`}</small>
-                      <small>{`Preview ${asset.summary}`}</small>
+                    <div className="template-preview" aria-label={`アセットプレビュー: ${label}`}>
+                      <small>{`アセット: ${asset.assetName}`}</small>
+                      <small>{`内容: ${asset.summary}`}</small>
                     </div>
                     <div className="selection-controls">
-                      <button type="button" className="page-button" onClick={() => applyReusableAssetToActivePage(asset.id)} aria-label={`Apply reusable asset: ${label}`}>Apply to active page</button>
-                      <button type="button" className="page-button" onClick={() => duplicateReusableAsset(asset.id)} aria-label={`Duplicate reusable asset: ${label}`}>Duplicate</button>
-                      <button type="button" className="page-button" onClick={() => deleteReusableAsset(asset.id)} aria-label={`Delete reusable asset: ${label}`}>Delete</button>
+                      <button type="button" className="page-button" onClick={() => applyReusableAssetToActivePage(asset.id)} aria-label={`アセットをアクティブページに適用: ${label}`}>アクティブページに適用</button>
+                      <button type="button" className="page-button" onClick={() => duplicateReusableAsset(asset.id)} aria-label={`アセットを複製: ${label}`}>複製</button>
+                      <button type="button" className="page-button" onClick={() => deleteReusableAsset(asset.id)} aria-label={`アセットを削除: ${label}`}>削除</button>
                     </div>
                   </div>
                 )

@@ -76,9 +76,9 @@ export function LayersPanel() {
   }
 
   return (
-    <section aria-label="Layer panel" className="sidebar-card">
+    <section aria-label="レイヤーパネル" className="sidebar-card">
       <div className="panel-title flex items-center justify-between">
-        <span>Layers</span>
+        <span>レイヤー</span>
         <div className="flex gap-1">
           <button type="button" className="layer-visibility" title="全レイヤーを表示" aria-label="Show all layers" onClick={() => setAllLayersVisible(true)}>
             <Eye className="w-3 h-3" />
