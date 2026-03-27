@@ -132,6 +132,10 @@ function App() {
   const [duplicatePageTextDraft, setDuplicatePageTextDraft] = useState('Variant line')
   const [variantBatchDraft, setVariantBatchDraft] = useState('Variant A\nVariant B')
   const [showGallery, setShowGallery] = useState(false)
+  const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const menuBarRef = useRef<HTMLElement>(null)
+  const [quickTextDraft, setQuickTextDraft] = useState('')
+  const [bottomTab, setBottomTab] = useState<'text' | 'variant'>('text')
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null)
   const [layerDragState, setLayerDragState] = useState<LayerDragState | null>(null)
   const [layerResizeState, setLayerResizeState] = useState<LayerResizeState | null>(null)
@@ -616,6 +620,16 @@ function App() {
   }, [restoreSavedProject])
 
   useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuBarRef.current && !menuBarRef.current.contains(event.target as Node)) {
+        setMenuOpen(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
     if (!isDirty) {
       return
     }
@@ -713,7 +727,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <header aria-label="Main menu" className="menu-bar">
+      <header aria-label="Main menu" className="menu-bar" ref={menuBarRef}>
         <div className="brand">
           <strong>CreatorsCOCO</strong>
           <span>{projectName}</span>
@@ -730,17 +744,111 @@ function App() {
             onBlur={commitProjectNameDraft}
           />
         </label>
-        <nav aria-label="Primary navigation">
-          <button type="button">File</button>
-          <button type="button">Edit</button>
-          <button type="button">View</button>
-          <button type="button">Tools</button>
-          <button type="button">Help</button>
+        <nav aria-label="Primary navigation" style={{display:'flex', alignItems:'stretch', gap:0}}>
+          {/* ファイル menu */}
+          <div style={{position:'relative'}}>
+            <button
+              type="button"
+              style={{background: menuOpen === 'file' ? 'rgba(255,255,255,0.1)' : 'none', border:'none', color:'#e8d5c0', padding:'4px 10px', cursor:'pointer', fontSize:13, height:'100%'}}
+              onClick={() => setMenuOpen(menuOpen === 'file' ? null : 'file')}
+            >ファイル</button>
+            {menuOpen === 'file' && (
+              <div style={{position:'absolute', top:'100%', left:0, background:'#1a1a2e', border:'1px solid #333', borderRadius:4, minWidth:200, zIndex:1000, boxShadow:'0 4px 16px rgba(0,0,0,0.4)'}}>
+                <label style={{display:'block', width:'100%', padding:'6px 16px', color:'#e8d5c0', cursor:'pointer', fontSize:13}}>
+                  画像を開く
+                  <input
+                    aria-label="画像ファイルを開く"
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                    multiple
+                    style={{display:'none'}}
+                    onChange={(e) => { handleFileChange(e); setMenuOpen(null) }}
+                  />
+                </label>
+                <label style={{display:'block', width:'100%', padding:'6px 16px', color:'#e8d5c0', cursor:'pointer', fontSize:13}}>
+                  ウォーターマーク素材
+                  <input
+                    aria-label="ウォーターマーク画像を開く"
+                    type="file"
+                    accept=".png,image/png"
+                    style={{display:'none'}}
+                    onChange={(e) => { handleWatermarkFileChange(e); setMenuOpen(null) }}
+                  />
+                </label>
+                <hr style={{margin:'4px 0', border:'none', borderTop:'1px solid #333'}} />
+                <button type="button" onClick={() => { saveNow(); setMenuOpen(null) }} disabled={!isDirty} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: isDirty ? 'pointer' : 'default', fontSize:13, opacity: isDirty ? 1 : 0.4}}>今すぐ保存</button>
+                <button type="button" onClick={() => { deleteActivePage(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>このページを削除</button>
+              </div>
+            )}
+          </div>
+          {/* 編集 menu */}
+          <div style={{position:'relative'}}>
+            <button
+              type="button"
+              style={{background: menuOpen === 'edit' ? 'rgba(255,255,255,0.1)' : 'none', border:'none', color:'#e8d5c0', padding:'4px 10px', cursor:'pointer', fontSize:13, height:'100%'}}
+              onClick={() => setMenuOpen(menuOpen === 'edit' ? null : 'edit')}
+            >編集</button>
+            {menuOpen === 'edit' && (
+              <div style={{position:'absolute', top:'100%', left:0, background:'#1a1a2e', border:'1px solid #333', borderRadius:4, minWidth:220, zIndex:1000, boxShadow:'0 4px 16px rgba(0,0,0,0.4)'}}>
+                <button type="button" onClick={() => { undo(); setMenuOpen(null) }} disabled={undoStack.length === 0} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: undoStack.length > 0 ? 'pointer' : 'default', fontSize:13, opacity: undoStack.length > 0 ? 1 : 0.4}}>元に戻す</button>
+                <button type="button" onClick={() => { redo(); setMenuOpen(null) }} disabled={redoStack.length === 0} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: redoStack.length > 0 ? 'pointer' : 'default', fontSize:13, opacity: redoStack.length > 0 ? 1 : 0.4}}>やり直す</button>
+                <hr style={{margin:'4px 0', border:'none', borderTop:'1px solid #333'}} />
+                <button type="button" onClick={() => { selectAllVisibleLayers(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>表示レイヤーをすべて選択</button>
+                <button type="button" onClick={() => { selectVisibleLayersByType('text'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>テキストレイヤーを選択</button>
+                <button type="button" onClick={() => { selectVisibleLayersByType('message-window'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>会話枠レイヤーを選択</button>
+                <button type="button" onClick={() => { selectVisibleLayersByType('bubble'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>吹き出しレイヤーを選択</button>
+                <button type="button" onClick={() => { selectVisibleLayersByType('mosaic'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>モザイクレイヤーを選択</button>
+                <button type="button" onClick={() => { selectVisibleLayersByType('overlay'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>オーバーレイレイヤーを選択</button>
+                <button type="button" onClick={() => { selectVisibleLayersByType('watermark'); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>ウォーターマークレイヤーを選択</button>
+                <hr style={{margin:'4px 0', border:'none', borderTop:'1px solid #333'}} />
+                <button type="button" onClick={() => { invertLayerSelection(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>選択を反転</button>
+                <button type="button" onClick={() => { clearLayerSelection(); setMenuOpen(null) }} disabled={!selectedLayerId} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: selectedLayerId ? 'pointer' : 'default', fontSize:13, opacity: selectedLayerId ? 1 : 0.4}}>選択を解除</button>
+              </div>
+            )}
+          </div>
+          {/* ページ menu */}
+          <div style={{position:'relative'}}>
+            <button
+              type="button"
+              style={{background: menuOpen === 'page' ? 'rgba(255,255,255,0.1)' : 'none', border:'none', color:'#e8d5c0', padding:'4px 10px', cursor:'pointer', fontSize:13, height:'100%'}}
+              onClick={() => setMenuOpen(menuOpen === 'page' ? null : 'page')}
+            >ページ</button>
+            {menuOpen === 'page' && (
+              <div style={{position:'absolute', top:'100%', left:0, background:'#1a1a2e', border:'1px solid #333', borderRadius:4, minWidth:200, zIndex:1000, boxShadow:'0 4px 16px rgba(0,0,0,0.4)'}}>
+                <button type="button" onClick={() => { duplicateActivePage(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>このページを複製 (Ctrl+D)</button>
+                <button type="button" onClick={() => { deleteActivePage(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>このページを削除</button>
+                {image && (
+                  <>
+                    <hr style={{margin:'4px 0', border:'none', borderTop:'1px solid #333'}} />
+                    <button type="button" onClick={() => { selectBaseImageLayer(); setMenuOpen(null) }} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor:'pointer', fontSize:13}}>ベース画像を選択</button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          {/* レイヤー menu */}
+          <div style={{position:'relative'}}>
+            <button
+              type="button"
+              style={{background: menuOpen === 'layer' ? 'rgba(255,255,255,0.1)' : 'none', border:'none', color:'#e8d5c0', padding:'4px 10px', cursor:'pointer', fontSize:13, height:'100%'}}
+              onClick={() => setMenuOpen(menuOpen === 'layer' ? null : 'layer')}
+            >レイヤー</button>
+            {menuOpen === 'layer' && (
+              <div style={{position:'absolute', top:'100%', left:0, background:'#1a1a2e', border:'1px solid #333', borderRadius:4, minWidth:200, zIndex:1000, boxShadow:'0 4px 16px rgba(0,0,0,0.4)'}}>
+                <button type="button" onClick={() => { addTextLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>テキストを追加</button>
+                <button type="button" onClick={() => { addMessageWindowLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>会話枠を追加</button>
+                <button type="button" onClick={() => { addBubbleLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>吹き出しを追加</button>
+                <button type="button" onClick={() => { addMosaicLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>モザイクを追加</button>
+                <button type="button" onClick={() => { addOverlayLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>オーバーレイを追加</button>
+                <button type="button" onClick={() => { addWatermarkLayer(); setMenuOpen(null) }} disabled={!image} style={{display:'block', width:'100%', padding:'6px 16px', textAlign:'left', background:'none', border:'none', color:'#e8d5c0', cursor: image ? 'pointer' : 'default', fontSize:13, opacity: image ? 1 : 0.4}}>ウォーターマークを追加</button>
+              </div>
+            )}
+          </div>
         </nav>
       </header>
 
       <div className="workspace-grid" data-active-tool={activeTool}>
-        <aside aria-label="Tool palette" className="tool-palette" style={{background: getToolbarBg(activeTool)}}>
+        <aside aria-label="Tool palette" className="tool-palette" style={{background: getToolbarBg(activeTool), display:'flex', flexDirection:'column'}}>
           <div className="panel-title">ツール</div>
           <TooltipProvider delayDuration={400}>
             <div className="tool-stack" role="toolbar" aria-label="Tool palette">
@@ -763,154 +871,105 @@ function App() {
               ))}
             </div>
           </TooltipProvider>
-        </aside>
-
-        <main aria-label="Canvas workspace" className="canvas-panel" style={{borderLeft: `3px solid ${getCanvasBorderColor(activeTool)}`}}>
-          <div className="panel-header">
-            <div>
-              <div className="panel-title">メインキャンバス</div>
-              <div className="panel-subtitle">キャンバスワークスペース</div>
+          <div className="tool-palette-bottom" style={{marginTop:'auto', padding:'6px', borderTop:'1px solid rgba(255,255,255,0.1)'}}>
+            <div style={{display:'flex', gap:2, marginBottom:4}}>
+              <button
+                type="button"
+                style={{flex:1, fontSize:10, padding:'2px', background: bottomTab === 'text' ? '#2d4a3e' : '#1a1a2e', border:'1px solid #333', color:'#e8d5c0', borderRadius:3, cursor:'pointer'}}
+                onClick={() => setBottomTab('text')}
+              >テキスト</button>
+              <button
+                type="button"
+                style={{flex:1, fontSize:10, padding:'2px', background: bottomTab === 'variant' ? '#2d4a3e' : '#1a1a2e', border:'1px solid #333', color:'#e8d5c0', borderRadius:3, cursor:'pointer'}}
+                onClick={() => setBottomTab('variant')}
+              >差し替え</button>
             </div>
-            <div className="canvas-controls">
-              <label className="file-picker">
-                <span>画像を開く</span>
+            {bottomTab === 'text' && (
+              <div>
                 <input
-                  aria-label="画像ファイルを開く"
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
-                  multiple
-                  onChange={handleFileChange}
+                  type="text"
+                  placeholder="テキスト入力..."
+                  value={quickTextDraft}
+                  onChange={(e) => setQuickTextDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && image) { addTextLayer(); setQuickTextDraft('') } }}
+                  disabled={!image}
+                  style={{width:'100%', fontSize:11, padding:'3px 5px', background:'#1a1a2e', border:'1px solid #333', color:'#e8d5c0', borderRadius:3, marginBottom:4, boxSizing:'border-box'}}
                 />
-              </label>
-              <button type="button" onClick={selectAllVisibleLayers} disabled={!image}>
-                表示レイヤーをすべて選択
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('text')} disabled={!image}>
-                テキストレイヤーを選択
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('message-window')} disabled={!image}>
-                会話枠レイヤーを選択
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('bubble')} disabled={!image}>
-                吹き出しレイヤーを選択
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('mosaic')} disabled={!image}>
-                モザイクレイヤーを選択
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('overlay')} disabled={!image}>
-                オーバーレイレイヤーを選択
-              </button>
-              <button type="button" onClick={() => selectVisibleLayersByType('watermark')} disabled={!image}>
-                ウォーターマークレイヤーを選択
-              </button>
-              <button type="button" onClick={invertLayerSelection} disabled={!image}>
-                選択を反転
-              </button>
-              <button type="button" onClick={clearLayerSelection} disabled={!selectedLayerId}>
-                選択を解除
-              </button>
-              <button type="button" onClick={addTextLayer} disabled={!image}>
-                テキストを追加
-              </button>
-              <button type="button" onClick={addMessageWindowLayer} disabled={!image}>
-                会話枠を追加
-              </button>
-              <button type="button" onClick={addWatermarkLayer} disabled={!image}>
-                ウォーターマークを追加
-              </button>
-              <label className="file-picker">
-                <span>ウォーターマーク素材</span>
-                <input
-                  aria-label="ウォーターマーク画像を開く"
-                  type="file"
-                  accept=".png,image/png"
-                  onChange={handleWatermarkFileChange}
-                />
-              </label>
-              <button type="button" onClick={() => addBubbleLayer()} disabled={!image}>
-                吹き出しを追加
-              </button>
-              <button type="button" onClick={addMosaicLayer} disabled={!image}>
-                モザイクを追加
-              </button>
-              <button type="button" onClick={addOverlayLayer} disabled={!image}>
-                オーバーレイを追加
-              </button>
-              <button type="button" onClick={zoomOut}>
-                縮小
-              </button>
-              <button type="button" onClick={zoomIn}>
-                拡大
-              </button>
-              <button type="button" onClick={undo} disabled={undoStack.length === 0}>
-                元に戻す
-              </button>
-              <button type="button" onClick={redo} disabled={redoStack.length === 0}>
-                やり直す
-              </button>
-              <button type="button" onClick={saveNow} disabled={!isDirty}>
-                今すぐ保存
-              </button>
-              <button type="button" onClick={deleteActivePage} disabled={!image}>
-                このページを削除
-              </button>
-              <button type="button" onClick={duplicateActivePage} disabled={!image}>
-                このページを複製
-              </button>
-              <label className="text-layer-field">
-                <span>差し替えテキスト</span>
+                <button
+                  type="button"
+                  onClick={() => { if (image) { addTextLayer(); setQuickTextDraft('') } }}
+                  disabled={!image}
+                  style={{width:'100%', fontSize:11, padding:'4px', background:'#2d4a3e', border:'none', color:'#e8d5c0', borderRadius:3, cursor: image ? 'pointer' : 'default', opacity: image ? 1 : 0.5}}
+                >
+                  テキスト追加
+                </button>
+              </div>
+            )}
+            {bottomTab === 'variant' && (
+              <div style={{display:'flex', flexDirection:'column', gap:4}}>
                 <input
                   aria-label="ページ複製時のテキスト差し替え"
                   type="text"
+                  placeholder="差し替えテキスト..."
                   value={duplicatePageTextDraft}
-                  onChange={(event) => {
-                    setDuplicatePageTextDraft(event.target.value)
-                  }}
+                  onChange={(e) => setDuplicatePageTextDraft(e.target.value)}
+                  style={{width:'100%', fontSize:11, padding:'3px 5px', background:'#1a1a2e', border:'1px solid #333', color:'#e8d5c0', borderRadius:3, boxSizing:'border-box'}}
                 />
-              </label>
-              <button
-                type="button"
-                onClick={() => duplicateActivePageWithTextSwap(duplicatePageTextDraft)}
-                disabled={!image}
-              >
-                テキスト差し替えで複製
-              </button>
-              <label className="text-layer-field">
-                <span>バリアント一括</span>
+                <button
+                  type="button"
+                  onClick={() => duplicateActivePageWithTextSwap(duplicatePageTextDraft)}
+                  disabled={!image}
+                  style={{width:'100%', fontSize:11, padding:'4px', background:'#2d4a3e', border:'none', color:'#e8d5c0', borderRadius:3, cursor: image ? 'pointer' : 'default', opacity: image ? 1 : 0.5}}
+                >
+                  テキスト差し替えで複製
+                </button>
                 <textarea
                   aria-label="ページ複製バリアント一括入力"
+                  placeholder="バリアント一括..."
                   value={variantBatchDraft}
-                  onChange={(event) => {
-                    setVariantBatchDraft(event.target.value)
-                  }}
+                  onChange={(e) => setVariantBatchDraft(e.target.value)}
                   rows={3}
+                  style={{width:'100%', fontSize:11, padding:'3px 5px', background:'#1a1a2e', border:'1px solid #333', color:'#e8d5c0', borderRadius:3, boxSizing:'border-box', resize:'vertical'}}
                 />
-              </label>
-              <label className="text-layer-field">
-                <span>バリアントラベル</span>
+                <button
+                  type="button"
+                  onClick={() => duplicateActivePageWithTextVariants(variantBatchDraft.split('\n'))}
+                  disabled={!image}
+                  style={{width:'100%', fontSize:11, padding:'4px', background:'#2d4a3e', border:'none', color:'#e8d5c0', borderRadius:3, cursor: image ? 'pointer' : 'default', opacity: image ? 1 : 0.5}}
+                >
+                  バリアントを一括複製
+                </button>
                 <input
                   aria-label="アクティブページのバリアントラベル"
                   type="text"
+                  placeholder="バリアントラベル..."
                   value={image?.variantLabel ?? ''}
-                  onChange={(event) => {
-                    setActivePageVariantLabel(event.target.value)
-                  }}
+                  onChange={(e) => setActivePageVariantLabel(e.target.value)}
                   disabled={!image}
+                  style={{width:'100%', fontSize:11, padding:'3px 5px', background:'#1a1a2e', border:'1px solid #333', color:'#e8d5c0', borderRadius:3, boxSizing:'border-box'}}
                 />
-              </label>
-              <button
-                type="button"
-                onClick={() => duplicateActivePageWithTextVariants(variantBatchDraft.split('\n'))}
-                disabled={!image}
-              >
-                バリアントを一括複製
-              </button>
-              <button type="button" onClick={moveActivePageUp} disabled={!image}>
-                ページを上へ移動
-              </button>
-              <button type="button" onClick={moveActivePageDown} disabled={!image}>
-                ページを下へ移動
-              </button>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <main
+          aria-label="Canvas workspace"
+          className="canvas-panel"
+          style={{borderLeft: `3px solid ${getCanvasBorderColor(activeTool)}`}}
+          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+          onDrop={(e) => {
+            e.preventDefault()
+            const files = Array.from(e.dataTransfer.files ?? [])
+            if (files.length > 0) loadImageFiles(files)
+          }}
+        >
+          <div className="panel-header" style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'4px 8px'}}>
+            <div className="panel-title">メインキャンバス</div>
+            <div style={{display:'flex', alignItems:'center', gap:4}}>
+              <button type="button" onClick={zoomOut} style={{padding:'2px 8px', fontSize:12}}>縮小</button>
+              <span style={{fontSize:12, minWidth:40, textAlign:'center'}}>{zoomPercent}%</span>
+              <button type="button" onClick={zoomIn} style={{padding:'2px 8px', fontSize:12}}>拡大</button>
             </div>
           </div>
           <div className="canvas-surface">
@@ -950,6 +1009,7 @@ function App() {
                   imageTransform={imageTransform}
                   selectedLayerId={selectedLayerId}
                   selectedLayerIds={selectedLayerIds}
+                  zoomPercent={zoomPercent}
                   onSelectLayers={(ids, additive) => setSelectedLayerIds(ids, additive)}
                   onMoveSelectedLayers={(dx, dy) => moveSelectedLayersByDelta(dx, dy)}
                   onResizeSelectedLayers={(dx, dy, handle, preserveAspectRatio) =>
