@@ -11,8 +11,9 @@ import {
   runSam3ManualSegment,
   subscribeToBackendModelProgress,
   updateBackendRuntimeConfig,
+  detectFacesForBubble,
 } from '../../lib/api/pythonClient'
-import type { BackendRuntimeConfig } from '../../lib/api/pythonClient'
+import type { BackendRuntimeConfig, FaceDetectionResult } from '../../lib/api/pythonClient'
 import {
   createEmptyBackendActionResults,
   createEmptyBackendReviewPageState,
@@ -40,7 +41,7 @@ const BACKEND_REVIEW_STATE_STORAGE_KEY = 'creators-coco.backend-review-state'
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function BackendPanel() {
-  const { pages, activePageId, addBackendMosaicLayers, addBackendMosaicLayersToPage, addBackendOverlayLayers } = useWorkspaceStore()
+  const { pages, activePageId, addBackendMosaicLayers, addBackendMosaicLayersToPage, addBackendOverlayLayers, addBubbleLayer } = useWorkspaceStore()
   const image = selectActiveImage({ pages, activePageId })
 
   const {
@@ -86,6 +87,68 @@ export function BackendPanel() {
   const [batchPageCheckboxes, setBatchPageCheckboxes] = useState<Record<string, boolean>>({})
   const [runtimeConfig, setRuntimeConfig] = useState<BackendRuntimeConfig | null>(null)
   const [runtimeConfigSaving, setRuntimeConfigSaving] = useState(false)
+
+  // Auto bubble placement state
+  const [autoBubbleLoading, setAutoBubbleLoading] = useState(false)
+  const [autoBubbleError, setAutoBubbleError] = useState<string | null>(null)
+  const [autoBubbleSuggestions, setAutoBubbleSuggestions] = useState<Array<{ x: number; y: number; width: number; height: number; label: string }>>([])
+  const [autoBubbleSectionOpen, setAutoBubbleSectionOpen] = useState(false)
+
+  const runAutoBubblePlacement = useCallback(async () => {
+    if (!image?.sourceUrl) {
+      setAutoBubbleError('画像が読み込まれていません')
+      return
+    }
+    setAutoBubbleLoading(true)
+    setAutoBubbleError(null)
+    setAutoBubbleSuggestions([])
+    try {
+      // Convert image URL to base64 for API
+      const response = await fetch(image.sourceUrl)
+      const blob = await response.blob()
+      const reader = new FileReader()
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve((reader.result as string).split(',')[1] ?? '')
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+      const result = await detectFacesForBubble(base64)
+      const faces = result.faces as FaceDetectionResult[]
+      // Calculate open areas avoiding faces
+      const CANVAS_W = 1920
+      const CANVAS_H = 1080
+      const quadrants = [
+        { label: '左上', x: 240, y: 180 },
+        { label: '右上', x: CANVAS_W - 460, y: 180 },
+        { label: '左下', x: 240, y: CANVAS_H - 300 },
+        { label: '右下', x: CANVAS_W - 460, y: CANVAS_H - 300 },
+        { label: '中央上', x: CANVAS_W / 2, y: 180 },
+      ]
+      const isNearFace = (cx: number, cy: number) =>
+        faces.some((f) => {
+          const fx = f.x + f.width / 2
+          const fy = f.y + f.height / 2
+          return Math.abs(cx - fx) < f.width / 2 + 50 && Math.abs(cy - fy) < f.height / 2 + 50
+        })
+      const suggestions = quadrants
+        .filter((q) => !isNearFace(q.x, q.y))
+        .slice(0, 3)
+        .map((q) => ({ x: q.x, y: q.y, width: 220, height: 120, label: q.label }))
+      if (suggestions.length === 0) {
+        // fallback: pick corners away from all faces
+        suggestions.push({ x: 240, y: 180, width: 220, height: 120, label: '左上（デフォルト）' })
+      }
+      setAutoBubbleSuggestions(suggestions)
+    } catch {
+      setAutoBubbleError('バックエンドに接続できませんでした。フォールバック配置を使用します。')
+      setAutoBubbleSuggestions([
+        { x: 240, y: 180, width: 220, height: 120, label: '左上' },
+        { x: 1460, y: 180, width: 220, height: 120, label: '右上' },
+      ])
+    } finally {
+      setAutoBubbleLoading(false)
+    }
+  }, [image])
 
   const runBatchMosaic = useCallback(async () => {
     const selectedPageIds = Object.entries(batchPageCheckboxes)
@@ -338,7 +401,7 @@ export function BackendPanel() {
     if (!image) return
     updateBackendActions((current) => ({ ...current, sam3AutoMosaic: 'Running SAM3 auto mosaic...' }))
     try {
-      const response = await runSam3AutoMosaic(image.src, backendSam3ModelSize, backendAutoMosaicStrength)
+      const response = await runSam3AutoMosaic(image.sourceUrl ?? '', backendSam3ModelSize, backendAutoMosaicStrength)
       const resultLabel = `SAM3 auto mosaic ready with ${response.masks.length} mask${response.masks.length === 1 ? '' : 's'}`
       updateActiveBackendActionResults((current) => ({
         ...current,
@@ -364,7 +427,7 @@ export function BackendPanel() {
     if (!image) return
     updateBackendActions((current) => ({ ...current, nsfwDetection: 'Running NSFW detection...' }))
     try {
-      const response = await runNsfwDetection(image.src, Number.parseFloat(backendNsfwThreshold) || 0.7)
+      const response = await runNsfwDetection(image.sourceUrl ?? '', Number.parseFloat(backendNsfwThreshold) || 0.7)
       const resultLabel = `NSFW detection found ${response.detections.length} region${response.detections.length === 1 ? '' : 's'}`
       updateActiveBackendActionResults((current) => ({
         ...current,
@@ -388,7 +451,7 @@ export function BackendPanel() {
     if (!image) return
     updateBackendActions((current) => ({ ...current, sam3ManualSegment: 'Running SAM3 manual segment...' }))
     try {
-      await runSam3ManualSegment(image.src, backendSam3ModelSize, backendManualSegmentPoints)
+      await runSam3ManualSegment(image.sourceUrl ?? '', backendSam3ModelSize, backendManualSegmentPoints)
       const resultLabel = `SAM3 manual segment ready with ${backendManualSegmentPoints.length} point${backendManualSegmentPoints.length === 1 ? '' : 's'}`
       updateActiveBackendActionResults((current) => ({ ...current, sam3ManualSegmentMaskReady: true }))
       updateBackendActions((current) => ({ ...current, sam3ManualSegment: resultLabel }))
@@ -1268,6 +1331,50 @@ export function BackendPanel() {
           </div>
         </div>
       )}
+
+      {/* Auto bubble placement section */}
+      <div className="sidebar-card" style={{marginTop: '8px'}}>
+        <button
+          type="button"
+          className="panel-title"
+          style={{width:'100%',textAlign:'left',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}
+          onClick={() => setAutoBubbleSectionOpen((v) => !v)}
+        >
+          <span>フキダシ自動配置</span>
+          <span style={{fontSize:'0.75em',opacity:0.6}}>{autoBubbleSectionOpen ? '▲' : '▼'}</span>
+        </button>
+        {autoBubbleSectionOpen && (
+          <div style={{padding:'8px 0'}}>
+            <Button
+              onClick={() => void runAutoBubblePlacement()}
+              disabled={autoBubbleLoading || !image}
+              size="sm"
+              style={{width:'100%',marginBottom:'8px'}}
+            >
+              {autoBubbleLoading ? '検出中...' : '顔検出でフキダシ配置'}
+            </Button>
+            {autoBubbleError && (
+              <div style={{fontSize:'0.75em',color:'#ffaa66',marginBottom:'8px'}}>{autoBubbleError}</div>
+            )}
+            {autoBubbleSuggestions.length > 0 && (
+              <div>
+                <div style={{fontSize:'0.75em',opacity:0.7,marginBottom:'4px'}}>配置候補:</div>
+                {autoBubbleSuggestions.map((s, i) => (
+                  <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'4px'}}>
+                    <span style={{fontSize:'0.8em'}}>{s.label}</span>
+                    <Button
+                      size="sm"
+                      onClick={() => addBubbleLayer({ x: s.x, y: s.y, width: s.width, height: s.height })}
+                    >
+                      適用
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   )
 }

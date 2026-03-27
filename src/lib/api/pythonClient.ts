@@ -253,3 +253,34 @@ export const runSam3ManualSegment = async (
 
   return (await response.json()) as Sam3SegmentResponse
 }
+
+export type FaceDetectionResult = {
+  x: number
+  y: number
+  width: number
+  height: number
+  confidence: number
+}
+
+export type DetectFacesResponse = {
+  faces: FaceDetectionResult[]
+  status: string
+}
+
+export const detectFacesForBubble = async (
+  imageBase64: string,
+): Promise<DetectFacesResponse> => {
+  const response = await fetch(`${getBackendBaseUrl()}/sam3/detect-faces`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ image_base64: imageBase64 }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Face detection request failed: ${response.status}`)
+  }
+
+  return (await response.json()) as DetectFacesResponse
+}

@@ -24,6 +24,9 @@ import {
   Stamp,
   GripVertical,
   PenLine,
+  BookOpen,
+  Brain,
+  LayoutGrid,
 } from 'lucide-react'
 import { KonvaCanvas } from './components/KonvaCanvas'
 import { PageThumb } from './components/PageThumb'
@@ -52,6 +55,9 @@ const TOOL_ICON_BY_ID: Record<Tool, React.ReactNode> = {
   mosaic: <Grid2X2 className="w-5 h-5" />,
   'freehand-mosaic': <PenLine className="w-5 h-5" />,
   overlay: <Layers className="w-5 h-5" />,
+  library: <BookOpen className="w-5 h-5" />,
+  backend: <Brain className="w-5 h-5" />,
+  export: <Download className="w-5 h-5" />,
 }
 
 const TOOL_LABEL_JA_BY_ID: Record<Tool, string> = {
@@ -62,6 +68,27 @@ const TOOL_LABEL_JA_BY_ID: Record<Tool, string> = {
   mosaic: 'モザイク',
   'freehand-mosaic': '投げ縄',
   overlay: 'オーバーレイ',
+  library: 'プリセット',
+  backend: 'バックエンド',
+  export: '書き出し',
+}
+
+const LAYER_TOOLS: Tool[] = ['text', 'message-window', 'bubble', 'mosaic', 'freehand-mosaic', 'overlay', 'watermark' as Tool]
+
+const getToolbarBg = (tool: Tool): string => {
+  if (LAYER_TOOLS.includes(tool)) return '#2d4a3e'
+  if (tool === 'export') return '#3a2d1a'
+  if (tool === 'library') return '#2d1a3a'
+  if (tool === 'backend') return '#1a2d3a'
+  return '#1a1a2e'
+}
+
+const getCanvasBorderColor = (tool: Tool): string => {
+  if (LAYER_TOOLS.includes(tool)) return '#4a8c6a'
+  if (tool === 'export') return '#c8882a'
+  if (tool === 'library') return '#8a4ac8'
+  if (tool === 'backend') return '#2a7ec8'
+  return '#3a3a5e'
 }
 
 type MarqueeSelection = {
@@ -104,6 +131,7 @@ function App() {
   const [numberPaddingDraft, setNumberPaddingDraft] = useState('2')
   const [duplicatePageTextDraft, setDuplicatePageTextDraft] = useState('Variant line')
   const [variantBatchDraft, setVariantBatchDraft] = useState('Variant A\nVariant B')
+  const [showGallery, setShowGallery] = useState(false)
   const [marqueeSelection, setMarqueeSelection] = useState<MarqueeSelection | null>(null)
   const [layerDragState, setLayerDragState] = useState<LayerDragState | null>(null)
   const [layerResizeState, setLayerResizeState] = useState<LayerResizeState | null>(null)
@@ -525,13 +553,17 @@ function App() {
   }
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+    const files = Array.from(event.target.files ?? [])
 
-    if (!file) {
+    if (files.length === 0) {
       return
     }
 
-    loadImageFile(file)
+    if (files.length === 1 && files[0]) {
+      loadImageFile(files[0])
+    } else {
+      loadImageFiles(files)
+    }
     event.target.value = ''
   }
 
@@ -707,8 +739,8 @@ function App() {
         </nav>
       </header>
 
-      <div className="workspace-grid">
-        <aside aria-label="Tool palette" className="tool-palette">
+      <div className="workspace-grid" data-active-tool={activeTool}>
+        <aside aria-label="Tool palette" className="tool-palette" style={{background: getToolbarBg(activeTool)}}>
           <div className="panel-title">ツール</div>
           <TooltipProvider delayDuration={400}>
             <div className="tool-stack" role="toolbar" aria-label="Tool palette">
@@ -733,7 +765,7 @@ function App() {
           </TooltipProvider>
         </aside>
 
-        <main aria-label="Canvas workspace" className="canvas-panel">
+        <main aria-label="Canvas workspace" className="canvas-panel" style={{borderLeft: `3px solid ${getCanvasBorderColor(activeTool)}`}}>
           <div className="panel-header">
             <div>
               <div className="panel-title">メインキャンバス</div>
@@ -746,6 +778,7 @@ function App() {
                   aria-label="画像ファイルを開く"
                   type="file"
                   accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                  multiple
                   onChange={handleFileChange}
                 />
               </label>
@@ -794,7 +827,7 @@ function App() {
                   onChange={handleWatermarkFileChange}
                 />
               </label>
-              <button type="button" onClick={addBubbleLayer} disabled={!image}>
+              <button type="button" onClick={() => addBubbleLayer()} disabled={!image}>
                 吹き出しを追加
               </button>
               <button type="button" onClick={addMosaicLayer} disabled={!image}>
@@ -881,7 +914,36 @@ function App() {
             </div>
           </div>
           <div className="canvas-surface">
-            {image ? (
+            {showGallery ? (
+              <div style={{display:'flex',flexWrap:'wrap',gap:'16px',padding:'16px',overflowY:'auto',height:'100%',alignContent:'flex-start'}}>
+                {pages.map((page, index) => {
+                  const thumb = pageThumbnails[page.id]
+                  const isActive = page.id === activePageId
+                  return (
+                    <div
+                      key={page.id}
+                      style={{
+                        display:'flex',flexDirection:'column',alignItems:'center',gap:'6px',cursor:'pointer',
+                        border: isActive ? '3px solid #bf8f52' : '2px solid rgba(255,255,255,0.15)',
+                        borderRadius:'6px',padding:'8px',background: isActive ? 'rgba(191,143,82,0.1)' : 'rgba(255,255,255,0.04)',
+                        minWidth:'180px',maxWidth:'220px',
+                      }}
+                      onClick={() => { selectPage(page.id); setShowGallery(false) }}
+                    >
+                      {thumb ? (
+                        <img src={thumb} alt={page.name} style={{width:'200px',height:'auto',borderRadius:'3px',objectFit:'contain'}} />
+                      ) : (
+                        <div style={{width:'200px',height:'113px',background:'rgba(255,255,255,0.08)',borderRadius:'3px',display:'flex',alignItems:'center',justifyContent:'center',color:'rgba(255,255,255,0.3)',fontSize:'12px'}}>
+                          No preview
+                        </div>
+                      )}
+                      <span style={{fontSize:'11px',opacity:0.6}}>{`${index + 1}`.padStart(2,'0')}</span>
+                      <strong style={{fontSize:'12px',textAlign:'center',wordBreak:'break-word'}}>{page.name}</strong>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : image ? (
               <div className="canvas-stack">
                 <KonvaCanvas
                   image={image}
@@ -1084,7 +1146,17 @@ function App() {
 
         <div className="right-sidebar">
           <aside aria-label="ページ一覧" className="sidebar-card">
-            <div className="panel-title">ページ</div>
+            <div className="panel-title" style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
+              <span>ページ</span>
+              <button
+                type="button"
+                title={showGallery ? 'ギャラリーを閉じる' : 'ギャラリー表示'}
+                style={{fontSize:'0.75em', padding:'2px 6px', opacity: 0.8}}
+                onClick={() => setShowGallery((v) => !v)}
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
             <div className="page-list">
               {pages.length === 0 ? (
                 <div className="page-card current empty">
@@ -1111,7 +1183,9 @@ function App() {
                         }
                       }}
                     >
-                      <PageThumb page={page} isActive={isActive} className="mb-1" />
+                      <div style={{cursor:'pointer'}} onClick={() => selectPage(page.id)}>
+                        <PageThumb page={page} isActive={isActive} className="mb-1" />
+                      </div>
                       <button
                         type="button"
                         className="page-card-info page-button"
@@ -1135,111 +1209,117 @@ function App() {
             {loadError ? <div className="page-meta error-text">{loadError}</div> : null}
           </aside>
 
-          <section aria-label="プロパティインスペクター" className="sidebar-card">
-            <div className="panel-title">インスペクター</div>
-            <dl className="inspector-grid">
-              <div>
-                <dt>選択</dt>
-                <dd>{selectedLayerCount > 1 ? `${selectedLayerCount} 個のレイヤーを選択中` : selectionLabel}</dd>
-              </div>
-              <div>
-                <dt>ツール</dt>
-                <dd>{activeTool}</dd>
-              </div>
-              <div>
-                <dt>出力</dt>
-                <dd>{`${outputSettings.width} x ${outputSettings.height} ${outputSettings.format.toUpperCase()}`}</dd>
-              </div>
-              {activePageVariantLabel ? (
+          {activeTool !== 'export' && activeTool !== 'library' && activeTool !== 'backend' ? (
+            <section aria-label="プロパティインスペクター" className="sidebar-card">
+              <div className="panel-title">インスペクター</div>
+              <dl className="inspector-grid">
                 <div>
-                  <dt>バリアント</dt>
-                  <dd>{`バリアント ${activePageVariantLabel}`}</dd>
+                  <dt>選択</dt>
+                  <dd>{selectedLayerCount > 1 ? `${selectedLayerCount} 個のレイヤーを選択中` : selectionLabel}</dd>
                 </div>
-              ) : null}
-              {activePageVariantSourceLabel ? (
                 <div>
-                  <dt>元バリアント</dt>
-                  <dd>{`元 ${activePageVariantSourceLabel}`}</dd>
+                  <dt>ツール</dt>
+                  <dd>{activeTool}</dd>
                 </div>
-              ) : null}
-              <div>
-                <dt>位置</dt>
-                <dd>{positionLabel}</dd>
-              </div>
-              <div>
-                <dt>サイズ</dt>
-                <dd>{sizeLabel}</dd>
-              </div>
-              {selectionBoundsLabel ? (
                 <div>
-                  <dt>選択範囲</dt>
-                  <dd>{selectionBoundsLabel}</dd>
+                  <dt>出力</dt>
+                  <dd>{`${outputSettings.width} x ${outputSettings.height} ${outputSettings.format.toUpperCase()}`}</dd>
                 </div>
-              ) : null}
-              {selectedLayerTypeLabel ? (
+                {activePageVariantLabel ? (
+                  <div>
+                    <dt>バリアント</dt>
+                    <dd>{`バリアント ${activePageVariantLabel}`}</dd>
+                  </div>
+                ) : null}
+                {activePageVariantSourceLabel ? (
+                  <div>
+                    <dt>元バリアント</dt>
+                    <dd>{`元 ${activePageVariantSourceLabel}`}</dd>
+                  </div>
+                ) : null}
                 <div>
-                  <dt>選択タイプ</dt>
-                  <dd>{selectedLayerTypeLabel}</dd>
+                  <dt>位置</dt>
+                  <dd>{positionLabel}</dd>
                 </div>
-              ) : null}
-              {multiSelectionActionLabel ? (
                 <div>
-                  <dt>共通操作</dt>
-                  <dd>{multiSelectionActionLabel}</dd>
+                  <dt>サイズ</dt>
+                  <dd>{sizeLabel}</dd>
                 </div>
-              ) : null}
-              {activeLayerGroupId ? (
-                <div>
-                  <dt>グループ</dt>
-                  <dd>{`グループ内 ${activeLayerGroupCount} レイヤー`}</dd>
-                </div>
-              ) : null}
-              {!noLayerSelected ? (
-                <div>
-                  <dt>表示</dt>
-                  <dd>{visibilityLabel}</dd>
-                </div>
-              ) : null}
-              {!noLayerSelected ? (
-                <div>
-                  <dt>ロック</dt>
-                  <dd>{lockLabel}</dd>
-                </div>
-              ) : null}
-              <InspectorLayerDetails />
-            </dl>
-          </section>
+                {selectionBoundsLabel ? (
+                  <div>
+                    <dt>選択範囲</dt>
+                    <dd>{selectionBoundsLabel}</dd>
+                  </div>
+                ) : null}
+                {selectedLayerTypeLabel ? (
+                  <div>
+                    <dt>選択タイプ</dt>
+                    <dd>{selectedLayerTypeLabel}</dd>
+                  </div>
+                ) : null}
+                {multiSelectionActionLabel ? (
+                  <div>
+                    <dt>共通操作</dt>
+                    <dd>{multiSelectionActionLabel}</dd>
+                  </div>
+                ) : null}
+                {activeLayerGroupId ? (
+                  <div>
+                    <dt>グループ</dt>
+                    <dd>{`グループ内 ${activeLayerGroupCount} レイヤー`}</dd>
+                  </div>
+                ) : null}
+                {!noLayerSelected ? (
+                  <div>
+                    <dt>表示</dt>
+                    <dd>{visibilityLabel}</dd>
+                  </div>
+                ) : null}
+                {!noLayerSelected ? (
+                  <div>
+                    <dt>ロック</dt>
+                    <dd>{lockLabel}</dd>
+                  </div>
+                ) : null}
+                <InspectorLayerDetails />
+              </dl>
+            </section>
+          ) : null}
 
-          <LayersPanel />
+          {activeTool !== 'export' && activeTool !== 'library' && activeTool !== 'backend' ? (
+            <LayersPanel />
+          ) : null}
 
-          <section aria-label="最近のプロジェクト" className="sidebar-card">
-            <div className="panel-title">最近のプロジェクト</div>
-            <div className="page-list">
-              {recentProjects.length === 0 ? (
-                <div className="page-card empty">
-                  <strong>保存済みプロジェクトはありません</strong>
-                </div>
-              ) : (
-                recentProjects.map((project) => (
-                  <button
-                    key={project.id}
-                    type="button"
-                    className="page-card page-button"
-                    onClick={() => openRecentProject(project.id)}
-                    aria-label={`Open recent project: ${project.name}`}
-                  >
-                    <strong>{project.name}</strong>
-                    <span>{project.pageCount} pages</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </section>
+          {activeTool === 'select' ? (
+            <section aria-label="最近のプロジェクト" className="sidebar-card">
+              <div className="panel-title">最近のプロジェクト</div>
+              <div className="page-list">
+                {recentProjects.length === 0 ? (
+                  <div className="page-card empty">
+                    <strong>保存済みプロジェクトはありません</strong>
+                  </div>
+                ) : (
+                  recentProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      type="button"
+                      className="page-card page-button"
+                      onClick={() => openRecentProject(project.id)}
+                      aria-label={`Open recent project: ${project.name}`}
+                    >
+                      <strong>{project.name}</strong>
+                      <span>{project.pageCount} pages</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </section>
+          ) : null}
 
-          <BackendPanel />
+          {activeTool === 'backend' ? <BackendPanel /> : null}
 
-          <PresetLibraryPanel />
-          <ExportSettingsPanel onExportComplete={setExportMessage} />
+          {activeTool === 'library' ? <PresetLibraryPanel /> : null}
+          {activeTool === 'export' ? <ExportSettingsPanel onExportComplete={setExportMessage} /> : null}
         </div>
       </div>
 

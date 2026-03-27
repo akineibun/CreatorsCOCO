@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { BubbleShape } from '../lib/bubbleShapes'
 
-export type Tool = 'select' | 'text' | 'message-window' | 'bubble' | 'mosaic' | 'freehand-mosaic' | 'overlay'
+export type Tool = 'select' | 'text' | 'message-window' | 'bubble' | 'mosaic' | 'freehand-mosaic' | 'overlay' | 'library' | 'backend' | 'export'
 
 export type CanvasImage = {
   id: string
@@ -462,7 +462,7 @@ type WorkspaceState = {
   renameWatermarkStylePreset: (presetId: string, name: string) => void
   duplicateWatermarkStylePreset: (presetId: string) => void
   deleteWatermarkStylePreset: (presetId: string) => void
-  addBubbleLayer: () => void
+  addBubbleLayer: (opts?: { x?: number; y?: number; width?: number; height?: number }) => void
   selectBubbleLayer: (layerId: string, additive?: boolean) => void
   updateSelectedBubbleLayerText: (text: string) => void
   moveSelectedBubbleLayer: (dx: number, dy: number) => void
@@ -1005,7 +1005,7 @@ const readFileAsDataUrl = async (file: File): Promise<string | null> => {
 }
 
 const createInitialState = () => ({
-  activeTool: 'select',
+  activeTool: 'select' as Tool,
   zoomPercent: 100,
   pages: [] as CanvasImage[],
   activePageId: null as string | null,
@@ -4131,13 +4131,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set((state) => ({
       messageWindowPresets: state.messageWindowPresets.filter((preset) => preset.id !== presetId),
     })),
-  addBubbleLayer: () =>
+  addBubbleLayer: (opts) =>
     set((state) => {
       if (!state.activePageId) {
         return state
       }
 
-      const bubbleLayer = createBubbleLayer()
+      const bubbleLayer = {
+        ...createBubbleLayer(),
+        ...(opts?.x !== undefined ? { x: opts.x } : {}),
+        ...(opts?.y !== undefined ? { y: opts.y } : {}),
+        ...(opts?.width !== undefined ? { width: opts.width } : {}),
+        ...(opts?.height !== undefined ? { height: opts.height } : {}),
+      }
 
       return withHistory(state, {
         pages: updateActivePage(state.pages, state.activePageId, (page) => ({
@@ -6926,6 +6932,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         selectedLayerIds: [],
         activeTool: 'select' as const,
         imageTransform: { ...INITIAL_IMAGE_TRANSFORM },
+        zoomPercent: 100,
       }
     }),
   selectBaseImageLayer: () =>
@@ -6978,4 +6985,7 @@ export const toolLabels: Array<{ id: Tool; label: string }> = [
   { id: 'mosaic', label: 'Mosaic' },
   { id: 'freehand-mosaic', label: 'Freehand mosaic' },
   { id: 'overlay', label: 'Overlay' },
+  { id: 'library', label: 'Library' },
+  { id: 'backend', label: 'Backend' },
+  { id: 'export', label: 'Export' },
 ]

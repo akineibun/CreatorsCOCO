@@ -431,8 +431,8 @@ const drawBubble = (
       ctx.fill()
       ctx.stroke()
     } else {
-      ctx.fillRect(x, y, width, height)
-      ctx.strokeRect(x, y, width, height)
+      ;(ctx as unknown as CanvasRenderingContext2D).fillRect(x, y, width, height)
+      ;(ctx as unknown as CanvasRenderingContext2D).strokeRect(x, y, width, height)
     }
   } else {
     const pts = getBubblePolygonPoints(bubbleShape, shapeSeed)
@@ -1247,6 +1247,10 @@ function HorizontalTextNode({ layer, x, y, selected, onPointerDown, onClick }: N
   const lineH = layer.fontSize * layer.lineHeight
   const totalH = lines.length * lineH
 
+  const handleDblClick = () => {
+    window.dispatchEvent(new CustomEvent('creatorscoco:edit-text', { detail: { layerId: layer.id } }))
+  }
+
   return (
     <Shape
       x={x}
@@ -1267,6 +1271,7 @@ function HorizontalTextNode({ layer, x, y, selected, onPointerDown, onClick }: N
       strokeWidth={selected ? 0 : 0}
       onMouseDown={onPointerDown}
       onClick={onClick}
+      onDblClick={handleDblClick}
     />
   )
 }
@@ -1279,6 +1284,10 @@ function VerticalTextNode({ layer, x, y, selected, onPointerDown, onClick }: Nod
   const totalW = lines.length * colW
   const maxLineLen = Math.max(...lines.map((l) => l.length))
   const totalH = maxLineLen * (layer.fontSize * layer.lineHeight + layer.letterSpacing)
+
+  const handleDblClick = () => {
+    window.dispatchEvent(new CustomEvent('creatorscoco:edit-text', { detail: { layerId: layer.id } }))
+  }
 
   return (
     <Shape
@@ -1298,6 +1307,7 @@ function VerticalTextNode({ layer, x, y, selected, onPointerDown, onClick }: Nod
       }}
       onMouseDown={onPointerDown}
       onClick={onClick}
+      onDblClick={handleDblClick}
     />
   )
 }

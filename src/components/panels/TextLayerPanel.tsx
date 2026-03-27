@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useWorkspaceStore, selectActiveImage } from '../../stores/workspaceStore'
 import type { CanvasTextLayer } from '../../stores/workspaceStore'
 import { FontPicker } from '../FontPicker'
@@ -7,6 +7,16 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '..
 
 export function TextLayerPanel() {
   const [rubyDraft, setRubyDraft] = useState('')
+  const textInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const handleEditText = () => {
+      textInputRef.current?.focus()
+      textInputRef.current?.select()
+    }
+    window.addEventListener('creatorscoco:edit-text', handleEditText)
+    return () => window.removeEventListener('creatorscoco:edit-text', handleEditText)
+  }, [])
 
   const {
     pages,
@@ -74,7 +84,7 @@ export function TextLayerPanel() {
               </label>
               <label className="text-layer-field">
                 <span>テキスト</span>
-                <input type="text" aria-label="Selected text content" value={activeLayer.text} onChange={e => updateSelectedTextLayerText(e.target.value)} />
+                <input type="text" aria-label="Selected text content" value={activeLayer.text} onChange={e => updateSelectedTextLayerText(e.target.value)} ref={textInputRef} data-layer-text-input />
               </label>
               <label className="text-layer-field">
                 <span>フォント</span>

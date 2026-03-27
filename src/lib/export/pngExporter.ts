@@ -173,6 +173,22 @@ export const exportPageAsPng = async (
   const mapY = (value: number) => exportFrame.y + value * exportFrame.scaleY
   const mapSize = (value: number) => Math.max(1, value * Math.min(exportFrame.scaleX, exportFrame.scaleY))
 
+  // Canvas-space to export-space coordinate helpers (accounts for imageTransform)
+  const canvasToExportX = (canvasX: number) => {
+    if (!imageTransform) return exportFrame.x + canvasX * exportFrame.scaleX
+    const imageRelX = (canvasX - imageTransform.x) / imageTransform.width
+    return exportFrame.x + imageRelX * exportFrame.width
+  }
+  const canvasToExportY = (canvasY: number) => {
+    if (!imageTransform) return exportFrame.y + canvasY * exportFrame.scaleY
+    const imageRelY = (canvasY - imageTransform.y) / imageTransform.height
+    return exportFrame.y + imageRelY * exportFrame.height
+  }
+  const canvasToExportSize = (canvasSize: number) => {
+    if (!imageTransform) return Math.max(1, canvasSize * Math.min(exportFrame.scaleX, exportFrame.scaleY))
+    return Math.max(1, canvasSize / imageTransform.width * exportFrame.width)
+  }
+
   if (outputSettings.resizeBackgroundMode === 'black') {
     context.fillStyle = '#000000'
     context.fillRect(0, 0, canvas.width, canvas.height)
@@ -204,26 +220,6 @@ export const exportPageAsPng = async (
   } else {
     context.fillStyle = outputSettings.resizeBackgroundMode === 'black' ? '#111111' : '#f4ede3'
     context.fillRect(exportFrame.x, exportFrame.y, exportFrame.width, exportFrame.height)
-  }
-
-  context.fillStyle = EXPORT_TEXT
-  context.font = '48px Segoe UI'
-  context.textAlign = 'center'
-  context.fillText(image.name, exportFrame.x + exportFrame.width / 2, exportFrame.y + exportFrame.height / 2)
-  context.font = '24px Segoe UI'
-  context.fillText(
-    `Quality ${outputSettings.qualityMode}`,
-    exportFrame.x + exportFrame.width / 2,
-    exportFrame.y + exportFrame.height / 2 + 88,
-  )
-
-  if (imageTransform) {
-    context.font = '28px Segoe UI'
-    context.fillText(
-      `${imageTransform.width} x ${imageTransform.height} at ${imageTransform.x}, ${imageTransform.y}`,
-      exportFrame.x + exportFrame.width / 2,
-      exportFrame.y + exportFrame.height / 2 + 56,
-    )
   }
 
   image.textLayers.filter((layer) => layer.visible).forEach((layer) => {
@@ -408,7 +404,7 @@ export const exportPageAsPng = async (
       context.fill()
       context.stroke()
     } else {
-      context.fillRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight)
+      ;(context as CanvasRenderingContext2D).fillRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight)
     }
     context.beginPath?.()
     if (layer.tailDirection === 'left') {
@@ -473,12 +469,31 @@ export const exportPageAsPng = async (
     }
 
     if (layer.style === 'pixelate') {
-      const blockSize = Math.max(8, Math.round(mapSize(layer.intensity)))
-      context.fillStyle = 'rgba(36, 27, 21, 0.14)'
-      for (let offsetX = 0; offsetX < width; offsetX += blockSize) {
-        for (let offsetY = 0; offsetY < height; offsetY += blockSize) {
-          if (((offsetX / blockSize) + (offsetY / blockSize)) % 2 === 0) {
-            context.fillRect(x + offsetX, y + offsetY, Math.max(2, blockSize - 1), Math.max(2, blockSize - 1))
+      const blockSize = Math.max(4, Math.round(canvasToExportSize(layer.intensity)))
+      if (sourceImage) {
+        const offscreen = document.createElement('canvas')
+        offscreen.width = Math.max(1, Math.ceil(width / blockSize))
+        offscreen.height = Math.max(1, Math.ceil(height / blockSize))
+        const offCtx = offscreen.getContext('2d')
+        if (offCtx) {
+          offCtx.drawImage(
+            sourceImage,
+            (x - exportFrame.x) / exportFrame.scaleX, (y - exportFrame.y) / exportFrame.scaleY,
+            width / exportFrame.scaleX, height / exportFrame.scaleY,
+            0, 0, offscreen.width, offscreen.height,
+          )
+          context.imageSmoothingEnabled = false
+          context.drawImage(offscreen, x, y, width, height)
+          context.imageSmoothingEnabled = true
+        }
+      } else {
+        const blockSizeFallback = Math.max(8, Math.round(mapSize(layer.intensity)))
+        context.fillStyle = 'rgba(36, 27, 21, 0.14)'
+        for (let offsetX = 0; offsetX < width; offsetX += blockSizeFallback) {
+          for (let offsetY = 0; offsetY < height; offsetY += blockSizeFallback) {
+            if (((offsetX / blockSizeFallback) + (offsetY / blockSizeFallback)) % 2 === 0) {
+              context.fillRect(x + offsetX, y + offsetY, Math.max(2, blockSizeFallback - 1), Math.max(2, blockSizeFallback - 1))
+            }
           }
         }
       }
@@ -499,18 +514,6 @@ export const exportPageAsPng = async (
 
     if (isFreehand) {
       context.restore()
-    } else {
-      context.strokeStyle = '#241b15'
-      context.lineWidth = 2
-      context.strokeRect(x, y, width, height)
-      context.fillStyle = '#241b15'
-      context.font = `${Math.max(12, Math.round(mapSize(24)))}px Segoe UI`
-      context.textAlign = 'center'
-      context.fillText(
-        `${layer.style === 'pixelate' ? 'Mosaic' : layer.style === 'blur' ? 'Blur' : 'Noise'} ${layer.intensity}`,
-        mapX(layer.x),
-        mapY(layer.y + 6),
-      )
     }
   })
 
