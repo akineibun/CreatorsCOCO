@@ -558,6 +558,7 @@ export type KonvaCanvasProps = {
   imageTransform: CanvasTransform | null
   selectedLayerId: string | null
   selectedLayerIds: string[]
+  zoomPercent?: number
 
   // Callbacks
   onSelectLayers: (ids: string[], additive: boolean) => void
@@ -576,6 +577,7 @@ export function KonvaCanvas({
   imageTransform,
   selectedLayerId,
   selectedLayerIds,
+  zoomPercent = 100,
   onSelectLayers,
   onMoveSelectedLayers,
   onResizeSelectedLayers,
@@ -668,20 +670,24 @@ export function KonvaCanvas({
   const containerRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<Konva.Stage>(null)
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null)
-  const [displayWidth, setDisplayWidth] = useState(720)
+  const [containerWidth, setContainerWidth] = useState(720)
 
   // Measure container for responsive Stage sizing
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
     const obs = new ResizeObserver(([entry]) => {
-      setDisplayWidth(Math.round(entry.contentRect.width))
+      const w = entry.contentRect.width
+      if (w && w > 0) setContainerWidth(Math.floor(w))
     })
     obs.observe(el)
-    setDisplayWidth(Math.round(el.getBoundingClientRect().width) || 720)
+    setContainerWidth(Math.floor(el.getBoundingClientRect().width) || 720)
     return () => obs.disconnect()
   }, [])
 
+  // Base size = container width; zoom scales from there
+  const baseWidth = containerWidth
+  const displayWidth = Math.round(baseWidth * zoomPercent / 100)
   const displayHeight = Math.round(displayWidth * (CANVAS_H / CANVAS_W))
   const scale = displayWidth / CANVAS_W
 
@@ -980,7 +986,7 @@ export function KonvaCanvas({
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div ref={containerRef} className={className} style={{ lineHeight: 0 }}>
+    <div ref={containerRef} className={className} style={{ lineHeight: 0, width: '100%', overflow: 'hidden' }}>
     <Stage
       ref={stageRef}
       width={displayWidth}
