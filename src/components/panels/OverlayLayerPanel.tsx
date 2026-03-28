@@ -139,8 +139,8 @@ export function OverlayLayerPanel() {
 
       {/* Layer order & delete */}
       <div className="flex gap-2 mt-3 pt-3 border-t border-[rgba(243,239,230,0.08)]">
-        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedOverlayLayerBackward}>↓ 前面</Button>
-        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedOverlayLayerForward}>↑ 背面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedOverlayLayerForward}>↑ 前面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedOverlayLayerBackward}>↓ 背面</Button>
         <Button size="sm" variant="outline" onClick={duplicateSelectedOverlayLayer}>複製</Button>
         <Button size="sm" variant="destructive" onClick={deleteSelectedOverlayLayer}>削除</Button>
       </div>
