@@ -1,6 +1,6 @@
 {
   "name": "creatorscoco",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "CG Creator Studio desktop shell",
   "main": "electron/main.cjs",
   "scripts": {
