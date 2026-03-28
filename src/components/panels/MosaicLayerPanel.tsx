@@ -8,6 +8,8 @@ export function MosaicLayerPanel() {
     activePageId,
     selectedLayerId,
     mosaicStylePresets,
+    activeTool,
+    setActiveTool,
     renameSelectedLayer,
     moveSelectedMosaicLayer,
     resizeSelectedMosaicLayer,
@@ -29,10 +31,27 @@ export function MosaicLayerPanel() {
       ? (image.mosaicLayers.find(l => l.id === selectedLayerId) as CanvasMosaicLayer | undefined) ?? null
       : null
 
-  if (!activeLayer) return null
-
   return (
     <div className="selection-controls text-controls" role="group" aria-label="Mosaic layer controls">
+      {/* Mode selector */}
+      <div style={{display:'flex', gap:4, marginBottom:8}}>
+        <button
+          type="button"
+          onClick={() => setActiveTool('mosaic')}
+          style={{flex:1, padding:'4px', fontSize:11, background: activeTool === 'mosaic' ? '#2d4a3e' : 'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.15)', color:'#e8d5c0', borderRadius:4, cursor:'pointer'}}
+        >矩形</button>
+        <button
+          type="button"
+          onClick={() => setActiveTool('freehand-mosaic')}
+          style={{flex:1, padding:'4px', fontSize:11, background: activeTool === 'freehand-mosaic' ? '#2d4a3e' : 'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.15)', color:'#e8d5c0', borderRadius:4, cursor:'pointer'}}
+        >投げ縄</button>
+        <button
+          type="button"
+          onClick={() => setActiveTool('backend')}
+          style={{flex:1, padding:'4px', fontSize:11, background: activeTool === 'backend' ? '#2d4a3e' : 'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.15)', color:'#e8d5c0', borderRadius:4, cursor:'pointer'}}
+        >SAM3</button>
+      </div>
+      {activeLayer && (<>
       <label className="text-layer-field">
         <span>レイヤー名</span>
         <input type="text" aria-label="Selected layer name" value={activeLayer.name ?? ''} onChange={e => renameSelectedLayer(e.target.value)} />
@@ -106,6 +125,7 @@ export function MosaicLayerPanel() {
         <Button size="sm" variant="outline" onClick={duplicateSelectedMosaicLayer}>複製</Button>
         <Button size="sm" variant="destructive" onClick={deleteSelectedMosaicLayer}>削除</Button>
       </div>
+      </>)}
     </div>
   )
 }

@@ -76,6 +76,8 @@ button {
   border-bottom: 1px solid rgba(243, 239, 230, 0.08);
   background: rgba(16, 12, 10, 0.76);
   backdrop-filter: blur(16px);
+  position: relative;
+  z-index: 500;
 }
 
 .brand {
@@ -197,7 +199,7 @@ button {
 .tool-palette-inner {
   flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: visible;
   padding: 8px 14px 0;
   min-height: 0;
 }

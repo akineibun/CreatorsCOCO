@@ -27,6 +27,7 @@ import {
   BookOpen,
   Brain,
   LayoutGrid,
+  Hand,
 } from 'lucide-react'
 import { KonvaCanvas } from './components/KonvaCanvas'
 import { PageThumb } from './components/PageThumb'
@@ -49,6 +50,7 @@ import { selectActiveImage, toolLabels, useWorkspaceStore } from './stores/works
 
 const TOOL_ICON_BY_ID: Record<Tool, React.ReactNode> = {
   select: <MousePointer2 className="w-5 h-5" />,
+  pan: <Hand className="w-5 h-5" />,
   text: <Type className="w-5 h-5" />,
   'message-window': <MessageSquare className="w-5 h-5" />,
   bubble: <MessageCircle className="w-5 h-5" />,
@@ -62,6 +64,7 @@ const TOOL_ICON_BY_ID: Record<Tool, React.ReactNode> = {
 
 const TOOL_LABEL_JA_BY_ID: Record<Tool, string> = {
   select: '選択',
+  pan: 'パン',
   text: '文字',
   'message-window': '会話枠',
   bubble: '吹き出し',

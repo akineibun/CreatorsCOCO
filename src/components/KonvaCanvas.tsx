@@ -761,6 +761,7 @@ export function KonvaCanvas({
   const [resizeState, setResizeState] = useState<ResizeState | null>(null)
   const [marqueeState, setMarqueeState] = useState<MarqueeState | null>(null)
   const [manualPtDragState, setManualPtDragState] = useState<ManualPtDragState | null>(null)
+  const [panState, setPanState] = useState<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null)
 
   // ── Source image loading ───────────────────────────────────────────────────
 
@@ -880,6 +881,18 @@ export function KonvaCanvas({
 
   const handleStagePointerDown = useCallback(
     (e: KonvaEventObject<MouseEvent>) => {
+      if (activeTool === 'pan') {
+        const container = containerRef.current?.parentElement
+        if (container) {
+          setPanState({
+            startX: e.evt.clientX,
+            startY: e.evt.clientY,
+            scrollLeft: container.scrollLeft,
+            scrollTop: container.scrollTop,
+          })
+        }
+        return
+      }
       if (e.target !== e.target.getStage()) return
       if (backendManualPointPickingMode !== 'off') return
       if (dragState || resizeState) return
@@ -900,7 +913,16 @@ export function KonvaCanvas({
     [backendManualPointPickingMode, dragState, resizeState, getStageCanvasPos, activeTool],
   )
 
-  const handleStagePointerMove = useCallback(() => {
+  const handleStagePointerMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    if (activeTool === 'pan' && panState) {
+      const container = containerRef.current?.parentElement
+      if (container) {
+        container.scrollLeft = panState.scrollLeft - (e.evt.clientX - panState.startX)
+        container.scrollTop = panState.scrollTop - (e.evt.clientY - panState.startY)
+      }
+      return
+    }
+
     const pos = getStageCanvasPos()
     if (!pos) return
 
@@ -925,10 +947,15 @@ export function KonvaCanvas({
     if (marqueeState) {
       setMarqueeState((s) => s ? { ...s, currentX: pos.x, currentY: pos.y } : s)
     }
-  }, [getStageCanvasPos, onCursorMove, freehandPath, manualPtDragState, dragState, resizeState, marqueeState])
+  }, [activeTool, panState, getStageCanvasPos, onCursorMove, freehandPath, manualPtDragState, dragState, resizeState, marqueeState])
 
   const handleStagePointerUp = useCallback(
     (e: KonvaEventObject<MouseEvent>) => {
+      if (activeTool === 'pan') {
+        setPanState(null)
+        return
+      }
+
       const pos = getStageCanvasPos()
       if (!pos) return
 
@@ -993,6 +1020,7 @@ export function KonvaCanvas({
       }
     },
     [
+      activeTool,
       getStageCanvasPos,
       freehandPath,
       addFreehandMosaicLayer,
@@ -1055,7 +1083,7 @@ export function KonvaCanvas({
       onMouseDown={handleStagePointerDown}
       onMouseMove={handleStagePointerMove}
       onMouseUp={handleStagePointerUp}
-      style={{ cursor: backendManualPointPickingMode !== 'off' ? 'crosshair' : dragState ? 'grabbing' : 'default' }}
+      style={{ cursor: activeTool === 'pan' ? (panState ? 'grabbing' : 'grab') : backendManualPointPickingMode !== 'off' ? 'crosshair' : dragState ? 'grabbing' : 'default' }}
     >
       {/* ── Background image layer ── */}
       <Layer>
@@ -1163,8 +1191,8 @@ export function KonvaCanvas({
           />
         ))}
 
-        {/* SAM3 review candidates */}
-        {sam3ReviewCandidates.map((c) => (
+        {/* SAM3 review candidates — only visible in mosaic/backend mode */}
+        {(activeTool === 'mosaic' || activeTool === 'freehand-mosaic' || activeTool === 'backend') && sam3ReviewCandidates.map((c) => (
           <Rect
             key={`sam3-${c.index}`}
             x={c.x}
@@ -1178,8 +1206,8 @@ export function KonvaCanvas({
           />
         ))}
 
-        {/* NSFW review candidates */}
-        {nsfwReviewCandidates.map((c) => (
+        {/* NSFW review candidates — only visible in mosaic/backend mode */}
+        {(activeTool === 'mosaic' || activeTool === 'freehand-mosaic' || activeTool === 'backend') && nsfwReviewCandidates.map((c) => (
           <Rect
             key={`nsfw-${c.index}`}
             x={c.x}
@@ -1194,8 +1222,8 @@ export function KonvaCanvas({
           />
         ))}
 
-        {/* Manual segment points */}
-        {manualSegmentPoints.map((pt, i) => {
+        {/* Manual segment points — only visible in mosaic/backend mode */}
+        {(activeTool === 'mosaic' || activeTool === 'freehand-mosaic' || activeTool === 'backend') && manualSegmentPoints.map((pt, i) => {
           const displayPt = manualPtDragState?.index === i
             ? { x: manualPtDragState.currentX, y: manualPtDragState.currentY }
             : pt
