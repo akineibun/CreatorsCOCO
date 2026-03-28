@@ -144,8 +144,8 @@ export function MosaicLayerPanel() {
 
       {/* Layer order & delete */}
       <div className="flex gap-2 mt-3 pt-3 border-t border-[rgba(243,239,230,0.08)]">
-        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedMosaicLayerBackward}>↓ 前面</Button>
-        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedMosaicLayerForward}>↑ 背面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedMosaicLayerForward}>↑ 前面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedMosaicLayerBackward}>↓ 背面</Button>
         <Button size="sm" variant="outline" onClick={duplicateSelectedMosaicLayer}>複製</Button>
         <Button size="sm" variant="destructive" onClick={deleteSelectedMosaicLayer}>削除</Button>
       </div>

@@ -303,8 +303,8 @@ export function TextLayerPanel() {
 
       {/* Layer order & delete */}
       <div className="flex gap-2 mt-3 pt-3 border-t border-[rgba(243,239,230,0.08)]">
-        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedTextLayerBackward}>↓ 前面</Button>
-        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedTextLayerForward}>↑ 背面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedTextLayerForward}>↑ 前面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedTextLayerBackward}>↓ 背面</Button>
         <Button size="sm" variant="destructive" onClick={deleteSelectedTextLayer}>削除</Button>
       </div>
     </div>

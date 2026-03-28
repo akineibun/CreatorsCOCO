@@ -4652,7 +4652,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           ...page,
           mosaicLayers: page.mosaicLayers.map((layer) =>
             layer.id === activeMosaicLayer.id
-              ? { ...layer, intensity: Math.max(4, Math.min(48, Math.round(intensity))) }
+              ? { ...layer, intensity: Math.max(4, Math.min(64, Math.round(intensity))) }
               : layer,
           ),
         })),

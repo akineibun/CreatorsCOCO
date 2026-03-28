@@ -135,8 +135,8 @@ export function MessageWindowPanel() {
 
       {/* Layer order & delete */}
       <div className="flex gap-2 mt-3 pt-3 border-t border-[rgba(243,239,230,0.08)]">
-        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedLayerBackward}>↓ 前面</Button>
-        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedLayerForward}>↑ 背面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedLayerForward}>↑ 前面</Button>
+        <Button size="sm" variant="outline" className="flex-1" onClick={moveSelectedLayerBackward}>↓ 背面</Button>
         <Button size="sm" variant="outline" onClick={duplicateSelectedLayer}>複製</Button>
         <Button size="sm" variant="destructive" onClick={deleteSelectedLayer}>削除</Button>
       </div>

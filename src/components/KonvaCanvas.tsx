@@ -1125,7 +1125,7 @@ export function KonvaCanvas({
       onMouseDown={handleStagePointerDown}
       onMouseMove={handleStagePointerMove}
       onMouseUp={handleStagePointerUp}
-      style={{ cursor: activeTool === 'pan' ? (panState ? 'grabbing' : 'grab') : backendManualPointPickingMode !== 'off' ? 'crosshair' : dragState ? 'grabbing' : 'default' }}
+      style={{ cursor: activeTool === 'pan' ? (panState ? 'grabbing' : 'grab') : (activeTool === 'freehand-mosaic' || backendLassoRegionMode) ? 'crosshair' : backendManualPointPickingMode !== 'off' ? 'crosshair' : dragState ? 'grabbing' : 'default' }}
     >
       {/* ── Background image layer ── */}
       <Layer>
