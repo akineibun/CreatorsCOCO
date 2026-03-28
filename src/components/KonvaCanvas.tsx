@@ -368,38 +368,97 @@ const drawMessageWindow = (
 
 const drawMosaic = (
   ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
+  offsetX: number,
+  offsetY: number,
   width: number,
   height: number,
   style: 'pixelate' | 'blur' | 'noise',
   intensity: number,
+  bgImage?: HTMLImageElement | null,
+  imageTransform?: { x: number; y: number; width: number; height: number } | null,
+  stageX?: number,
+  stageY?: number,
 ) => {
+  // Try to sample the actual image pixels
+  if (bgImage && imageTransform && (style === 'pixelate' || style === 'blur')) {
+    // stageX/stageY: where the shape is in logical canvas coords
+    const sx = stageX ?? offsetX
+    const sy = stageY ?? offsetY
+
+    // Source region in bgImage natural pixels
+    const scaleX = bgImage.naturalWidth / imageTransform.width
+    const scaleY = bgImage.naturalHeight / imageTransform.height
+    const srcX = (sx - imageTransform.x) * scaleX
+    const srcY = (sy - imageTransform.y) * scaleY
+    const srcW = width * scaleX
+    const srcH = height * scaleY
+
+    // Offscreen canvas: draw the cropped image region
+    const off = document.createElement('canvas')
+    off.width = Math.ceil(width)
+    off.height = Math.ceil(height)
+    const offCtx = off.getContext('2d', { willReadFrequently: false })
+    if (offCtx) {
+      // Draw source image portion
+      offCtx.drawImage(bgImage, srcX, srcY, srcW, srcH, 0, 0, width, height)
+
+      if (style === 'pixelate') {
+        // Downscale then upscale without smoothing to create block pixelation
+        const blockSize = Math.max(4, Math.round(intensity))
+        const pw = Math.max(1, Math.ceil(width / blockSize))
+        const ph = Math.max(1, Math.ceil(height / blockSize))
+        const tiny = document.createElement('canvas')
+        tiny.width = pw
+        tiny.height = ph
+        const tinyCtx = tiny.getContext('2d')!
+        tinyCtx.imageSmoothingEnabled = true
+        tinyCtx.drawImage(off, 0, 0, pw, ph)
+        // Now upscale back with NO smoothing
+        offCtx.imageSmoothingEnabled = false
+        offCtx.clearRect(0, 0, width, height)
+        offCtx.drawImage(tiny, 0, 0, pw, ph, 0, 0, width, height)
+      } else if (style === 'blur') {
+        // Blur by drawing onto another canvas with filter
+        const blurAmount = Math.max(4, intensity * 0.6)
+        const blurred = document.createElement('canvas')
+        blurred.width = Math.ceil(width)
+        blurred.height = Math.ceil(height)
+        const blurCtx = blurred.getContext('2d')!
+        blurCtx.filter = `blur(${blurAmount}px)`
+        blurCtx.drawImage(off, 0, 0)
+        blurCtx.filter = 'none'
+        // Copy blurred result back
+        offCtx.clearRect(0, 0, width, height)
+        offCtx.drawImage(blurred, 0, 0)
+      }
+
+      ctx.drawImage(off, offsetX, offsetY)
+      return
+    }
+  }
+
+  // Fallback: solid opaque cover (when no bgImage available)
   ctx.save()
   if (style === 'pixelate') {
-    const blockSize = Math.max(4, intensity)
-    ctx.fillStyle = 'rgba(36,27,21,0.15)'
-    ctx.fillRect(x, y, width, height)
-    for (let row = y; row < y + height; row += blockSize) {
-      for (let col = x; col < x + width; col += blockSize) {
-        const shade = 120 + Math.random() * 80
-        ctx.fillStyle = `rgba(${shade},${shade - 10},${shade - 20},0.7)`
-        ctx.fillRect(col, row, Math.min(blockSize - 1, x + width - col), Math.min(blockSize - 1, y + height - row))
+    const blockSize = Math.max(4, Math.round(intensity))
+    for (let row = offsetY; row < offsetY + height; row += blockSize) {
+      for (let col = offsetX; col < offsetX + width; col += blockSize) {
+        const shade = 80 + Math.floor(Math.random() * 60)
+        ctx.fillStyle = `rgb(${shade},${shade - 8},${shade - 16})`
+        ctx.fillRect(col, row, Math.min(blockSize, offsetX + width - col), Math.min(blockSize, offsetY + height - row))
       }
     }
   } else if (style === 'blur') {
-    ctx.filter = `blur(${Math.max(4, intensity * 0.4)}px)`
-    ctx.fillStyle = 'rgba(200,160,120,0.6)'
-    ctx.fillRect(x, y, width, height)
-    ctx.filter = 'none'
+    ctx.fillStyle = 'rgba(40,30,20,0.95)'
+    ctx.fillRect(offsetX, offsetY, width, height)
   } else {
-    // noise
-    const blockSize = Math.max(3, intensity)
-    for (let row = y; row < y + height; row += blockSize) {
-      for (let col = x; col < x + width; col += blockSize) {
+    // noise: fully opaque random pixels
+    const blockSize = Math.max(3, Math.round(intensity))
+    for (let row = offsetY; row < offsetY + height; row += blockSize) {
+      for (let col = offsetX; col < offsetX + width; col += blockSize) {
         const v = Math.random()
-        ctx.fillStyle = `rgba(${Math.round(v * 200 + 30)},${Math.round(v * 180 + 20)},${Math.round(v * 160 + 10)},0.75)`
-        ctx.fillRect(col, row, Math.min(blockSize, x + width - col), Math.min(blockSize, y + height - row))
+        ctx.fillStyle = `rgb(${Math.round(v * 180 + 40)},${Math.round(v * 160 + 30)},${Math.round(v * 140 + 20)})`
+        ctx.fillRect(col, row, Math.min(blockSize, offsetX + width - col), Math.min(blockSize, offsetY + height - row))
       }
     }
   }
@@ -1038,6 +1097,8 @@ export function KonvaCanvas({
             selected={effectiveSelectedIds.has(layer.id)}
             onPointerDown={(e) => handleLayerPointerDown(e, layer.id)}
             onClick={(e) => handleLayerClick(e, layer.id)}
+            bgImage={bgImage}
+            imageTransform={imageTransform}
           />
         ))}
 
@@ -1244,6 +1305,8 @@ type NodeProps<T> = {
   selected: boolean
   onPointerDown: (e: KonvaEventObject<MouseEvent>) => void
   onClick: (e: KonvaEventObject<MouseEvent>) => void
+  bgImage?: HTMLImageElement | null
+  imageTransform?: CanvasTransform | null
 }
 
 // ── Horizontal text node ───────────────────────────────────────────────────────
@@ -1379,6 +1442,8 @@ function MosaicNode({
   selected,
   onPointerDown,
   onClick,
+  bgImage,
+  imageTransform,
 }: NodeProps<CanvasMosaicLayer>) {
   return (
     <Shape
@@ -1397,7 +1462,7 @@ function MosaicNode({
           for (const pt of layer.path.slice(1)) cctx.lineTo(pt.x, pt.y)
           cctx.closePath()
           cctx.clip()
-          drawMosaic(cctx, 0, 0, w, h, layer.style, layer.intensity)
+          drawMosaic(cctx, 0, 0, w, h, layer.style, layer.intensity, bgImage, imageTransform, x, y)
           cctx.restore()
           if (selected) {
             cctx.strokeStyle = SELECTION_STROKE
@@ -1409,11 +1474,11 @@ function MosaicNode({
             cctx.stroke()
           }
         } else {
-          drawMosaic(cctx, 0, 0, w, h, layer.style, layer.intensity)
+          drawMosaic(cctx, 0, 0, w, h, layer.style, layer.intensity, bgImage, imageTransform, x, y)
           if (selected) {
-            ctx.strokeStyle = SELECTION_STROKE
-            ctx.lineWidth = 2
-            ctx.strokeRect(0, 0, w, h)
+            cctx.strokeStyle = SELECTION_STROKE
+            cctx.lineWidth = 2
+            cctx.strokeRect(0, 0, w, h)
           }
         }
       }}
