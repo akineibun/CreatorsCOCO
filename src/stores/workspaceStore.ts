@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { BubbleShape } from '../lib/bubbleShapes'
 
-export type Tool = 'select' | 'text' | 'message-window' | 'bubble' | 'mosaic' | 'freehand-mosaic' | 'overlay' | 'library' | 'backend' | 'export'
+export type Tool = 'select' | 'pan' | 'text' | 'message-window' | 'bubble' | 'mosaic' | 'freehand-mosaic' | 'overlay' | 'library' | 'backend' | 'export'
 
 export type CanvasImage = {
   id: string
@@ -7011,13 +7011,12 @@ export const selectActiveImage = (state: Pick<WorkspaceState, 'pages' | 'activeP
 
 export const toolLabels: Array<{ id: Tool; label: string }> = [
   { id: 'select', label: 'Select' },
+  { id: 'pan', label: 'Pan' },
   { id: 'text', label: 'Text' },
   { id: 'message-window', label: 'Message window' },
   { id: 'bubble', label: 'Bubble' },
   { id: 'mosaic', label: 'Mosaic' },
-  { id: 'freehand-mosaic', label: 'Freehand mosaic' },
   { id: 'overlay', label: 'Overlay' },
   { id: 'library', label: 'Library' },
-  { id: 'backend', label: 'Backend' },
   { id: 'export', label: 'Export' },
 ]
