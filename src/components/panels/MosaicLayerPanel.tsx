@@ -1,5 +1,6 @@
 import { useWorkspaceStore, selectActiveImage } from '../../stores/workspaceStore'
 import type { CanvasMosaicLayer } from '../../stores/workspaceStore'
+import { useBackendStore } from '../../stores/backendStore'
 import { Button } from '../ui/button'
 
 export function MosaicLayerPanel() {
@@ -24,6 +25,8 @@ export function MosaicLayerPanel() {
     applyMosaicStylePreset,
     deleteSelectedMosaicLayer,
   } = useWorkspaceStore()
+
+  const { backendLassoRegionMode, setBackendLassoRegionMode } = useBackendStore()
 
   const image = selectActiveImage({ pages, activePageId })
   const activeLayer =
@@ -51,6 +54,27 @@ export function MosaicLayerPanel() {
           style={{flex:1, padding:'4px', fontSize:11, background: activeTool === 'backend' ? '#2d4a3e' : 'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.15)', color:'#e8d5c0', borderRadius:4, cursor:'pointer'}}
         >SAM3</button>
       </div>
+      {activeTool === 'backend' && (
+        <button
+          type="button"
+          onClick={() => {
+            setBackendLassoRegionMode(!backendLassoRegionMode)
+          }}
+          style={{
+            width: '100%',
+            marginBottom: 8,
+            padding: '4px 8px',
+            fontSize: 11,
+            background: backendLassoRegionMode ? '#4a2d1a' : 'rgba(255,255,255,0.06)',
+            border: `1px solid ${backendLassoRegionMode ? '#c07840' : 'rgba(255,255,255,0.15)'}`,
+            color: backendLassoRegionMode ? '#ffa060' : '#e8d5c0',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          {backendLassoRegionMode ? '✏️ 範囲をドローして検出 (キャンセル)' : '投げ縄で検出範囲を指定 →SAM3'}
+        </button>
+      )}
       {activeLayer && (<>
       <label className="text-layer-field">
         <span>レイヤー名</span>

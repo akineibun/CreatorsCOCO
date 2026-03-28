@@ -180,6 +180,7 @@ type BackendStoreState = {
   backendActionHistory: BackendActionHistoryEntry[]
   backendReviewStateByPage: Record<string, BackendReviewPageState>
   batchMosaicState: BatchMosaicState
+  backendLassoRegionMode: boolean
 }
 
 type BackendStoreActions = {
@@ -198,6 +199,7 @@ type BackendStoreActions = {
   updateBackendReviewStateByPage: (updater: (current: Record<string, BackendReviewPageState>) => Record<string, BackendReviewPageState>) => void
   setBackendStatusFromProgress: (modelName: BackendModelName, progress: { status: string; progress: number }) => void
   updateBatchMosaicState: (updater: (current: BatchMosaicState) => BatchMosaicState) => void
+  setBackendLassoRegionMode: (enabled: boolean) => void
 }
 
 export type BackendStore = BackendStoreState & BackendStoreActions
@@ -219,6 +221,7 @@ export const useBackendStore = create<BackendStore>((set) => ({
   backendActionHistory: [],
   backendReviewStateByPage: {},
   batchMosaicState: createEmptyBatchMosaicState(),
+  backendLassoRegionMode: false,
 
   setBackendStatus: (status) => set({ backendStatus: status }),
   setBackendStatusError: (error) => set({ backendStatusError: error }),
@@ -261,4 +264,5 @@ export const useBackendStore = create<BackendStore>((set) => ({
     })),
   updateBatchMosaicState: (updater) =>
     set((state) => ({ batchMosaicState: updater(state.batchMosaicState) })),
+  setBackendLassoRegionMode: (enabled) => set({ backendLassoRegionMode: enabled }),
 }))

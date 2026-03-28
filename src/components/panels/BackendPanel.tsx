@@ -397,11 +397,11 @@ export function BackendPanel() {
     }
   }
 
-  const runBackendSam3AutoMosaic = async () => {
+  const runBackendSam3AutoMosaic = async (regionBbox?: { x: number; y: number; width: number; height: number } | null) => {
     if (!image) return
-    updateBackendActions((current) => ({ ...current, sam3AutoMosaic: 'Running SAM3 auto mosaic...' }))
+    updateBackendActions((current) => ({ ...current, sam3AutoMosaic: regionBbox ? 'Running SAM3 (specified region)...' : 'Running SAM3 auto mosaic...' }))
     try {
-      const response = await runSam3AutoMosaic(image.sourceUrl ?? '', backendSam3ModelSize, backendAutoMosaicStrength)
+      const response = await runSam3AutoMosaic(image.sourceUrl ?? '', backendSam3ModelSize, backendAutoMosaicStrength, regionBbox)
       const resultLabel = `SAM3 auto mosaic ready with ${response.masks.length} mask${response.masks.length === 1 ? '' : 's'}`
       updateActiveBackendActionResults((current) => ({
         ...current,
@@ -942,6 +942,18 @@ export function BackendPanel() {
   }, [backendReviewStateByPage])
 
   useEffect(() => { void loadBackendStatus() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Listen for freehand lasso region selection from canvas
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const bbox = (e as CustomEvent<{ x: number; y: number; width: number; height: number }>).detail
+      if (bbox && bbox.width > 4 && bbox.height > 4) {
+        void runBackendSam3AutoMosaic(bbox)
+      }
+    }
+    window.addEventListener('creatorscoco:backend-region-selected', handler)
+    return () => window.removeEventListener('creatorscoco:backend-region-selected', handler)
+  }, [image, backendSam3ModelSize, backendAutoMosaicStrength]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!backendStatus) return

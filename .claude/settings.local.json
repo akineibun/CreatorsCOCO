@@ -10,8 +10,7 @@
       "Bash(npx tsc:*)",
       "Bash(node_modules/.bin/tsc --noEmit)",
       "Bash(/d/Other/CreatorsCOCO/node_modules/.bin/tsc --noEmit)",
-      "Bash(gh pr:*)",
-      "Bash(where gh:*)",
+      "Bash(gh:*)",
       "Bash(winget list:*)",
       "Read(//c/Program Files/**)",
       "Read(//c/Users/$USER/AppData/Local/GitHub/**)",
@@ -34,7 +33,23 @@
       "Bash(git commit:*)",
       "Bash(node -e \"const fs=require\\(''fs''\\); const p=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',''utf8''\\)\\); p.version=''1.2.4''; fs.writeFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',JSON.stringify\\(p,null,2\\)+''\\\\n''\\); console.log\\(''bumped to'',p.version\\)\")",
       "Bash(cp -r dist/. \"D:/Other/CreatorsCOCO/dist/\")",
-      "Bash(node -e \"const fs=require\\(''''fs''''\\);const mp=JSON.parse\\(fs.readFileSync\\(''''D:/Other/CreatorsCOCO/package.json'''',''''utf8''''\\)\\);mp.version=''''1.2.4'''';fs.writeFileSync\\(''''D:/Other/CreatorsCOCO/package.json'''',JSON.stringify\\(mp,null,2\\)+''''\\\\n''''\\);console.log\\(''''main repo synced to 1.2.4''''\\)\")"
+      "Bash(node -e \"const fs=require\\(''''fs''''\\);const mp=JSON.parse\\(fs.readFileSync\\(''''D:/Other/CreatorsCOCO/package.json'''',''''utf8''''\\)\\);mp.version=''''1.2.4'''';fs.writeFileSync\\(''''D:/Other/CreatorsCOCO/package.json'''',JSON.stringify\\(mp,null,2\\)+''''\\\\n''''\\);console.log\\(''''main repo synced to 1.2.4''''\\)\")",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(node -e \"const fs=require\\(''fs''\\); const p=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',''utf8''\\)\\); p.version=''1.2.5''; fs.writeFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',JSON.stringify\\(p,null,2\\)+''\\\\n''\\); console.log\\(''bumped to'',p.version\\)\")",
+      "Bash(cp -r \"/d/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/dist/.\" \"/d/Other/CreatorsCOCO/dist/\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const mp=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/package.json'',''utf8''\\)\\);mp.version=''1.2.5'';fs.writeFileSync\\(''D:/Other/CreatorsCOCO/package.json'',JSON.stringify\\(mp,null,2\\)+''\\\\n''\\);console.log\\(''main synced 1.2.5''\\)\")",
+      "Bash(grep -v \"^.*//.*SAM\")",
+      "Bash(grep -n \"MosaicLayerPanel\\\\|MosaicPanel\\\\|BackendPanel\" src/components/panels/*.tsx)",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const p=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',''utf8''\\)\\);p.version=''1.2.6'';fs.writeFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',JSON.stringify\\(p,null,2\\)+''\\\\n''\\);console.log\\(''v1.2.6''\\)\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const mp=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/package.json'',''utf8''\\)\\);mp.version=''1.2.6'';fs.writeFileSync\\(''D:/Other/CreatorsCOCO/package.json'',JSON.stringify\\(mp,null,2\\)+''\\\\n''\\);console.log\\(''main synced''\\)\")",
+      "Bash(node -e \"const l=require\\(''./node_modules/lucide-react/dist/cjs/lucide-react.js''\\); [''Hand'',''HandMetal'',''Grab'',''ScanSearch'',''Move'',''MoveHorizontal'',''GrabHand'',''Pointer'',''Crosshair''].forEach\\(k=>console.log\\(k,!!l[k]\\)\\)\")",
+      "Bash(node -e \"const l=require\\(''./node_modules/lucide-react/dist/cjs/lucide-react.js''\\); [''Hand'',''HandMetal'',''Grab'',''Move'',''GrabHand'',''Pointer'',''Crosshair'',''ZoomIn'',''ZoomOut'',''Scan''].forEach\\(k=>console.log\\(k,!!l[k]\\)\\)\")",
+      "Bash(node -e \"const l=require\\(''./node_modules/lucide-react/dist/cjs/lucide-react.js''\\); const icons=[''Hand'',''Move'',''Grab'',''Pointer'',''Crosshair'',''ZoomIn'',''Scan'']; icons.forEach\\(function\\(k\\){console.log\\(k, Boolean\\(l[k]\\)\\)}\\)\")",
+      "Bash(node -e \"const l=require\\(''/d/Other/CreatorsCOCO/node_modules/lucide-react/dist/cjs/lucide-react.js''\\); const icons=[''Hand'',''Move'',''Grab'',''Pointer'',''Crosshair'',''Scan'',''Navigation'',''Compass'']; icons.forEach\\(function\\(k\\){console.log\\(k, Boolean\\(l[k]\\)\\)}\\)\")",
+      "Bash(node -e \"const l=require\\(''D:\\\\\\\\Other\\\\\\\\CreatorsCOCO\\\\\\\\node_modules\\\\\\\\lucide-react\\\\\\\\dist\\\\\\\\cjs\\\\\\\\lucide-react.js''\\); [''Hand'',''Move'',''Grab'',''Pointer'',''Crosshair'',''Scan'',''Navigation''].forEach\\(function\\(k\\){console.log\\(k, Boolean\\(l[k]\\)\\)}\\)\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const p=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',''utf8''\\)\\);p.version=''1.2.7'';fs.writeFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',JSON.stringify\\(p,null,2\\)+''\\\\n''\\);console.log\\(''v1.2.7''\\)\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const mp=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/package.json'',''utf8''\\)\\);mp.version=''1.2.7'';fs.writeFileSync\\(''D:/Other/CreatorsCOCO/package.json'',JSON.stringify\\(mp,null,2\\)+''\\\\n''\\);console.log\\(''synced''\\)\")"
     ]
   }
 }
