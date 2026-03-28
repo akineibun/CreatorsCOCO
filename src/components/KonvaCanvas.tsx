@@ -919,7 +919,6 @@ export function KonvaCanvas({
         }
         return
       }
-      if (e.target !== e.target.getStage()) return
       if (backendManualPointPickingMode !== 'off') return
       if (dragState || resizeState) return
       const pos = getStageCanvasPos()
@@ -928,6 +927,7 @@ export function KonvaCanvas({
         setFreehandPath([{ x: pos.x, y: pos.y }])
         return
       }
+      if (e.target !== e.target.getStage()) return
       setMarqueeState({
         startX: pos.x,
         startY: pos.y,
