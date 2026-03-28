@@ -480,28 +480,22 @@ export function BackendPanel() {
   }
 
   const applyBackendNsfwDetectionsToCanvas = () => {
+    const mosaicStrengthMap = { light: 8, medium: 16, strong: 24 } as const
+    const intensity = mosaicStrengthMap[backendAutoMosaicStrength]
     const suggestions = backendActionResults.nsfwDetections
       .map((detection, index) => ({ detection, index }))
       .filter(({ index }) => backendActionResults.nsfwDetectionSelection[index] !== false)
-      .map(({ detection, index }) => {
-        const bounds = parseBackendLayerSuggestion(detection, index)
-        const color = backendActionResults.nsfwDetectionColor[index] ?? '#ff4d6d'
-        return {
-          ...bounds,
-          color,
-          opacity: backendActionResults.nsfwDetectionOpacity[index] ?? 0.4,
-          fillMode: 'gradient' as const,
-          gradientFrom: color,
-          gradientTo: '#111111',
-          gradientDirection: 'vertical' as const,
-          name: getNsfwCandidateLayerName(index),
-        }
-      })
+      .map(({ detection, index }) => ({
+        ...parseBackendLayerSuggestion(detection, index),
+        intensity,
+        style: 'pixelate' as const,
+        name: getNsfwCandidateLayerName(index),
+      }))
     if (suggestions.length === 0) return
-    addBackendOverlayLayers(suggestions)
+    addBackendMosaicLayers(suggestions)
     updateBackendActions((current) => ({
       ...current,
-      nsfwDetection: `${current.nsfwDetection ?? 'NSFW detection ready'} applied to ${suggestions.length} overlay layer${suggestions.length === 1 ? '' : 's'}`,
+      nsfwDetection: `${current.nsfwDetection ?? 'NSFW detection ready'} → ${suggestions.length} モザイクレイヤーを適用`,
     }))
   }
 
@@ -1100,9 +1094,11 @@ export function BackendPanel() {
               {backendActions.sam3AutoMosaic && <div className="page-card"><strong>{backendActions.sam3AutoMosaic}</strong></div>}
               {backendActionResults.sam3AutoMosaic.length > 0 && (
                 <>
-                  <div className="page-card">
-                    <strong>{`候補: ${backendActionResults.sam3AutoMosaic.length} 件`}</strong>
-                    <span>{`${backendActionResults.sam3AutoMosaicSelection.filter(Boolean).length} 件を適用選択中`}</span>
+                  <div className="page-card" style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:4}}>
+                    <strong>{`候補 ${backendActionResults.sam3AutoMosaic.length} 件 / ${backendActionResults.sam3AutoMosaicSelection.filter(Boolean).length} 件選択中`}</strong>
+                    <Button size="sm" variant="destructive" onClick={() => updateActiveBackendActionResults(() => createEmptyBackendActionResults())}>
+                      結果をクリア
+                    </Button>
                   </div>
                   {focusedSam3ReviewCandidateIndex !== null && (
                     <div className="page-card">
@@ -1125,8 +1121,10 @@ export function BackendPanel() {
                     </>
                   )}
                   <div className="flex gap-1 flex-wrap">
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setAllBackendSam3AutoMosaicSelection(true)}>全選択</Button>
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setAllBackendSam3AutoMosaicSelection(false)}>選択解除</Button>
+                    <Button size="sm" variant="active" className="flex-1" onClick={() => setAllBackendSam3AutoMosaicSelection(true)}>☑ 全選択</Button>
+                    <Button size="sm" variant="destructive" className="flex-1" onClick={() => setAllBackendSam3AutoMosaicSelection(false)}>☐ 全解除</Button>
+                  </div>
+                  <div className="flex gap-1 flex-wrap">
                     <Button size="sm" variant="outline" className="flex-1" onClick={cycleFocusedBackendSam3AutoMosaicStyle} disabled={focusedSam3ReviewCandidateIndex === null}>スタイル</Button>
                     <Button size="sm" variant="outline" className="flex-1" onClick={cycleFocusedBackendSam3Priority} disabled={focusedSam3ReviewCandidateIndex === null}>優先度</Button>
                     <Button size="sm" variant="outline" className="flex-1" onClick={() => selectBackendSam3CandidatesByPriority('high')}>高優先のみ</Button>
@@ -1159,9 +1157,11 @@ export function BackendPanel() {
               {backendActions.nsfwDetection && <div className="page-card"><strong>{backendActions.nsfwDetection}</strong></div>}
               {backendActionResults.nsfwDetections.length > 0 && (
                 <>
-                  <div className="page-card">
-                    <strong>{`検出: ${backendActionResults.nsfwDetections.length} 件`}</strong>
-                    <span>{`${backendActionResults.nsfwDetectionSelection.filter(Boolean).length} 件を適用選択中`}</span>
+                  <div className="page-card" style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:4}}>
+                    <strong>{`検出 ${backendActionResults.nsfwDetections.length} 件 / ${backendActionResults.nsfwDetectionSelection.filter(Boolean).length} 件選択中`}</strong>
+                    <Button size="sm" variant="destructive" onClick={() => updateActiveBackendActionResults(() => createEmptyBackendActionResults())}>
+                      結果をクリア
+                    </Button>
                   </div>
                   {focusedNsfwReviewCandidateIndex !== null && (
                     <div className="page-card">
@@ -1182,9 +1182,10 @@ export function BackendPanel() {
                     </>
                   )}
                   <div className="flex gap-1 flex-wrap">
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setAllBackendNsfwDetectionSelection(true)}>全選択</Button>
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setAllBackendNsfwDetectionSelection(false)}>選択解除</Button>
-                    <Button size="sm" variant="outline" className="flex-1" onClick={cycleFocusedBackendNsfwDetectionColor} disabled={focusedNsfwReviewCandidateIndex === null}>色変更</Button>
+                    <Button size="sm" variant="active" className="flex-1" onClick={() => setAllBackendNsfwDetectionSelection(true)}>☑ 全選択</Button>
+                    <Button size="sm" variant="destructive" className="flex-1" onClick={() => setAllBackendNsfwDetectionSelection(false)}>☐ 全解除</Button>
+                  </div>
+                  <div className="flex gap-1 flex-wrap">
                     <Button size="sm" variant="outline" className="flex-1" onClick={cycleFocusedBackendNsfwPriority} disabled={focusedNsfwReviewCandidateIndex === null}>優先度</Button>
                     <Button size="sm" variant="outline" className="flex-1" onClick={() => selectBackendNsfwCandidatesByPriority('high')}>高優先のみ</Button>
                   </div>
@@ -1200,7 +1201,7 @@ export function BackendPanel() {
                     )
                   })}
                   <Button className="w-full" variant="default" size="sm" onClick={applyBackendNsfwDetectionsToCanvas} disabled={!hasActiveImage || backendActionResults.nsfwDetectionSelection.every((s) => !s)}>
-                    キャンバスに適用
+                    モザイクとしてキャンバスに適用
                   </Button>
                 </>
               )}

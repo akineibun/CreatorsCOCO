@@ -51,7 +51,8 @@
       "Bash(node -e \"const fs=require\\(''fs''\\);const p=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',''utf8''\\)\\);p.version=''1.2.7'';fs.writeFileSync\\(''D:/Other/CreatorsCOCO/.claude/worktrees/fervent-johnson/package.json'',JSON.stringify\\(p,null,2\\)+''\\\\n''\\);console.log\\(''v1.2.7''\\)\")",
       "Bash(node -e \"const fs=require\\(''fs''\\);const mp=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/package.json'',''utf8''\\)\\);mp.version=''1.2.7'';fs.writeFileSync\\(''D:/Other/CreatorsCOCO/package.json'',JSON.stringify\\(mp,null,2\\)+''\\\\n''\\);console.log\\(''synced''\\)\")",
       "Bash(grep -n \"前面\\\\|背面\\\\|Forward\\\\|Backward\" src/components/panels/*.tsx)",
-      "Bash(node -e \"const fs=require\\(''fs''\\);const mp=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/package.json'',''utf8''\\)\\);mp.version=''1.2.8'';fs.writeFileSync\\(''D:/Other/CreatorsCOCO/package.json'',JSON.stringify\\(mp,null,2\\)+''\\\\n''\\);console.log\\(''main synced 1.2.8''\\)\")"
+      "Bash(node -e \"const fs=require\\(''fs''\\);const mp=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/package.json'',''utf8''\\)\\);mp.version=''1.2.8'';fs.writeFileSync\\(''D:/Other/CreatorsCOCO/package.json'',JSON.stringify\\(mp,null,2\\)+''\\\\n''\\);console.log\\(''main synced 1.2.8''\\)\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const mp=JSON.parse\\(fs.readFileSync\\(''D:/Other/CreatorsCOCO/package.json'',''utf8''\\)\\);mp.version=''1.2.9'';fs.writeFileSync\\(''D:/Other/CreatorsCOCO/package.json'',JSON.stringify\\(mp,null,2\\)+''\\\\n''\\);console.log\\(''synced 1.2.9''\\)\")"
     ]
   }
 }
