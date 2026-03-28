@@ -186,7 +186,9 @@ export const runSam3AutoMosaic = async (
   imageBase64: string,
   modelSize: 'base' | 'large',
   mosaicStrength: 'light' | 'medium' | 'strong',
+  regionBbox?: { x: number; y: number; width: number; height: number } | null,
 ): Promise<Sam3AutoMosaicResponse> => {
+  const detections = regionBbox ? [regionBbox] : []
   const response = await fetch(`${getBackendBaseUrl()}/api/sam3/auto-mosaic`, {
     method: 'POST',
     headers: {
@@ -194,7 +196,7 @@ export const runSam3AutoMosaic = async (
     },
     body: JSON.stringify({
       image_base64: imageBase64,
-      detections: [],
+      detections,
       mosaic_type: 'pixelate',
       mosaic_strength: mosaicStrength,
       model_size: modelSize,

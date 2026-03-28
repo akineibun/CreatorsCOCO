@@ -648,10 +648,12 @@ export function KonvaCanvas({
     backendManualSegmentPoints,
     selectedBackendManualSegmentPointIndex,
     backendReviewStateByPage,
+    backendLassoRegionMode,
     setBackendManualPointPickingMode,
     setBackendManualSegmentPoints,
     setSelectedBackendManualSegmentPointIndex,
     updateBackendReviewStateByPage,
+    setBackendLassoRegionMode,
   } = useBackendStore()
 
   const { activeTool, addFreehandMosaicLayer } = useWorkspaceStore()
@@ -696,7 +698,19 @@ export function KonvaCanvas({
       const keys = Object.keys(byPage)
       const key = keys[keys.length - 1]
       if (!key) return byPage
-      return { ...byPage, [key]: { ...byPage[key]!, focusedSam3ReviewCandidateIndex: index } }
+      const pageState = byPage[key]!
+      const currentSelection = pageState.backendActionResults.sam3AutoMosaicSelection
+      return {
+        ...byPage,
+        [key]: {
+          ...pageState,
+          focusedSam3ReviewCandidateIndex: index,
+          backendActionResults: {
+            ...pageState.backendActionResults,
+            sam3AutoMosaicSelection: currentSelection.map((sel, i) => (i === index ? !sel : sel)),
+          },
+        },
+      }
     })
   }
 
@@ -705,7 +719,19 @@ export function KonvaCanvas({
       const keys = Object.keys(byPage)
       const key = keys[keys.length - 1]
       if (!key) return byPage
-      return { ...byPage, [key]: { ...byPage[key]!, focusedNsfwReviewCandidateIndex: index } }
+      const pageState = byPage[key]!
+      const currentSelection = pageState.backendActionResults.nsfwDetectionSelection
+      return {
+        ...byPage,
+        [key]: {
+          ...pageState,
+          focusedNsfwReviewCandidateIndex: index,
+          backendActionResults: {
+            ...pageState.backendActionResults,
+            nsfwDetectionSelection: currentSelection.map((sel, i) => (i === index ? !sel : sel)),
+          },
+        },
+      }
     })
   }
 
@@ -898,7 +924,7 @@ export function KonvaCanvas({
       if (dragState || resizeState) return
       const pos = getStageCanvasPos()
       if (!pos) return
-      if (activeTool === 'freehand-mosaic') {
+      if (activeTool === 'freehand-mosaic' || backendLassoRegionMode) {
         setFreehandPath([{ x: pos.x, y: pos.y }])
         return
       }
@@ -910,7 +936,7 @@ export function KonvaCanvas({
         additive: e.evt.ctrlKey || e.evt.metaKey,
       })
     },
-    [backendManualPointPickingMode, dragState, resizeState, getStageCanvasPos, activeTool],
+    [backendManualPointPickingMode, dragState, resizeState, getStageCanvasPos, activeTool, backendLassoRegionMode],
   )
 
   const handleStagePointerMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
@@ -962,7 +988,21 @@ export function KonvaCanvas({
       if (freehandPath) {
         const finalPath = [...freehandPath, { x: pos.x, y: pos.y }]
         if (finalPath.length >= 3) {
-          addFreehandMosaicLayer(finalPath, 'pixelate', 16)
+          if (backendLassoRegionMode) {
+            // In lasso-region mode: compute bounding box and dispatch to BackendPanel
+            const xs = finalPath.map((p) => p.x)
+            const ys = finalPath.map((p) => p.y)
+            const bbox = {
+              x: Math.min(...xs),
+              y: Math.min(...ys),
+              width: Math.max(...xs) - Math.min(...xs),
+              height: Math.max(...ys) - Math.min(...ys),
+            }
+            window.dispatchEvent(new CustomEvent('creatorscoco:backend-region-selected', { detail: bbox }))
+            setBackendLassoRegionMode(false)
+          } else {
+            addFreehandMosaicLayer(finalPath, 'pixelate', 16)
+          }
         }
         setFreehandPath(null)
         return
@@ -1035,6 +1075,8 @@ export function KonvaCanvas({
       onMoveSelectedLayers,
       onSelectLayers,
       image,
+      backendLassoRegionMode,
+      setBackendLassoRegionMode,
     ],
   )
 
